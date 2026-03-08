@@ -449,6 +449,7 @@ model Subscription {
   @@index([approvedByUserId])
 }
 
+
 model Server {
   id String @id @default(cuid())
 
