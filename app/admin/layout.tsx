@@ -7,10 +7,7 @@ import { AdminNav } from "@/components/nav/AdminNav";
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const user = await getSessionUser();
 
-  // Not logged in → login page
   if (!user) redirect("/login");
-
-  // Logged-in but not admin/staff → customer dashboard
   if (user.role !== "ADMIN" && user.role !== "STAFF") redirect("/dashboard");
 
   return (

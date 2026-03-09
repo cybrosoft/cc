@@ -1,11 +1,7 @@
 /* app/global.css */
 @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap');
 
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html {
   height: 100%;
@@ -21,39 +17,17 @@ body {
   background: #f5f5f5;
 }
 
-/* ── Thin scrollbar ─────────────────────────────────────────── */
+/* ── Scrollbar ──────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #e5e7eb; }
 
-/* ── Nav hover states ───────────────────────────────────────── */
-.cy-nav-item:hover {
-  background: #f3f4f6 !important;
-}
-.cy-nav-child:hover {
-  background: #f3f4f6 !important;
-}
+/* ── Nav hover states ───────────────────────────────── */
+.cy-nav-item:hover  { background: #f3f4f6 !important; }
+.cy-nav-child:hover { background: #f3f4f6 !important; }
+.cy-row:hover       { background: #fafafa !important; }
 
-/* ── Table / card hover ─────────────────────────────────────── */
-.cy-row:hover {
-  background: #fafafa !important;
-}
-
-/* ── Flat button base ───────────────────────────────────────── */
-.cy-btn {
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 13px;
-  border: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: opacity 0.12s;
-}
-.cy-btn:hover { opacity: 0.88; }
-.cy-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-/* ── Form inputs ────────────────────────────────────────────── */
+/* ── Form inputs ────────────────────────────────────── */
 .cy-input {
   width: 100%;
   padding: 8px 12px;
@@ -65,26 +39,42 @@ body {
   outline: none;
   transition: border-color 0.12s;
 }
-.cy-input:focus {
-  border-color: #318774;
-}
-.cy-input::placeholder {
-  color: #9ca3af;
+.cy-input:focus        { border-color: #318774; }
+.cy-input::placeholder { color: #9ca3af; }
+
+/* ════════════════════════════════════════════════════
+   RESPONSIVE — inner page content grids
+   These class names are used on dashboard stat grids,
+   two-column panels, and table wrappers.
+   ════════════════════════════════════════════════════ */
+
+/* Stat grids */
+.cy-grid-5 { grid-template-columns: repeat(5, 1fr); }
+.cy-grid-4 { grid-template-columns: repeat(4, 1fr); }
+.cy-grid-2 { grid-template-columns: 1.6fr 1fr; }
+.cy-grid-4-equal { grid-template-columns: repeat(4, 1fr); }
+.cy-grid-2-equal { grid-template-columns: 1fr 1fr; }
+
+/* Table wrapper — horizontal scroll on small screens */
+.cy-table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* Page padding */
+.cy-page-inner { padding: 24px; }
+
+/* ── Tablet (< 1024px) ──────────────────────────────── */
+@media (max-width: 1023px) {
+  .cy-grid-5       { grid-template-columns: repeat(3, 1fr) !important; }
+  .cy-grid-4       { grid-template-columns: repeat(2, 1fr) !important; }
+  .cy-grid-2       { grid-template-columns: 1fr !important; }
+  .cy-grid-4-equal { grid-template-columns: repeat(2, 1fr) !important; }
 }
 
-/* ── Slide-in animation for collapsible nav children ─────────── */
-@keyframes cyFadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.cy-fade { animation: cyFadeIn 0.14s ease both; }
-
-/* ── Status tags ────────────────────────────────────────────── */
-.cy-tag {
-  display: inline-flex;
-  align-items: center;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 1px 8px;
-  white-space: nowrap;
+/* ── Mobile (< 640px) ───────────────────────────────── */
+@media (max-width: 639px) {
+  .cy-page-inner   { padding: 16px !important; }
+  .cy-grid-5       { grid-template-columns: repeat(2, 1fr) !important; }
+  .cy-grid-4       { grid-template-columns: repeat(2, 1fr) !important; }
+  .cy-grid-2       { grid-template-columns: 1fr !important; }
+  .cy-grid-4-equal { grid-template-columns: 1fr !important; }
+  .cy-grid-2-equal { grid-template-columns: 1fr !important; }
 }

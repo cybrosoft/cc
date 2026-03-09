@@ -1,7 +1,7 @@
 "use client";
 // components/nav/AdminNav.tsx
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
@@ -27,16 +27,9 @@ interface NavGroup {
 }
 
 const NAV: NavGroup[] = [
+  { id: "dashboard", label: "Dashboard", icon: "dashboard", href: "/admin" },
   {
-    id: "dashboard",
-    label: "Dashboard",
-    icon: "dashboard",
-    href: "/admin",
-  },
-  {
-    id: "catalog",
-    label: "Catalog",
-    icon: "catalog",
+    id: "catalog", label: "Catalog", icon: "catalog",
     children: [
       { id: "categories", label: "Categories",  icon: "category",  href: "/admin/catalog/categories" },
       { id: "tags",       label: "Tags",         icon: "tag",       href: "/admin/catalog/tags" },
@@ -47,9 +40,7 @@ const NAV: NavGroup[] = [
     ],
   },
   {
-    id: "sales",
-    label: "Sales",
-    icon: "sales",
+    id: "sales", label: "Sales", icon: "sales",
     children: [
       { id: "rfq",      label: "RFQ Received",     icon: "rfq",      href: "/admin/sales/rfq",      badge: "0", alert: true },
       { id: "quotes",   label: "Quotations",        icon: "quote",    href: "/admin/sales/quotes" },
@@ -62,9 +53,7 @@ const NAV: NavGroup[] = [
     ],
   },
   {
-    id: "management",
-    label: "Management",
-    icon: "management",
+    id: "management", label: "Management", icon: "management",
     children: [
       { id: "customers",     label: "Customers",     icon: "customers",     href: "/admin/customers" },
       { id: "subscriptions", label: "Subscriptions", icon: "subscriptions", href: "/admin/subscriptions" },
@@ -72,9 +61,7 @@ const NAV: NavGroup[] = [
     ],
   },
   {
-    id: "system",
-    label: "System",
-    icon: "system",
+    id: "system", label: "System", icon: "system",
     children: [
       { id: "pages",    label: "Pages CMS",    icon: "pages",    href: "/admin/system/pages" },
       { id: "settings", label: "Administrator", icon: "settings", href: "/admin/system/settings" },
@@ -95,56 +82,37 @@ function Badge({ value, alert }: { value: string; alert?: boolean }) {
   );
 }
 
-function NavItem({ item, pathname }: { item: NavGroup; pathname: string }) {
+function NavItem({ item, pathname, onLinkClick }: { item: NavGroup; pathname: string; onLinkClick?: () => void }) {
   const hasChildren = !!(item.children?.length);
   const isLeaf = !hasChildren;
-
-  // Determine if this group or any child is active
-  const selfActive = isLeaf && (pathname === item.href || pathname.startsWith(item.href + "/"));
+  const selfActive = isLeaf && (pathname === item.href || pathname.startsWith((item.href ?? "") + "/"));
   const childActive = hasChildren && item.children!.some(
     c => pathname === c.href || pathname.startsWith(c.href + "/")
   );
   const highlight = selfActive || childActive;
-
-  // Auto-open if a child is active; user can also manually toggle
   const [open, setOpen] = useState(false);
   const isOpen = open || childActive;
 
   const rowStyle: React.CSSProperties = {
-    width: "100%",
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
+    width: "100%", display: "flex", alignItems: "center", gap: 10,
     padding: "10px 16px",
     background: highlight ? colors.primaryLight : "transparent",
     borderLeft: `3px solid ${highlight ? colors.primary : "transparent"}`,
-    border: "none",
-    cursor: "pointer",
-    textDecoration: "none",
+    borderTop: "none", borderRight: "none", borderBottom: "none",
+    cursor: "pointer", textDecoration: "none",
     transition: "background 0.12s",
   };
-
   const labelStyle: React.CSSProperties = {
-    flex: 1,
-    textAlign: "left",
-    fontSize: 13.5,
+    flex: 1, textAlign: "left", fontSize: 13.5,
     fontWeight: highlight ? 500 : 400,
     color: highlight ? colors.primary : colors.textSecondary,
     whiteSpace: "nowrap",
   };
-
   const iconColor = highlight ? colors.primary : colors.textFaint;
-
-  function handleGroupClick() {
-    if (isLeaf) return;
-    setOpen(v => !v);
-  }
 
   if (isLeaf && item.href) {
     return (
-      <Link href={item.href} style={rowStyle}
-        className="cy-nav-item"
-      >
+      <Link href={item.href} style={rowStyle} className="cy-nav-item" onClick={onLinkClick}>
         <Icon name={item.icon} size={15} color={iconColor} />
         <span style={labelStyle}>{item.label}</span>
         {item.badge && <Badge value={item.badge} alert={item.alert} />}
@@ -154,50 +122,33 @@ function NavItem({ item, pathname }: { item: NavGroup; pathname: string }) {
 
   return (
     <div>
-      <button
-        onClick={handleGroupClick}
-        style={rowStyle}
-        className="cy-nav-item"
-      >
+      <button onClick={() => setOpen(v => !v)} style={rowStyle} className="cy-nav-item">
         <Icon name={item.icon} size={15} color={iconColor} />
         <span style={labelStyle}>{item.label}</span>
         {item.badge && <Badge value={item.badge} alert={item.alert} />}
-        <span style={{
-          display: "flex",
-          flexShrink: 0,
-          transform: isOpen ? "rotate(90deg)" : "none",
-          transition: "transform 0.2s",
-          color: colors.textFaint,
-        }}>
+        <span style={{ display: "flex", flexShrink: 0, transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>
           <Icon name="chevron" size={13} color={colors.textFaint} />
         </span>
       </button>
-
       {isOpen && (
         <div style={{ borderLeft: `1px solid ${colors.border}`, marginLeft: 26 }}>
           {item.children!.map(child => {
             const ca = pathname === child.href || pathname.startsWith(child.href + "/");
             return (
-              <Link
-                key={child.id}
-                href={child.href}
+              <Link key={child.id} href={child.href} onClick={onLinkClick}
                 style={{
                   display: "flex", alignItems: "center", gap: 9,
                   padding: "9px 16px 9px 14px",
                   background: ca ? colors.primaryLight : "transparent",
                   borderLeft: `3px solid ${ca ? colors.primary : "transparent"}`,
-                  textDecoration: "none",
-                  transition: "background 0.12s",
+                  textDecoration: "none", transition: "background 0.12s",
                 }}
                 className="cy-nav-child"
               >
                 <Icon name={child.icon} size={14} color={ca ? colors.primary : colors.textFaint} />
                 <span style={{
-                  flex: 1,
-                  fontSize: 13.5,
-                  fontWeight: ca ? 500 : 400,
-                  color: ca ? colors.primary : colors.textSecondary,
-                  whiteSpace: "nowrap",
+                  flex: 1, fontSize: 13.5, fontWeight: ca ? 500 : 400,
+                  color: ca ? colors.primary : colors.textSecondary, whiteSpace: "nowrap",
                 }}>{child.label}</span>
                 {child.badge && <Badge value={child.badge} alert={child.alert} />}
               </Link>
@@ -209,48 +160,22 @@ function NavItem({ item, pathname }: { item: NavGroup; pathname: string }) {
   );
 }
 
-interface AdminNavProps {
-  userEmail: string;
-  userName?: string | null;
-}
-
-export function AdminNav({ userEmail, userName }: AdminNavProps) {
-  const pathname = usePathname();
-  const initials = (userName ?? userEmail)
-    .split(/[\s@.]+/)
-    .slice(0, 2)
-    .map(s => s[0]?.toUpperCase() ?? "")
-    .join("")
-    .slice(0, 2) || "AD";
-
+// Reusable sidebar content (used in both desktop aside and mobile drawer)
+function SidebarContent({ userEmail, userName, initials, pathname, onLinkClick }: {
+  userEmail: string; userName?: string | null; initials: string;
+  pathname: string; onLinkClick?: () => void;
+}) {
   return (
-    <aside style={{
-      width: 240,
-      minWidth: 240,
-      display: "flex",
-      flexDirection: "column",
-      background: "#ffffff",
-      borderRight: `1px solid ${colors.border}`,
-      overflow: "hidden",
-      height: "100vh",
-      position: "sticky",
-      top: 0,
-    }}>
+    <>
       {/* Logo */}
       <div style={{
-        height: 56,
-        display: "flex",
-        alignItems: "center",
-        padding: "0 18px",
-        background: colors.headerBg,
-        borderBottom: `1px solid ${colors.headerBorder}`,
-        flexShrink: 0,
+        height: 56, display: "flex", alignItems: "center", padding: "0 18px",
+        background: colors.headerBg, borderBottom: `1px solid ${colors.headerBorder}`, flexShrink: 0,
       }}>
         <span style={{
           fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em",
           background: "linear-gradient(to right, #5ec4b4, #80d8ca)",
-          WebkitBackgroundClip: "text",
-          WebkitTextFillColor: "transparent",
+          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
         }}>Cybrosoft</span>
         <span style={{ fontSize: 12.5, color: "#4b5563", marginLeft: 7 }}>Console</span>
       </div>
@@ -258,24 +183,19 @@ export function AdminNav({ userEmail, userName }: AdminNavProps) {
       {/* Nav items */}
       <nav style={{ flex: 1, overflowY: "auto", padding: "6px 0 12px" }}>
         {NAV.map(item => (
-          <NavItem key={item.id} item={item} pathname={pathname} />
+          <NavItem key={item.id} item={item} pathname={pathname} onLinkClick={onLinkClick} />
         ))}
       </nav>
 
       {/* Footer links */}
       <div style={{ borderTop: `1px solid ${colors.border}`, padding: "6px 0", flexShrink: 0 }}>
         {[
-          { icon: "settings", label: "Settings",  href: "/admin/system/settings" },
-          { icon: "help",     label: "Get Help",   href: "#" },
-          { icon: "search",   label: "Search",     href: "#" },
+          { icon: "settings", label: "Settings", href: "/admin/system/settings" },
+          { icon: "help",     label: "Get Help",  href: "#" },
+          { icon: "search",   label: "Search",    href: "#" },
         ].map(x => (
-          <Link key={x.label} href={x.href}
-            style={{
-              display: "flex", alignItems: "center",
-              padding: "9px 16px", gap: 10,
-              textDecoration: "none",
-              color: "inherit",
-            }}
+          <Link key={x.label} href={x.href} onClick={onLinkClick}
+            style={{ display: "flex", alignItems: "center", padding: "9px 16px", gap: 10, textDecoration: "none", color: "inherit" }}
             className="cy-nav-item"
           >
             <Icon name={x.icon} size={15} color={colors.textFaint} />
@@ -286,15 +206,11 @@ export function AdminNav({ userEmail, userName }: AdminNavProps) {
 
       {/* User row */}
       <div style={{
-        padding: "11px 14px",
-        borderTop: `1px solid ${colors.border}`,
-        display: "flex", alignItems: "center", gap: 10,
-        flexShrink: 0,
+        padding: "11px 14px", borderTop: `1px solid ${colors.border}`,
+        display: "flex", alignItems: "center", gap: 10, flexShrink: 0,
       }}>
         <div style={{
-          width: 30, height: 30,
-          background: colors.primary,
-          flexShrink: 0,
+          width: 30, height: 30, background: colors.primary, flexShrink: 0,
           display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: 11, fontWeight: 700, color: "#fff",
         }}>{initials}</div>
@@ -312,6 +228,115 @@ export function AdminNav({ userEmail, userName }: AdminNavProps) {
           </button>
         </form>
       </div>
-    </aside>
+    </>
+  );
+}
+
+export interface AdminNavProps {
+  userEmail: string;
+  userName?: string | null;
+}
+
+export function AdminNav({ userEmail, userName }: AdminNavProps) {
+  const pathname = usePathname();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Close drawer on navigation
+  useEffect(() => { setDrawerOpen(false); }, [pathname]);
+
+  // Prevent body scroll when drawer is open
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.body.style.overflow = drawerOpen ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [drawerOpen]);
+
+  const initials = (userName ?? userEmail)
+    .split(/[\s@.]+/).slice(0, 2)
+    .map(s => s[0]?.toUpperCase() ?? "").join("").slice(0, 2) || "AD";
+
+  return (
+    <>
+      {/* ─── Scoped responsive styles ─── */}
+      <style>{`
+        .cy-sidebar-desktop { display: flex; }
+        .cy-hamburger-btn   { display: none; }
+
+        @media (max-width: 1023px) {
+          .cy-sidebar-desktop { display: none !important; }
+          .cy-hamburger-btn   { display: flex !important; }
+        }
+      `}</style>
+
+      {/* ─── Desktop sidebar (hidden < 1024px via CSS above) ─── */}
+      <aside className="cy-sidebar-desktop" style={{
+        width: 240, minWidth: 240, flexDirection: "column",
+        background: "#ffffff", borderRight: `1px solid ${colors.border}`,
+        overflow: "hidden", height: "100vh", position: "sticky", top: 0,
+      }}>
+        <SidebarContent
+          userEmail={userEmail} userName={userName} initials={initials}
+          pathname={pathname} onLinkClick={() => {}}
+        />
+      </aside>
+
+      {/* ─── Hamburger button (shown < 1024px via CSS above) ─── */}
+      <button
+        className="cy-hamburger-btn"
+        onClick={() => setDrawerOpen(v => !v)}
+        aria-label="Toggle navigation"
+        style={{
+          position: "fixed", top: 10, left: 10, zIndex: 300,
+          width: 38, height: 38,
+          flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5,
+          background: "#222222", border: "1px solid #2a2a2a", cursor: "pointer", padding: 0,
+        }}
+      >
+        {/* Animated bars */}
+        <span style={{
+          display: "block", width: 18, height: 2, background: "#d1d5db",
+          transition: "all 0.2s",
+          transform: drawerOpen ? "translateY(7px) rotate(45deg)" : "none",
+        }} />
+        <span style={{
+          display: "block", width: 18, height: 2, background: "#d1d5db",
+          transition: "all 0.2s",
+          opacity: drawerOpen ? 0 : 1,
+        }} />
+        <span style={{
+          display: "block", width: 18, height: 2, background: "#d1d5db",
+          transition: "all 0.2s",
+          transform: drawerOpen ? "translateY(-7px) rotate(-45deg)" : "none",
+        }} />
+      </button>
+
+      {/* ─── Backdrop ─── */}
+      {drawerOpen && (
+        <div
+          onClick={() => setDrawerOpen(false)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 250,
+            background: "rgba(0,0,0,0.5)",
+          }}
+        />
+      )}
+
+      {/* ─── Mobile drawer ─── */}
+      <aside style={{
+        position: "fixed", top: 0, left: 0, zIndex: 260,
+        width: 260, height: "100vh",
+        display: "flex", flexDirection: "column",
+        background: "#ffffff",
+        transform: drawerOpen ? "translateX(0)" : "translateX(-100%)",
+        transition: "transform 0.25s cubic-bezier(0.4,0,0.2,1)",
+        boxShadow: drawerOpen ? "4px 0 24px rgba(0,0,0,0.18)" : "none",
+        overflow: "hidden",
+      }}>
+        <SidebarContent
+          userEmail={userEmail} userName={userName} initials={initials}
+          pathname={pathname} onLinkClick={() => setDrawerOpen(false)}
+        />
+      </aside>
+    </>
   );
 }
