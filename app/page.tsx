@@ -1,12 +1,15 @@
-import { prisma } from "@/lib/prisma";
+// app/page.tsx
+import { redirect } from "next/navigation";
+import { getSessionUser } from "@/lib/auth/get-session-user";
 
-export default async function Home() {
-  const users = await prisma.user.findMany();
+export default async function RootPage() {
+  const user = await getSessionUser();
 
-  return (
-    <div style={{ padding: 20 }}>
-      <h1>Cybrosoft Cloud Console</h1>
-      <p>Total Users: {users.length}</p>
-    </div>
-  );
+  if (!user) redirect("/login");
+
+  if (user.role === "ADMIN" || user.role === "STAFF") {
+    redirect("/admin");
+  }
+
+  redirect("/dashboard");
 }

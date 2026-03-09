@@ -1,26 +1,30 @@
-// app/admin/layout.tsx
+// app/dashboard/layout.tsx
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/get-session-user";
-import { AdminNav } from "@/components/nav/AdminNav";
+import { CustomerNav } from "@/components/nav/CustomerNav";
+import { CustomerHeader } from "@/components/nav/CustomerHeader";
 
-export default async function AdminLayout({ children }: { children: ReactNode }) {
+export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const user = await getSessionUser();
 
-  // Not logged in → login page
   if (!user) redirect("/login");
 
-  // Logged-in but not admin/staff → customer dashboard
-  if (user.role !== "ADMIN" && user.role !== "STAFF") redirect("/dashboard");
+  // Admins who land on /dashboard → redirect to admin
+  if (user.role === "ADMIN" || user.role === "STAFF") redirect("/admin");
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", fontFamily: "'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
-      <AdminNav
+      <CustomerNav
         userEmail={user.email}
         userName={user.fullName ?? null}
+        customerNumber={user.customerNumber ?? null}
       />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
-        {children}
+        <CustomerHeader />
+        <main style={{ flex: 1, overflowY: "auto", background: "#f5f5f5" }}>
+          {children}
+        </main>
       </div>
     </div>
   );

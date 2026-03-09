@@ -1,3 +1,4 @@
+// app/dashboard/servers/[id]/page.tsx
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import ServerDetailsClient from "./ServerDetailsClient";
@@ -7,7 +8,7 @@ export default async function ServerDetailsPage() {
   if (!user) redirect("/login");
 
   return (
-    <div className="p-6">
+    <div style={{ padding: "24px" }}>
       <ServerDetailsClient />
     </div>
   );

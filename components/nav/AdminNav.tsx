@@ -1,0 +1,317 @@
+"use client";
+// components/nav/AdminNav.tsx
+
+import React, { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Icon } from "@/components/ui/Icon";
+import { colors } from "@/lib/ui/tokens";
+
+interface NavChild {
+  id: string;
+  label: string;
+  icon: string;
+  href: string;
+  badge?: string;
+  alert?: boolean;
+}
+
+interface NavGroup {
+  id: string;
+  label: string;
+  icon: string;
+  href?: string;
+  children?: NavChild[];
+  badge?: string;
+  alert?: boolean;
+}
+
+const NAV: NavGroup[] = [
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    icon: "dashboard",
+    href: "/admin",
+  },
+  {
+    id: "catalog",
+    label: "Catalog",
+    icon: "catalog",
+    children: [
+      { id: "categories", label: "Categories",  icon: "category",  href: "/admin/catalog/categories" },
+      { id: "tags",       label: "Tags",         icon: "tag",       href: "/admin/catalog/tags" },
+      { id: "products",   label: "Products",     icon: "product",   href: "/admin/catalog/products" },
+      { id: "pricing",    label: "Pricing",      icon: "pricing",   href: "/admin/catalog/pricing" },
+      { id: "locations",  label: "Locations",    icon: "location",  href: "/admin/catalog/locations" },
+      { id: "templates",  label: "OS Templates", icon: "template",  href: "/admin/catalog/templates" },
+    ],
+  },
+  {
+    id: "sales",
+    label: "Sales",
+    icon: "sales",
+    children: [
+      { id: "rfq",      label: "RFQ Received",     icon: "rfq",      href: "/admin/sales/rfq",      badge: "0", alert: true },
+      { id: "quotes",   label: "Quotations",        icon: "quote",    href: "/admin/sales/quotes" },
+      { id: "po",       label: "Issued PO",         icon: "po",       href: "/admin/sales/po" },
+      { id: "dn",       label: "Delivery Notes",    icon: "delivery", href: "/admin/sales/dn" },
+      { id: "proforma", label: "Proforma Invoices", icon: "proforma", href: "/admin/sales/proforma" },
+      { id: "invoices", label: "Invoices",          icon: "invoice",  href: "/admin/sales/invoices" },
+      { id: "returns",  label: "Invoice Returns",   icon: "returns",  href: "/admin/sales/returns" },
+      { id: "billing",  label: "Billing",           icon: "billing",  href: "/admin/sales/billing" },
+    ],
+  },
+  {
+    id: "management",
+    label: "Management",
+    icon: "management",
+    children: [
+      { id: "customers",     label: "Customers",     icon: "customers",     href: "/admin/customers" },
+      { id: "subscriptions", label: "Subscriptions", icon: "subscriptions", href: "/admin/subscriptions" },
+      { id: "servers",       label: "Servers",       icon: "server",        href: "/admin/servers" },
+    ],
+  },
+  {
+    id: "system",
+    label: "System",
+    icon: "system",
+    children: [
+      { id: "pages",    label: "Pages CMS",    icon: "pages",    href: "/admin/system/pages" },
+      { id: "settings", label: "Administrator", icon: "settings", href: "/admin/system/settings" },
+    ],
+  },
+];
+
+function Badge({ value, alert }: { value: string; alert?: boolean }) {
+  if (!value || value === "0") return null;
+  return (
+    <span style={{
+      fontSize: 11, fontWeight: 600, padding: "1px 7px",
+      background: alert ? "#fee2e2" : "#f3f4f6",
+      color: alert ? "#dc2626" : "#6b7280",
+      border: `1px solid ${alert ? "#fca5a5" : "#e5e7eb"}`,
+      flexShrink: 0,
+    }}>{value}</span>
+  );
+}
+
+function NavItem({ item, pathname }: { item: NavGroup; pathname: string }) {
+  const hasChildren = !!(item.children?.length);
+  const isLeaf = !hasChildren;
+
+  // Determine if this group or any child is active
+  const selfActive = isLeaf && (pathname === item.href || pathname.startsWith(item.href + "/"));
+  const childActive = hasChildren && item.children!.some(
+    c => pathname === c.href || pathname.startsWith(c.href + "/")
+  );
+  const highlight = selfActive || childActive;
+
+  // Auto-open if a child is active; user can also manually toggle
+  const [open, setOpen] = useState(false);
+  const isOpen = open || childActive;
+
+  const rowStyle: React.CSSProperties = {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "10px 16px",
+    background: highlight ? colors.primaryLight : "transparent",
+    borderLeft: `3px solid ${highlight ? colors.primary : "transparent"}`,
+    border: "none",
+    cursor: "pointer",
+    textDecoration: "none",
+    transition: "background 0.12s",
+  };
+
+  const labelStyle: React.CSSProperties = {
+    flex: 1,
+    textAlign: "left",
+    fontSize: 13.5,
+    fontWeight: highlight ? 500 : 400,
+    color: highlight ? colors.primary : colors.textSecondary,
+    whiteSpace: "nowrap",
+  };
+
+  const iconColor = highlight ? colors.primary : colors.textFaint;
+
+  function handleGroupClick() {
+    if (isLeaf) return;
+    setOpen(v => !v);
+  }
+
+  if (isLeaf && item.href) {
+    return (
+      <Link href={item.href} style={rowStyle}
+        className="cy-nav-item"
+      >
+        <Icon name={item.icon} size={15} color={iconColor} />
+        <span style={labelStyle}>{item.label}</span>
+        {item.badge && <Badge value={item.badge} alert={item.alert} />}
+      </Link>
+    );
+  }
+
+  return (
+    <div>
+      <button
+        onClick={handleGroupClick}
+        style={rowStyle}
+        className="cy-nav-item"
+      >
+        <Icon name={item.icon} size={15} color={iconColor} />
+        <span style={labelStyle}>{item.label}</span>
+        {item.badge && <Badge value={item.badge} alert={item.alert} />}
+        <span style={{
+          display: "flex",
+          flexShrink: 0,
+          transform: isOpen ? "rotate(90deg)" : "none",
+          transition: "transform 0.2s",
+          color: colors.textFaint,
+        }}>
+          <Icon name="chevron" size={13} color={colors.textFaint} />
+        </span>
+      </button>
+
+      {isOpen && (
+        <div style={{ borderLeft: `1px solid ${colors.border}`, marginLeft: 26 }}>
+          {item.children!.map(child => {
+            const ca = pathname === child.href || pathname.startsWith(child.href + "/");
+            return (
+              <Link
+                key={child.id}
+                href={child.href}
+                style={{
+                  display: "flex", alignItems: "center", gap: 9,
+                  padding: "9px 16px 9px 14px",
+                  background: ca ? colors.primaryLight : "transparent",
+                  borderLeft: `3px solid ${ca ? colors.primary : "transparent"}`,
+                  textDecoration: "none",
+                  transition: "background 0.12s",
+                }}
+                className="cy-nav-child"
+              >
+                <Icon name={child.icon} size={14} color={ca ? colors.primary : colors.textFaint} />
+                <span style={{
+                  flex: 1,
+                  fontSize: 13.5,
+                  fontWeight: ca ? 500 : 400,
+                  color: ca ? colors.primary : colors.textSecondary,
+                  whiteSpace: "nowrap",
+                }}>{child.label}</span>
+                {child.badge && <Badge value={child.badge} alert={child.alert} />}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface AdminNavProps {
+  userEmail: string;
+  userName?: string | null;
+}
+
+export function AdminNav({ userEmail, userName }: AdminNavProps) {
+  const pathname = usePathname();
+  const initials = (userName ?? userEmail)
+    .split(/[\s@.]+/)
+    .slice(0, 2)
+    .map(s => s[0]?.toUpperCase() ?? "")
+    .join("")
+    .slice(0, 2) || "AD";
+
+  return (
+    <aside style={{
+      width: 240,
+      minWidth: 240,
+      display: "flex",
+      flexDirection: "column",
+      background: "#ffffff",
+      borderRight: `1px solid ${colors.border}`,
+      overflow: "hidden",
+      height: "100vh",
+      position: "sticky",
+      top: 0,
+    }}>
+      {/* Logo */}
+      <div style={{
+        height: 56,
+        display: "flex",
+        alignItems: "center",
+        padding: "0 18px",
+        background: colors.headerBg,
+        borderBottom: `1px solid ${colors.headerBorder}`,
+        flexShrink: 0,
+      }}>
+        <span style={{
+          fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em",
+          background: "linear-gradient(to right, #5ec4b4, #80d8ca)",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+        }}>Cybrosoft</span>
+        <span style={{ fontSize: 12.5, color: "#4b5563", marginLeft: 7 }}>Console</span>
+      </div>
+
+      {/* Nav items */}
+      <nav style={{ flex: 1, overflowY: "auto", padding: "6px 0 12px" }}>
+        {NAV.map(item => (
+          <NavItem key={item.id} item={item} pathname={pathname} />
+        ))}
+      </nav>
+
+      {/* Footer links */}
+      <div style={{ borderTop: `1px solid ${colors.border}`, padding: "6px 0", flexShrink: 0 }}>
+        {[
+          { icon: "settings", label: "Settings",  href: "/admin/system/settings" },
+          { icon: "help",     label: "Get Help",   href: "#" },
+          { icon: "search",   label: "Search",     href: "#" },
+        ].map(x => (
+          <Link key={x.label} href={x.href}
+            style={{
+              display: "flex", alignItems: "center",
+              padding: "9px 16px", gap: 10,
+              textDecoration: "none",
+              color: "inherit",
+            }}
+            className="cy-nav-item"
+          >
+            <Icon name={x.icon} size={15} color={colors.textFaint} />
+            <span style={{ fontSize: 13.5, color: colors.textMuted }}>{x.label}</span>
+          </Link>
+        ))}
+      </div>
+
+      {/* User row */}
+      <div style={{
+        padding: "11px 14px",
+        borderTop: `1px solid ${colors.border}`,
+        display: "flex", alignItems: "center", gap: 10,
+        flexShrink: 0,
+      }}>
+        <div style={{
+          width: 30, height: 30,
+          background: colors.primary,
+          flexShrink: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 11, fontWeight: 700, color: "#fff",
+        }}>{initials}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {userName ?? "Admin"}
+          </div>
+          <div style={{ fontSize: 11, color: colors.textFaint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {userEmail}
+          </div>
+        </div>
+        <form action="/api/auth/logout" method="POST">
+          <button type="submit" title="Logout" style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 4 }}>
+            <Icon name="logout" size={14} color={colors.textFaint} />
+          </button>
+        </form>
+      </div>
+    </aside>
+  );
+}
