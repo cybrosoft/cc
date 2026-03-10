@@ -1,4 +1,9 @@
 // prisma/schema.prisma
+// Step 4: Added new models (SalesDocument, SalesDocumentLine, Payment,
+//         Notification, PortalPage, PortalSetting, NumberSeries)
+//         + new fields on Product (nameAr, detailsAr, productDetails)
+//         + new fields on Category (nameAr)
+//         + new fields on Market (vatPercent, legalInfo, companyProfile, paymentMethods)
 
 datasource db {
   provider = "postgresql"
@@ -43,7 +48,6 @@ enum LocationStatus {
   coming_soon
 }
 
-// Replaces BillingMode — supported billing periods per product
 enum BillingPeriod {
   MONTHLY
   SIX_MONTHS
@@ -85,8 +89,47 @@ enum AccountType {
   PERSONAL
 }
 
+// ── NEW Step 4 Enums ──────────────────────────────────────────────────────────
+
+enum SalesDocumentType {
+  RFQ
+  QUOTATION
+  PO
+  DELIVERY_NOTE
+  PROFORMA
+  INVOICE
+  CREDIT_NOTE
+}
+
+enum SalesDocumentStatus {
+  DRAFT
+  ISSUED
+  SENT
+  ACCEPTED
+  REJECTED
+  CONVERTED
+  PAID
+  PARTIAL
+  OVERDUE
+  VOID
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  STRIPE
+  CASH
+  OTHER
+}
+
+enum NotificationType {
+  INFO
+  WARNING
+  ERROR
+  SUCCESS
+}
+
 //////////////////////////////////////////////////////
-// CORE BUSINESS MODELS
+// CORE MODELS
 //////////////////////////////////////////////////////
 
 model Market {
@@ -98,11 +141,20 @@ model Market {
   billingProvider BillingProvider @default(MANUAL)
   isActive        Boolean         @default(true)
 
+  // NEW Step 4 fields
+  vatPercent     Decimal? // e.g. 15.00 for Saudi, 0.00 for Global
+  legalInfo      Json?    // { companyName, crNumber, vatNumber, address, bankDetails }
+  companyProfile Json?    // { logoUrl, letterheadUrl, primaryColor }
+  paymentMethods String[] // ["BANK_TRANSFER", "STRIPE"]
+
   users                    User[]
   subscriptions            Subscription[]
   pricing                  Pricing[]
   customerPricingOverrides CustomerPricingOverride[]
   pendingSignups           PendingSignup[]
+  salesDocuments           SalesDocument[]
+  numberSeries             NumberSeries[]
+  payments                 SalesPayment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -154,7 +206,7 @@ model User {
   addressLine2 String?
   district     String?
   city         String?
-  tags Tag[]   // many-to-many (implicit) — customer tags
+  tags         Tag[] // many-to-many (implicit)
 
   tcAccepted        Boolean?
   privacyAccepted   Boolean?
@@ -165,14 +217,17 @@ model User {
   subscriptions         Subscription[]
   approvedSubscriptions Subscription[] @relation("SubscriptionApprovedBy")
 
-  servers Server[]
-
+  servers   Server[]
   auditLogs AuditLog[]
 
   customerPricingOverrides CustomerPricingOverride[]
 
   notePublic  String? @db.Text
   notePrivate String? @db.Text
+
+  // NEW Step 4
+  salesDocuments SalesDocument[]
+  notifications  Notification[]
 
   createdAt DateTime @default(now())
 
@@ -248,6 +303,7 @@ model Category {
   id       String  @id @default(cuid())
   key      String  @unique
   name     String
+  nameAr   String? // NEW Step 4 — Arabic name
   isActive Boolean @default(true)
 
   products Product[]
@@ -256,48 +312,18 @@ model Category {
   updatedAt DateTime @updatedAt
 }
 
-// New model — add after the Tag model (or any other model)
-model OsTemplate {
-  id          String           @id @default(cuid())
-  slug        String           @unique
-  name        String           // version/template name e.g. "22.04 LTS"
-  family      String?          // group name e.g. "Ubuntu" — null = standalone
-  description String?
-  category    String           // "OS" | "App"
-  iconType    TemplateIconType @default(devicon)
-  iconValue   String?          // devicon class string OR uploaded file URL/path
-  status      TemplateStatus   @default(active)
-  sortOrder   Int              @default(1)
-  isDefault   Boolean          @default(false)
-  tagKeys     String[]         // e.g. ["linux","vps"] — OR matched vs product tags
+model Tag {
+  id   String @id @default(cuid())
+  key  String @unique
+  name String
+
+  products Product[]
+  users    User[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([status])
-  @@index([family])
-  @@index([category])
-}
-
-model Location {
-  id          String         @id @default(cuid())
-  code        String         @unique   // e.g. "JED", "FRA"
-  name        String                   // city name e.g. "Jeddah"
-  family      String?                  // country/region e.g. "Saudi Arabia"
-  description String?
-  countryCode String?                  // ISO 2-letter e.g. "SA"
-  flag        String?                  // flag emoji e.g. "🇸🇦"
-  status      LocationStatus @default(active)
-  sortOrder   Int            @default(1)
-  isDefault   Boolean        @default(false)
-  includeTags String[]       // products with ANY of these tags appear here
-  excludeTags String[]       // products with ANY of these tags are hidden
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([status])
-  @@index([family])
+  @@index([key])
 }
 
 model Product {
@@ -305,31 +331,34 @@ model Product {
   type     ProductType
   key      String      @unique
   name     String
-  isActive Boolean     @default(true)
+  nameAr   String?     // NEW Step 4 — Arabic product name
+  productDetails  String? @db.Text  // NEW Step 4 — EN marketing details (shown to customers)
+  detailsAr       String? @db.Text  // NEW Step 4 — Arabic details
+  isActive Boolean @default(true)
 
-  // Billing periods available for this product — customer picks one at checkout
-  // Replaces the old billingMode + introMonths fields
   billingPeriods BillingPeriod[]
-  unitLabel  String?   // e.g. "mailbox", "GB", "seat" — for metered plans only
+  unitLabel      String?
 
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   zohoPlanId String?
 
-  tags                     Tag[]                     // many-to-many (implicit)
-
+  tags                     Tag[]
   pricing                  Pricing[]
   subscriptions            Subscription[]
   customerPricingOverrides CustomerPricingOverride[]
 
-  addonPricingType  AddonPricingType? // fixed | percentage | per_unit
-  addonBehavior     AddonBehavior?    // optional | required
-  applicableTags    String[]          // plan tag keys this addon appears for
-  addonUnitLabel    String?           // e.g. "GB", "IP" — for per_unit only
-  addonMinUnits     Int?              // minimum quantity — for per_unit only
-  addonMaxUnits     Int?              // maximum quantity — for per_unit only
-  addonPercentage   Decimal?          // e.g. 20.00 — for percentage only
+  // NEW Step 4
+  salesDocumentLines SalesDocumentLine[]
+
+  addonPricingType AddonPricingType?
+  addonBehavior    AddonBehavior?
+  applicableTags   String[]
+  addonUnitLabel   String?
+  addonMinUnits    Int?
+  addonMaxUnits    Int?
+  addonPercentage  Decimal?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -339,25 +368,17 @@ model Product {
   @@index([isActive])
 }
 
-// One row per Product × Market × CustomerGroup × BillingPeriod
-// Empty = product not visible to that group in that market
 model Pricing {
-  id String @id @default(cuid())
-
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  marketId String
-  market   Market @relation(fields: [marketId], references: [id], onDelete: Cascade)
-
-  customerGroupId String
-  customerGroup   CustomerGroup @relation(fields: [customerGroupId], references: [id], onDelete: Cascade)
-
-  billingPeriod BillingPeriod
-
-  // Price in smallest currency unit (halalas for SAR, cents for USD)
-  priceCents Int
-  isActive   Boolean @default(true)
+  id              String         @id @default(cuid())
+  productId       String
+  product         Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  marketId        String
+  market          Market         @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  customerGroupId String?
+  customerGroup   CustomerGroup? @relation(fields: [customerGroupId], references: [id], onDelete: SetNull)
+  billingPeriod   BillingPeriod
+  priceCents      Int
+  isActive        Boolean        @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -366,34 +387,25 @@ model Pricing {
   @@index([productId])
   @@index([marketId])
   @@index([customerGroupId])
-  @@index([isActive])
 }
 
-// Enterprise per-customer fixed price overrides
-// When set, this price is used instead of the group Pricing row
 model CustomerPricingOverride {
-  id String @id @default(cuid())
-
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  marketId String
-  market   Market @relation(fields: [marketId], references: [id], onDelete: Cascade)
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  id            String        @id @default(cuid())
+  productId     String
+  product       Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  marketId      String
+  market        Market        @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   billingPeriod BillingPeriod
-
-  priceCents Int
+  priceCents    Int
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([productId, marketId, userId, billingPeriod])
-  @@index([productId])
   @@index([userId])
-  @@index([marketId])
+  @@index([productId])
 }
 
 model Subscription {
@@ -406,9 +418,10 @@ model Subscription {
 
   productId String
   product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)
-  quantity   Int?      // null = not metered; set for metered plan subscriptions
-  templateSlug  String?
-  locationCode  String?
+
+  quantity     Int?
+  templateSlug String?
+  locationCode String?
 
   status SubscriptionStatus @default(PENDING_PAYMENT)
 
@@ -416,7 +429,6 @@ model Subscription {
   parentSubscription   Subscription?  @relation("AddonParent", fields: [parentSubscriptionId], references: [id], onDelete: SetNull)
   childSubscriptions   Subscription[] @relation("AddonParent")
 
-  // The billing period the customer chose at checkout
   billingPeriod BillingPeriod @default(YEARLY)
   paymentStatus PaymentStatus @default(UNPAID)
 
@@ -449,7 +461,6 @@ model Subscription {
   @@index([approvedByUserId])
 }
 
-
 model Server {
   id String @id @default(cuid())
 
@@ -459,18 +470,60 @@ model Server {
   subscriptionId String?
   subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
 
-  hetznerServerId String? @unique
-  hetznerApiToken String?
-
-  oracleInstanceId       String?  @unique
-  oracleInstanceRegion   String?
-  oracleCompartmentOcid  String?
+  hetznerServerId      String? @unique
+  hetznerApiToken      String?
+  oracleInstanceId     String? @unique
+  oracleInstanceRegion  String?
+  oracleCompartmentOcid String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId])
   @@index([subscriptionId])
+}
+
+model OsTemplate {
+  id          String           @id @default(cuid())
+  slug        String           @unique
+  name        String
+  family      String?
+  description String?
+  category    String
+  iconType    TemplateIconType @default(devicon)
+  iconValue   String?
+  status      TemplateStatus   @default(active)
+  sortOrder   Int              @default(1)
+  isDefault   Boolean          @default(false)
+  tagKeys     String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([family])
+  @@index([category])
+}
+
+model Location {
+  id          String         @id @default(cuid())
+  code        String         @unique
+  name        String
+  family      String?
+  description String?
+  countryCode String?
+  flag        String?
+  status      LocationStatus @default(active)
+  sortOrder   Int            @default(1)
+  isDefault   Boolean        @default(false)
+  includeTags String[]
+  excludeTags String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([family])
 }
 
 model AuditLog {
@@ -490,18 +543,174 @@ model AuditLog {
 }
 
 //////////////////////////////////////////////////////
-// TAG
+// NEW MODELS — Step 4
 //////////////////////////////////////////////////////
 
-model Tag {
-  id   String @id @default(cuid())
-  key  String @unique  // e.g. "windows", "linux"
-  name String          // e.g. "Windows", "Linux"
+// ── Number Series ─────────────────────────────────────────────────────────────
+// Saudi prefix "CY", starts 5250 | Global prefix "CYB", starts 10250
+// One row per market × doc type. nextNum auto-increments on each use.
+model NumberSeries {
+  id       String            @id @default(cuid())
+  marketId String
+  market   Market            @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  docType  SalesDocumentType
+  prefix   String            // e.g. "CY-INV" or "CYB-INV"
+  nextNum  Int               // next number to allocate
 
-  products Product[]   // many-to-many (implicit)
-  users    User[]
+  updatedAt DateTime @updatedAt
+
+  @@unique([marketId, docType])
+  @@index([marketId])
+}
+
+// ── Sales Document ────────────────────────────────────────────────────────────
+model SalesDocument {
+  id     String              @id @default(cuid())
+  docNum String              @unique // e.g. "CY-INV-5250"
+  type   SalesDocumentType
+  status SalesDocumentStatus @default(DRAFT)
+
+  marketId String
+  market   Market @relation(fields: [marketId], references: [id], onDelete: Restrict)
+
+  customerId String
+  customer   User   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  // Document chain — links derived docs back to origin
+  originDocId String?
+  originDoc   SalesDocument?  @relation("DocChain", fields: [originDocId], references: [id], onDelete: SetNull)
+  derivedDocs SalesDocument[] @relation("DocChain")
+
+  currency     String  // "SAR" or "USD"
+  subtotal     Int     @default(0) // cents
+  vatPercent   Decimal @default(0)
+  vatAmount    Int     @default(0) // cents
+  total        Int     @default(0) // cents
+  notes        String? @db.Text
+  internalNote String? @db.Text
+
+  issueDate DateTime  @default(now())
+  dueDate   DateTime?
+  paidAt    DateTime?
+
+  // RFQ-specific
+  rfqTitle   String?
+  rfqFileUrl String? // S3 URL of attached file
+
+  // Saudi e-Invoice Phase 1 QR
+  zatcaQrCode String?
+
+  lines    SalesDocumentLine[]
+  payments SalesPayment[]
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([marketId])
+  @@index([customerId])
+  @@index([type])
+  @@index([status])
+  @@index([issueDate])
+}
+
+// ── Sales Document Line ───────────────────────────────────────────────────────
+model SalesDocumentLine {
+  id         String        @id @default(cuid())
+  documentId String
+  document   SalesDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  description String
+  quantity    Decimal @default(1)
+  unitPrice   Int     // cents
+  discount    Decimal @default(0) // percentage 0–100
+  lineTotal   Int     // cents, after discount
+  sortOrder   Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([documentId])
+  @@index([productId])
+}
+
+// ── Sales Payment ─────────────────────────────────────────────────────────────
+// Named SalesPayment to avoid conflict with PaymentStatus enum
+model SalesPayment {
+  id         String        @id @default(cuid())
+  documentId String
+  document   SalesDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  marketId String
+  market   Market @relation(fields: [marketId], references: [id], onDelete: Restrict)
+
+  method      PaymentMethod
+  amountCents Int
+  currency    String
+  reference   String? // bank ref, Stripe charge ID
+  notes       String?
+  receiptUrl  String? // S3 URL
+  paidAt      DateTime @default(now())
+
+  createdAt DateTime @default(now())
+
+  @@index([documentId])
+  @@index([marketId])
+}
+
+// ── Notification ──────────────────────────────────────────────────────────────
+model Notification {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type  NotificationType @default(INFO)
+  title String
+  body  String           @db.Text
+  link  String? // optional deep link e.g. /dashboard/invoices/CY-INV-5250
+
+  isRead Boolean   @default(false)
+  readAt DateTime?
+
+  emailSent   Boolean   @default(false)
+  emailSentAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+// ── Portal Page (CMS) ─────────────────────────────────────────────────────────
+model PortalPage {
+  id        String  @id @default(cuid())
+  slug      String  @unique // e.g. "terms", "privacy", "about"
+  title     String
+  titleAr   String?
+  content   String  @db.Text
+  contentAr String? @db.Text
+  isPublic  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slug])
+  @@index([isPublic])
+}
+
+// ── Portal Settings ───────────────────────────────────────────────────────────
+// Generic key-value store for all admin-configurable settings
+// Key examples: "smtp.host", "smtp.port", "smtp.user", "smtp.pass",
+//               "portal.name", "portal.logoUrl", "portal.supportEmail"
+model PortalSetting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String @db.Text
+
   updatedAt DateTime @updatedAt
 
   @@index([key])
