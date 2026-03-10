@@ -1,626 +1,424 @@
-// app/admin/catalog/locations/LocationsAdmin.tsx
 "use client";
+// app/admin/catalog/locations/LocationsAdmin.tsx
 
 import { useCallback, useEffect, useState } from "react";
-
-// ── Types ─────────────────────────────────────────────────────────────────────
+import {
+  PageShell, Card, Table, TR, TD, TypeBadge, StatusBadge, TagPill,
+  Btn, Input, Field, Alert, Empty, Modal, SaveRow, SectionLabel, FiltersBar, CLR,
+} from "@/components/ui/admin-ui";
 
 type LocationStatus = "active" | "inactive" | "coming_soon";
-
+type Tag = { id: string; key: string; name: string };
 type LocationRow = {
-  id:          string;
-  code:        string;
-  name:        string;
-  family:      string | null;
-  description: string | null;
-  countryCode: string | null;
-  flag:        string | null;
-  status:      LocationStatus;
-  sortOrder:   number;
-  isDefault:   boolean;
-  includeTags: string[];
-  excludeTags: string[];
+  id: string; code: string; name: string; family: string | null;
+  flag: string | null; countryCode: string | null;
+  status: LocationStatus; sortOrder: number; isDefault: boolean;
+  includeTags: string[]; excludeTags: string[];
+  products?: { key: string }[];
 };
 
-type TagRow = { id: string; key: string; name: string };
-
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const STATUS_CONFIG: Record<LocationStatus, { label: string; color: string; border: string; dot: string }> = {
-  active:      { label: "Active",      color: "bg-green-50 text-green-700",  border: "border-green-200",  dot: "bg-green-500"  },
-  inactive:    { label: "Inactive",    color: "bg-gray-100 text-gray-400",   border: "border-gray-200",   dot: "bg-gray-300"   },
-  coming_soon: { label: "Coming Soon", color: "bg-amber-50 text-amber-700",  border: "border-amber-200",  dot: "bg-amber-400"  },
+const STATUS_OPTS: LocationStatus[] = ["active","inactive","coming_soon"];
+const EMPTY_DRAFT = {
+  code: "", name: "", family: "", flag: "", countryCode: "",
+  status: "active" as LocationStatus, sortOrder: 1, isDefault: false,
+  includeTagKeys: [] as string[], excludeTagKeys: [] as string[],
 };
-
-// ── StatusBadge ───────────────────────────────────────────────────────────────
-
-function StatusBadge({ status }: { status: LocationStatus }) {
-  const c = STATUS_CONFIG[status];
-  return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium ${c.color} ${c.border}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />
-      {c.label}
-    </span>
-  );
-}
-
-// ── TagSelector ───────────────────────────────────────────────────────────────
-
-function TagSelector({
-  mode, tagKeys, setTagKeys, allTags, otherTagKeys,
-}: {
-  mode:         "include" | "exclude";
-  tagKeys:      string[];
-  setTagKeys:   (v: string[]) => void;
-  allTags:      TagRow[];
-  otherTagKeys: string[];
-}) {
-  const isInclude = mode === "include";
-  const selected  = allTags.filter(t => tagKeys.includes(t.key));
-  const available = allTags.filter(t => !tagKeys.includes(t.key) && !otherTagKeys.includes(t.key));
-  const add       = (key: string) => { if (!tagKeys.includes(key)) setTagKeys([...tagKeys, key]); };
-  const remove    = (key: string) => setTagKeys(tagKeys.filter(k => k !== key));
-
-  const pillCls = isInclude
-    ? "border-green-200 bg-green-50 text-green-700"
-    : "border-red-200 bg-red-50 text-red-600";
-  const addCls = isInclude
-    ? "border-green-200 text-green-600 hover:border-green-400"
-    : "border-red-200 text-red-500 hover:border-red-400";
-  const wrapCls = isInclude
-    ? "border-green-100 bg-green-50/30"
-    : "border-red-100 bg-red-50/20";
-
-  return (
-    <div className={`space-y-3 rounded-xl border p-4 ${wrapCls}`}>
-      <div>
-        <div className={`flex items-center gap-1.5 text-xs font-semibold ${isInclude ? "text-green-700" : "text-red-600"}`}>
-          <span>{isInclude ? "✚" : "✕"}</span>
-          {isInclude ? "Include Tags" : "Exclude Tags"}
-        </div>
-        <p className="mt-0.5 text-[11px] text-gray-400">
-          {isInclude
-            ? "Products matching ANY of these tags appear at this location."
-            : "Products matching ANY of these tags are hidden, even if they match an include tag."}
-        </p>
-      </div>
-
-      <div className="flex min-h-[28px] flex-wrap items-center gap-2">
-        {selected.length === 0
-          ? <span className="text-xs text-gray-400">None selected</span>
-          : selected.map(t => (
-            <span key={t.key} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${pillCls}`}>
-              {t.name}
-              <button type="button" onClick={() => remove(t.key)} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
-            </span>
-          ))
-        }
-      </div>
-
-      {available.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {available.map(t => (
-            <button key={t.key} type="button" onClick={() => add(t.key)}
-              className={`inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[11px] transition-colors ${addCls}`}>
-              + {t.name}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── TagsPanel ─────────────────────────────────────────────────────────────────
-
-function TagsPanel({
-  includeTags, setIncludeTags, excludeTags, setExcludeTags, allTags,
-}: {
-  includeTags:    string[];
-  setIncludeTags: (v: string[]) => void;
-  excludeTags:    string[];
-  setExcludeTags: (v: string[]) => void;
-  allTags:        TagRow[];
-}) {
-  return (
-    <div className="space-y-3">
-      <div className="grid gap-3 md:grid-cols-2">
-        <TagSelector mode="include" tagKeys={includeTags} setTagKeys={setIncludeTags} allTags={allTags} otherTagKeys={excludeTags} />
-        <TagSelector mode="exclude" tagKeys={excludeTags} setTagKeys={setExcludeTags} allTags={allTags} otherTagKeys={includeTags} />
-      </div>
-
-      {includeTags.length > 0 ? (
-        <div className="rounded-lg border border-gray-100 bg-white px-3 py-2.5 text-[11px] text-gray-500">
-          <span className="font-semibold text-gray-700">Logic: </span>
-          Products tagged <span className="font-semibold text-green-700">{includeTags.join(" or ")}</span>
-          {excludeTags.length > 0 && (
-            <> — excluding those tagged <span className="font-semibold text-red-600">{excludeTags.join(" or ")}</span></>
-          )}
-        </div>
-      ) : (
-        <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
-          ⚠️ No include tags — this location will show no products to customers.
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── LocationFields ────────────────────────────────────────────────────────────
-
-type FieldProps = {
-  name: string;         setName: (v: string) => void;
-  code: string;         setCode: (v: string) => void;
-  family: string;       setFamily: (v: string) => void;
-  description: string;  setDescription: (v: string) => void;
-  countryCode: string;  setCountryCode: (v: string) => void;
-  flag: string;         setFlag: (v: string) => void;
-  status: LocationStatus; setStatus: (v: LocationStatus) => void;
-  sortOrder: number;    setSortOrder: (v: number) => void;
-  isDefault: boolean;   setIsDefault: (v: boolean) => void;
-  includeTags: string[]; setIncludeTags: (v: string[]) => void;
-  excludeTags: string[]; setExcludeTags: (v: string[]) => void;
-  existingFamilies: string[];
-  allTags: TagRow[];
-};
-
-function LocationFields(p: FieldProps) {
-  return (
-    <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-2">
-
-        {/* Country / Region */}
-        <div className="space-y-1 md:col-span-2">
-          <label className="text-xs font-medium text-gray-500">
-            Country / Region <span className="font-normal text-gray-400">(leave blank for standalone)</span>
-          </label>
-          <div className="flex gap-2">
-            <input value={p.family} onChange={e => p.setFamily(e.target.value)}
-              placeholder="e.g. Saudi Arabia, Germany"
-              className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300" />
-            {p.existingFamilies.length > 0 && (
-              <select onChange={e => e.target.value && p.setFamily(e.target.value)} defaultValue=""
-                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-500 focus:outline-none">
-                <option value="">Existing…</option>
-                {p.existingFamilies.map(f => <option key={f} value={f}>{f}</option>)}
-              </select>
-            )}
-          </div>
-          {p.family && p.name && (
-            <p className="text-[11px] text-blue-500">Displays as: <strong>{p.family} — {p.name}</strong></p>
-          )}
-        </div>
-
-        {/* City name */}
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-gray-500">City Name <span className="text-red-400">*</span></label>
-          <input value={p.name} onChange={e => p.setName(e.target.value)}
-            placeholder="e.g. Jeddah, Frankfurt"
-            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300" />
-        </div>
-
-        {/* Location code */}
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-gray-500">Location Code <span className="text-red-400">*</span></label>
-          <input value={p.code} onChange={e => p.setCode(e.target.value.toUpperCase())}
-            placeholder="e.g. JED, FRA"
-            maxLength={6}
-            className="w-full rounded-lg border border-gray-200 px-3 py-2 font-mono text-sm uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-gray-300" />
-          <p className="text-[11px] text-gray-400">Unique short identifier (3–6 chars).</p>
-        </div>
-
-        {/* Flag + country code */}
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-gray-500">Flag & Country Code</label>
-          <div className="flex gap-2">
-            <input value={p.flag} onChange={e => p.setFlag(e.target.value)} placeholder="🇸🇦"
-              className="w-16 rounded-lg border border-gray-200 px-3 py-2 text-center text-lg focus:outline-none focus:ring-2 focus:ring-gray-300" />
-            <input value={p.countryCode} onChange={e => p.setCountryCode(e.target.value.toUpperCase())}
-              placeholder="SA" maxLength={2}
-              className="w-20 rounded-lg border border-gray-200 px-3 py-2 font-mono text-sm uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-gray-300" />
-          </div>
-          <p className="text-[11px] text-gray-400">Flag emoji + ISO 2-letter country code.</p>
-        </div>
-
-        {/* Status */}
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-gray-500">Status</label>
-          <div className="flex gap-2">
-            {(Object.entries(STATUS_CONFIG) as [LocationStatus, typeof STATUS_CONFIG[LocationStatus]][]).map(([key, cfg]) => (
-              <button key={key} type="button" onClick={() => p.setStatus(key)}
-                className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border py-2 text-[11px] font-medium transition-colors ${
-                  p.status === key ? `${cfg.color} ${cfg.border}` : "border-gray-200 bg-white text-gray-400 hover:bg-gray-50"
-                }`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
-                {cfg.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Sort order */}
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-gray-500">Sort Order <span className="font-normal text-gray-400">(lower = first)</span></label>
-          <input type="number" min={0} value={p.sortOrder} onChange={e => p.setSortOrder(Number(e.target.value))}
-            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300" />
-        </div>
-
-        {/* Description */}
-        <div className="space-y-1 md:col-span-2">
-          <label className="text-xs font-medium text-gray-500">Description <span className="font-normal text-gray-400">(optional)</span></label>
-          <input value={p.description} onChange={e => p.setDescription(e.target.value)}
-            placeholder="e.g. Hetzner DC, Frankfurt"
-            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300" />
-        </div>
-
-        {/* Default toggle */}
-        {p.family && (
-          <div className="md:col-span-2">
-            <label onClick={() => p.setIsDefault(!p.isDefault)}
-              className="flex cursor-pointer items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 transition-colors hover:bg-gray-50">
-              <div className={`relative h-5 w-9 flex-shrink-0 rounded-full transition-colors ${p.isDefault ? "bg-gray-900" : "bg-gray-200"}`}>
-                <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${p.isDefault ? "translate-x-4" : "translate-x-0.5"}`} />
-              </div>
-              <div>
-                <div className="text-xs font-medium text-gray-700">Set as default location</div>
-                <div className="text-[11px] text-gray-400">Pre-selected when customer picks {p.family}.</div>
-              </div>
-              {p.isDefault && <span className="ml-auto text-[11px] font-semibold text-green-600">✓ Default</span>}
-            </label>
-          </div>
-        )}
-      </div>
-
-      {/* Tags panel */}
-      <div className="space-y-2">
-        <label className="text-xs font-medium text-gray-500">Product Visibility via Tags</label>
-        <TagsPanel
-          includeTags={p.includeTags}   setIncludeTags={p.setIncludeTags}
-          excludeTags={p.excludeTags}   setExcludeTags={p.setExcludeTags}
-          allTags={p.allTags}
-        />
-      </div>
-    </div>
-  );
-}
-
-// ── EditPanel ─────────────────────────────────────────────────────────────────
-
-function EditPanel({
-  location, existingFamilies, allTags, onSave, onDelete,
-}: {
-  location: LocationRow; existingFamilies: string[]; allTags: TagRow[];
-  onSave: (data: Partial<LocationRow>) => Promise<void>;
-  onDelete: () => Promise<void>;
-}) {
-  const [name,        setName]        = useState(location.name);
-  const [code,        setCode]        = useState(location.code);
-  const [family,      setFamily]      = useState(location.family ?? "");
-  const [description, setDescription] = useState(location.description ?? "");
-  const [countryCode, setCountryCode] = useState(location.countryCode ?? "");
-  const [flag,        setFlag]        = useState(location.flag ?? "");
-  const [status,      setStatus]      = useState<LocationStatus>(location.status);
-  const [sortOrder,   setSortOrder]   = useState(location.sortOrder);
-  const [isDefault,   setIsDefault]   = useState(location.isDefault);
-  const [includeTags, setIncludeTags] = useState<string[]>([...location.includeTags]);
-  const [excludeTags, setExcludeTags] = useState<string[]>([...location.excludeTags]);
-  const [saving,      setSaving]      = useState(false);
-  const [confirmDel,  setConfirmDel]  = useState(false);
-  const [deleting,    setDeleting]    = useState(false);
-  const [error,       setError]       = useState("");
-
-  const isValid = name.trim() && code.trim();
-
-  async function handleSave() {
-    if (!isValid || saving) return;
-    setSaving(true); setError("");
-    try {
-      await onSave({ name, code, family: family || null, description: description || null, countryCode: countryCode || null, flag: flag || null, status, sortOrder, isDefault, includeTags, excludeTags });
-    } catch (e: any) { setError(e.message ?? "Save failed"); }
-    finally { setSaving(false); }
-  }
-
-  async function handleDelete() {
-    if (deleting) return;
-    setDeleting(true);
-    try { await onDelete(); } catch (e: any) { setError(e.message ?? "Delete failed"); setDeleting(false); }
-  }
-
-  return (
-    <div className="border-t border-blue-100 bg-blue-50/20 px-6 py-5 space-y-5">
-      <LocationFields
-        name={name} setName={setName} code={code} setCode={setCode}
-        family={family} setFamily={setFamily} description={description} setDescription={setDescription}
-        countryCode={countryCode} setCountryCode={setCountryCode} flag={flag} setFlag={setFlag}
-        status={status} setStatus={setStatus} sortOrder={sortOrder} setSortOrder={setSortOrder}
-        isDefault={isDefault} setIsDefault={setIsDefault}
-        includeTags={includeTags} setIncludeTags={setIncludeTags}
-        excludeTags={excludeTags} setExcludeTags={setExcludeTags}
-        existingFamilies={existingFamilies} allTags={allTags}
-      />
-      {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>}
-      <div className="flex items-center justify-between gap-3 pt-1">
-        <div>
-          {!confirmDel ? (
-            <button onClick={() => setConfirmDel(true)}
-              className="rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-500 hover:bg-red-50">
-              🗑️ Delete
-            </button>
-          ) : (
-            <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5">
-              <span className="text-xs text-red-600">Sure?</span>
-              <button onClick={handleDelete} disabled={deleting} className="text-xs font-semibold text-red-600 hover:underline disabled:opacity-50">
-                {deleting ? "Deleting…" : "Yes"}
-              </button>
-              <button onClick={() => setConfirmDel(false)} className="text-xs text-gray-400 hover:underline">Cancel</button>
-            </div>
-          )}
-        </div>
-        <button onClick={handleSave} disabled={!isValid || saving}
-          className="rounded-lg bg-gray-900 px-5 py-2 text-xs font-semibold text-white hover:bg-gray-700 disabled:opacity-40">
-          {saving ? "Saving…" : "Save Changes"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── CreatePanel ───────────────────────────────────────────────────────────────
-
-function CreatePanel({
-  existingFamilies, allTags, onSave, onCancel,
-}: {
-  existingFamilies: string[]; allTags: TagRow[];
-  onSave: (data: Omit<LocationRow, "id">) => Promise<void>;
-  onCancel: () => void;
-}) {
-  const [name,        setName]        = useState("");
-  const [code,        setCode]        = useState("");
-  const [family,      setFamily]      = useState("");
-  const [description, setDescription] = useState("");
-  const [countryCode, setCountryCode] = useState("");
-  const [flag,        setFlag]        = useState("");
-  const [status,      setStatus]      = useState<LocationStatus>("active");
-  const [sortOrder,   setSortOrder]   = useState(1);
-  const [isDefault,   setIsDefault]   = useState(false);
-  const [includeTags, setIncludeTags] = useState<string[]>([]);
-  const [excludeTags, setExcludeTags] = useState<string[]>([]);
-  const [saving,      setSaving]      = useState(false);
-  const [error,       setError]       = useState("");
-
-  const isValid = name.trim() && code.trim();
-
-  async function handleSave() {
-    if (!isValid || saving) return;
-    setSaving(true); setError("");
-    try {
-      await onSave({ name, code, family: family || null, description: description || null, countryCode: countryCode || null, flag: flag || null, status, sortOrder, isDefault, includeTags, excludeTags });
-    } catch (e: any) { setError(e.message ?? "Create failed"); setSaving(false); }
-  }
-
-  return (
-    <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
-      <div className="border-b border-gray-100 bg-gray-50 px-5 py-3">
-        <h2 className="text-sm font-semibold text-gray-700">New Location</h2>
-      </div>
-      <div className="space-y-5 p-5">
-        <LocationFields
-          name={name} setName={setName} code={code} setCode={setCode}
-          family={family} setFamily={setFamily} description={description} setDescription={setDescription}
-          countryCode={countryCode} setCountryCode={setCountryCode} flag={flag} setFlag={setFlag}
-          status={status} setStatus={setStatus} sortOrder={sortOrder} setSortOrder={setSortOrder}
-          isDefault={isDefault} setIsDefault={setIsDefault}
-          includeTags={includeTags} setIncludeTags={setIncludeTags}
-          excludeTags={excludeTags} setExcludeTags={setExcludeTags}
-          existingFamilies={existingFamilies} allTags={allTags}
-        />
-        {name && (
-          <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4">
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-gray-400">Customer View Preview</p>
-            <div className="inline-flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-              <span className="text-2xl">{flag || "🌐"}</span>
-              <div>
-                <div className="text-sm font-semibold text-gray-900">{name}</div>
-                {family      && <div className="text-xs text-gray-400">{family}</div>}
-                {description && <div className="text-xs text-gray-400">{description}</div>}
-              </div>
-              {code && <span className="ml-2 rounded-full border border-gray-200 bg-gray-100 px-2 py-0.5 font-mono text-[10px] font-bold text-gray-500">{code}</span>}
-            </div>
-          </div>
-        )}
-        {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>}
-        <div className="flex justify-end gap-2">
-          <button onClick={onCancel} className="rounded-lg border border-gray-200 px-4 py-2 text-xs text-gray-500 hover:bg-gray-50">Cancel</button>
-          <button onClick={handleSave} disabled={!isValid || saving}
-            className="rounded-lg bg-gray-900 px-5 py-2 text-xs font-semibold text-white hover:bg-gray-700 disabled:opacity-40">
-            {saving ? "Creating…" : "Create Location"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function LocationsAdmin() {
-  const [locations,    setLocations]    = useState<LocationRow[]>([]);
-  const [allTags,      setAllTags]      = useState<TagRow[]>([]);
-  const [loading,      setLoading]      = useState(true);
-  const [creating,     setCreating]     = useState(false);
-  const [expandedId,   setExpandedId]   = useState<string | null>(null);
-  const [filterName,   setFilterName]   = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
+  const [rows, setRows]       = useState<LocationRow[]>([]);
+  const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [allProducts, setAllProducts] = useState<{ id: string; key: string; tags: { key: string }[] }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState<string | null>(null);
+
+  const [fSearch, setFSearch] = useState("");
+  const [fStatus, setFStatus] = useState("");
+
+  const [open, setOpen]     = useState(false);
+  const [draft, setDraft]   = useState({ ...EMPTY_DRAFT });
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
+
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<LocationRow & { includeTagKeys: string[]; excludeTagKeys: string[] } | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editErr, setEditErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    const [locRes, tagRes] = await Promise.all([
-      fetch("/api/admin/catalog/locations", { cache: "no-store" }),
-      fetch("/api/admin/catalog/tags",      { cache: "no-store" }),
-    ]);
-    const [locJson, tagJson] = await Promise.all([locRes.json(), tagRes.json()]);
-    if (locJson?.ok) setLocations(locJson.data);
-    if (tagJson?.ok) setAllTags(tagJson.data);
-    setLoading(false);
+    setLoading(true); setError(null);
+    try {
+      const [lr, tr, pr] = await Promise.all([
+        fetch("/api/admin/catalog/locations").then(r => r.json()).catch(() => null),
+        fetch("/api/admin/catalog/tags").then(r => r.json()).catch(() => null),
+        fetch("/api/admin/catalog/products").then(r => r.json()).catch(() => null),
+      ]);
+      if (lr?.ok) setRows(lr.data);
+      if (tr?.ok) setAllTags(tr.data);
+      if (pr?.ok) setAllProducts(pr.data);
+      if (!lr?.ok) setError("Failed to load locations");
+    } catch { setError("Network error"); }
+    finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
-  const existingFamilies = [...new Set(locations.map(l => l.family).filter(Boolean))] as string[];
+  // Derived: unique regions from existing rows
+  const regions = [...new Set(rows.map(r => r.family).filter(Boolean))] as string[];
 
-  async function handleCreate(data: Omit<LocationRow, "id">) {
-    const res  = await fetch("/api/admin/catalog/locations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
-    const json = await res.json();
-    if (!json?.ok) throw new Error(json?.error ?? "Create failed");
-    setCreating(false); await load();
-  }
-
-  async function handleSave(id: string, data: Partial<LocationRow>) {
-    const res  = await fetch("/api/admin/catalog/locations/update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...data }) });
-    const json = await res.json();
-    if (!json?.ok) throw new Error(json?.error ?? "Update failed");
-    setExpandedId(null); await load();
-  }
-
-  async function handleDelete(id: string) {
-    const res  = await fetch("/api/admin/catalog/locations/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
-    const json = await res.json();
-    if (!json?.ok) throw new Error(json?.error ?? "Delete failed");
-    setExpandedId(null); await load();
-  }
-
-  const filtered = locations.filter(l => {
-    const full = l.family ? `${l.family} ${l.name}` : l.name;
-    if (filterName   && !full.toLowerCase().includes(filterName.toLowerCase())) return false;
-    if (filterStatus && l.status !== filterStatus) return false;
+  const filtered = rows.filter(r => {
+    if (fStatus && r.status !== fStatus) return false;
+    if (fSearch) {
+      const q = fSearch.toLowerCase();
+      if (!r.code.toLowerCase().includes(q) && !r.name.toLowerCase().includes(q) && !(r.family?.toLowerCase().includes(q))) return false;
+    }
     return true;
   });
 
-  const familyGroups = existingFamilies.map(f => ({
-    name: f, flag: locations.find(l => l.family === f)?.flag ?? "🌐",
-    count: locations.filter(l => l.family === f).length,
-  }));
+  function toggleTagKey(key: string, field: "includeTagKeys" | "excludeTagKeys") {
+    setDraft(d => ({
+      ...d,
+      [field]: (d[field] as string[]).includes(key)
+        ? (d[field] as string[]).filter(x => x !== key)
+        : [...(d[field] as string[]), key],
+    }));
+  }
+
+  async function create() {
+    if (!draft.code.trim() || !draft.name.trim()) { setSaveErr("Code and name required"); return; }
+    setSaving(true); setSaveErr(null);
+    try {
+      const r = await fetch("/api/admin/catalog/locations", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: draft.code.trim().toUpperCase(), name: draft.name.trim(),
+          family: draft.family?.trim() || null, flag: draft.flag?.trim() || null,
+          countryCode: draft.countryCode?.trim() || null,
+          status: draft.status, sortOrder: Number(draft.sortOrder) || 1,
+          isDefault: draft.isDefault,
+          includeTags: draft.includeTagKeys, excludeTags: draft.excludeTagKeys,
+        }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j?.ok) { setSaveErr(j?.error ?? "Failed"); return; }
+      setOpen(false); setDraft({ ...EMPTY_DRAFT }); void load();
+    } catch { setSaveErr("Network error"); }
+    finally { setSaving(false); }
+  }
+
+  function startEdit(loc: LocationRow) {
+    setEditId(loc.id);
+    setEditDraft({ ...loc, includeTagKeys: loc.includeTags, excludeTagKeys: loc.excludeTags });
+    setEditErr(null);
+  }
+
+  async function saveEdit() {
+    if (!editDraft) return;
+    setEditSaving(true); setEditErr(null);
+    try {
+      const r = await fetch("/api/admin/catalog/locations/update", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editDraft.id, code: editDraft.code, name: editDraft.name,
+          family: editDraft.family || null, flag: editDraft.flag || null,
+          countryCode: editDraft.countryCode || null,
+          status: editDraft.status, sortOrder: Number(editDraft.sortOrder),
+          isDefault: editDraft.isDefault,
+          includeTags: editDraft.includeTagKeys, excludeTags: editDraft.excludeTagKeys,
+        }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j?.ok) { setEditErr(j?.error ?? "Failed"); return; }
+      setEditId(null); setEditDraft(null); void load();
+    } catch { setEditErr("Network error"); }
+    finally { setEditSaving(false); }
+  }
+
+  async function deleteLocation(id: string) {
+    if (!confirm("Delete this location?")) return;
+    await fetch("/api/admin/catalog/locations/delete", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }),
+    });
+    void load();
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="mx-auto max-w-5xl space-y-5">
+    <PageShell
+      breadcrumb="ADMIN / CATALOG / LOCATIONS"
+      title="Locations"
+      ctaLabel="New Location"
+      ctaOnClick={() => setOpen(true)}
+    >
+      {error && <div style={{ marginBottom: 16 }}><Alert type="error">{error}</Alert></div>}
 
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Datacenter Locations</h1>
-            <p className="mt-0.5 text-sm text-gray-400">Products matched dynamically via include / exclude tags — no manual product lists.</p>
-            {!loading && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {familyGroups.map(fg => (
-                  <span key={fg.name} className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-600">
-                    {fg.flag} {fg.name} · {fg.count}
-                  </span>
-                ))}
-                {locations.filter(l => l.status === "coming_soon").length > 0 && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-600">
-                    {locations.filter(l => l.status === "coming_soon").length} coming soon
-                  </span>
-                )}
-                {locations.filter(l => l.includeTags.length === 0 && l.status === "active").length > 0 && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-500">
-                    ⚠️ {locations.filter(l => l.includeTags.length === 0 && l.status === "active").length} with no tags
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-          {!creating && (
-            <button onClick={() => { setCreating(true); setExpandedId(null); }}
-              className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">
-              + Add Location
-            </button>
-          )}
-        </div>
+      <Card>
+        <FiltersBar>
+          <input className="cy-input" value={fSearch} onChange={e => setFSearch(e.target.value)}
+            placeholder="Search code or name…" style={{ width: 200 }} />
+          <select className="cy-input" value={fStatus} onChange={e => setFStatus(e.target.value)} style={{ width: 150 }}>
+            <option value="">All Status</option>
+            {STATUS_OPTS.map(s => <option key={s} value={s}>{s.replace("_", " ")}</option>)}
+          </select>
+          {(fSearch || fStatus) && <Btn variant="ghost" onClick={() => { setFSearch(""); setFStatus(""); }}>Clear</Btn>}
+          <span style={{ marginLeft: "auto", fontSize: 12, color: "#9ca3af" }}>{filtered.length} locations</span>
+        </FiltersBar>
 
-        {creating && (
-          <CreatePanel existingFamilies={existingFamilies} allTags={allTags} onSave={handleCreate} onCancel={() => setCreating(false)} />
-        )}
-
-        {!creating && (
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-white px-4 py-3 shadow-sm">
-            <input value={filterName} onChange={e => setFilterName(e.target.value)} placeholder="Search location…"
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gray-300" style={{ width: 180 }} />
-            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs focus:outline-none">
-              <option value="">All Statuses</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="coming_soon">Coming Soon</option>
-            </select>
-            {(filterName || filterStatus) && (
-              <button onClick={() => { setFilterName(""); setFilterStatus(""); }} className="text-xs text-gray-400 underline hover:text-gray-600">Clear</button>
-            )}
-            <span className="ml-auto text-xs text-gray-400">{filtered.length} of {locations.length}</span>
-          </div>
-        )}
-
-        {!creating && (
-          <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
-            <div className="grid border-b bg-gray-50 px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400"
-              style={{ gridTemplateColumns: "40px 1fr 70px 150px 1fr 120px 36px 24px" }}>
-              <div /><div>Location</div><div>Code</div><div>Country</div><div>Tags</div><div>Status</div><div title="Sort">⇅</div><div />
-            </div>
-
-            {loading  && <div className="px-5 py-10 text-center text-sm text-gray-400">Loading…</div>}
-            {!loading && filtered.length === 0 && <div className="px-5 py-10 text-center text-sm text-gray-400">No locations found.</div>}
-
-            {!loading && filtered.map(loc => {
-              const isOpen = expandedId === loc.id;
+        {loading ? (
+          <div style={{ padding: 40, textAlign: "center", color: "#9ca3af" }}>Loading…</div>
+        ) : rows.length === 0 ? (
+          <Empty message="No locations yet. Create one to get started." />
+        ) : (
+          <Table cols={["Code", "Name", "Region", "Include Tags", "Exclude Tags", "Status", "Order", ""]}>
+            {filtered.map(loc => {
+              const isEdit = editId === loc.id;
               return (
-                <div key={loc.id} className="border-b last:border-b-0">
-                  <div
-                    className={`grid cursor-pointer items-center gap-3 px-5 py-3 transition-colors hover:bg-gray-50/80 ${isOpen ? "bg-blue-50/30" : ""} ${loc.status === "inactive" ? "opacity-50" : ""}`}
-                    style={{ gridTemplateColumns: "40px 1fr 70px 150px 1fr 120px 36px 24px" }}
-                    onClick={() => setExpandedId(isOpen ? null : loc.id)}
-                  >
-                    <div className="flex items-center justify-center text-2xl">{loc.flag || "🌐"}</div>
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-sm font-semibold text-gray-900">{loc.name}</span>
-                        {loc.isDefault && loc.family && <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-bold text-blue-600">Default</span>}
+                <tbody key={loc.id}>
+                  <TR highlight={isEdit}>
+                    <TD mono muted>{loc.flag} {loc.code}</TD>
+                    <TD style={{ fontWeight: 500 }}>
+                      {loc.name}
+                      {loc.isDefault && (
+                        <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, padding: "1px 5px", background: CLR.primaryBg, color: CLR.primary, border: "1px solid #a7d9d1" }}>Default</span>
+                      )}
+                    </TD>
+                    <TD muted>{loc.family ?? "—"}</TD>
+                    <TD>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                        {loc.includeTags.length === 0
+                          ? <span style={{ fontSize: 11, color: "#ef4444" }}>⚠ None</span>
+                          : loc.includeTags.map(tk => <TagPill key={tk} label={tk} />)
+                        }
                       </div>
-                      {loc.description && <div className="text-[11px] text-gray-400">{loc.description}</div>}
-                    </div>
-                    <div>
-                      <span className="rounded-full border border-gray-200 bg-gray-100 px-2 py-0.5 font-mono text-[11px] font-bold text-gray-600">{loc.code}</span>
-                    </div>
-                    <div>
-                      {loc.family
-                        ? <span className="rounded-full border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-600">{loc.family}</span>
-                        : <span className="text-[11px] text-gray-300">standalone</span>
-                      }
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1">
-                      {loc.includeTags.length === 0
-                        ? <span className="text-[11px] text-red-400">⚠️ No tags</span>
-                        : <>
-                            {loc.includeTags.map(tk => <span key={tk} className="rounded-full border border-green-200 bg-green-50 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">+{tk}</span>)}
-                            {loc.excludeTags.map(tk => <span key={tk} className="rounded-full border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">−{tk}</span>)}
-                          </>
-                      }
-                    </div>
-                    <div><StatusBadge status={loc.status} /></div>
-                    <div className="text-center font-mono text-xs text-gray-400">{loc.sortOrder}</div>
-                    <div className={`text-center text-[10px] text-gray-300 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}>▲</div>
-                  </div>
+                    </TD>
+                    <TD>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                        {loc.excludeTags.length === 0
+                          ? <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>
+                          : loc.excludeTags.map(tk => <TagPill key={tk} label={tk} color="gray" />)
+                        }
+                      </div>
+                    </TD>
+                    <TD><TypeBadge value={loc.status} /></TD>
+                    <TD muted>{loc.sortOrder}</TD>
+                    <TD right>
+                      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                        <Btn variant="outline" onClick={() => isEdit ? (setEditId(null), setEditDraft(null)) : startEdit(loc)}>
+                          {isEdit ? "Close" : "Edit"}
+                        </Btn>
+                        <Btn variant="danger" onClick={() => deleteLocation(loc.id)}>Del</Btn>
+                      </div>
+                    </TD>
+                  </TR>
 
-                  {isOpen && (
-                    <EditPanel
-                      location={loc} existingFamilies={existingFamilies} allTags={allTags}
-                      onSave={data => handleSave(loc.id, data)}
-                      onDelete={() => handleDelete(loc.id)}
-                    />
+                  {isEdit && editDraft && (
+                    <tr>
+                      <td colSpan={8} style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb", padding: "16px 20px" }}>
+                        <LocationForm
+                          draft={editDraft}
+                          setDraft={d => setEditDraft(d as typeof editDraft)}
+                          allTags={allTags}
+                          allProducts={allProducts}
+                          regions={regions}
+                          saving={editSaving}
+                          error={editErr}
+                          onSave={saveEdit}
+                          onCancel={() => { setEditId(null); setEditDraft(null); }}
+                          isEdit
+                        />
+                      </td>
+                    </tr>
                   )}
-                </div>
+                </tbody>
               );
             })}
-          </div>
+          </Table>
         )}
+      </Card>
+
+      <Modal open={open} onClose={() => { setOpen(false); setSaveErr(null); }} title="New Location" width={620}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {saveErr && <Alert type="error">{saveErr}</Alert>}
+          <LocationForm
+            draft={draft} setDraft={setDraft as any}
+            allTags={allTags} allProducts={allProducts} regions={regions}
+            saving={saving} error={null}
+            onSave={create} onCancel={() => setOpen(false)}
+          />
+        </div>
+      </Modal>
+    </PageShell>
+  );
+}
+
+// ── Shared location form ──────────────────────────────────────────────────────
+function LocationForm({ draft, setDraft, allTags, allProducts, regions, saving, error, onSave, onCancel, isEdit }: {
+  draft: any; setDraft: (d: any) => void;
+  allTags: Tag[]; allProducts: { id: string; key: string; tags: { key: string }[] }[];
+  regions: string[];
+  saving: boolean; error: string | null;
+  onSave: () => void; onCancel: () => void;
+  isEdit?: boolean;
+}) {
+  const [customRegion, setCustomRegion] = useState(false);
+  const familyInList = regions.includes(draft.family ?? "");
+
+  // Products whose tags intersect with includeTagKeys
+  const appliedTagKeys: string[] = draft.includeTagKeys ?? [];
+  const matchingProducts = allProducts.filter(p =>
+    p.tags.some(t => appliedTagKeys.includes(t.key))
+  );
+
+  const set = (k: string, v: unknown) => setDraft({ ...draft, [k]: v });
+
+  const toggleTag = (key: string, field: "includeTagKeys" | "excludeTagKeys") =>
+    setDraft({
+      ...draft,
+      [field]: (draft[field] as string[]).includes(key)
+        ? (draft[field] as string[]).filter((x: string) => x !== key)
+        : [...(draft[field] as string[]), key],
+    });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {error && <Alert type="error">{error}</Alert>}
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <Field label="Region / Country">
+          {/* Dropdown showing existing regions + Create New option */}
+          {!customRegion && !(!familyInList && draft.family) ? (
+            <select className="cy-input" value={draft.family ?? ""}
+              onChange={e => {
+                if (e.target.value === "__new__") { setCustomRegion(true); set("family", ""); }
+                else set("family", e.target.value);
+              }}>
+              <option value="">— Select region —</option>
+              {regions.map(r => <option key={r} value={r}>{r}</option>)}
+              <option value="__new__">+ Create New</option>
+            </select>
+          ) : (
+            <div style={{ display: "flex", gap: 6 }}>
+              <input className="cy-input" value={draft.family ?? ""}
+                onChange={e => set("family", e.target.value)} placeholder="Saudi Arabia" autoFocus />
+              {regions.length > 0 && (
+                <button type="button" onClick={() => setCustomRegion(false)}
+                  style={{ padding: "0 10px", background: "#fff", border: "1px solid #d1d5db", color: "#6b7280", cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}>
+                  Pick existing
+                </button>
+              )}
+            </div>
+          )}
+        </Field>
+        <Field label="City Name" required>
+          <input className="cy-input" value={draft.name}
+            onChange={e => set("name", e.target.value)} placeholder="Jeddah" />
+        </Field>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+        <Field label="Code" hint="Uppercase — e.g. JED, FRA" required>
+          <input className="cy-input" value={draft.code}
+            onChange={e => set("code", e.target.value.toUpperCase())} placeholder="JED" />
+        </Field>
+        <Field label="Flag Emoji">
+          <input className="cy-input" value={draft.flag ?? ""}
+            onChange={e => set("flag", e.target.value)} placeholder="🇸🇦" />
+        </Field>
+        <Field label="Country Code" hint="ISO 2-letter">
+          <input className="cy-input" value={draft.countryCode ?? ""}
+            onChange={e => set("countryCode", e.target.value.toUpperCase())} placeholder="SA" />
+        </Field>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+        <Field label="Status">
+          <select className="cy-input" value={draft.status}
+            onChange={e => set("status", e.target.value)}>
+            {(["active","inactive","coming_soon"] as LocationStatus[]).map(s => (
+              <option key={s} value={s}>{s.replace("_", " ")}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Sort Order">
+          <input className="cy-input" type="number" value={String(draft.sortOrder)}
+            onChange={e => set("sortOrder", Number(e.target.value))} />
+        </Field>
+        <Field label="Default Location">
+          <label style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 6, cursor: "pointer" }}>
+            <input type="checkbox" checked={!!draft.isDefault}
+              onChange={e => set("isDefault", e.target.checked)} />
+            <span style={{ fontSize: 13 }}>Set as default</span>
+          </label>
+        </Field>
+      </div>
+
+      <TagSelectorPair
+        allTags={allTags}
+        includeKeys={draft.includeTagKeys ?? []}
+        excludeKeys={draft.excludeTagKeys ?? []}
+        onToggleInclude={k => toggleTag(k, "includeTagKeys")}
+        onToggleExclude={k => toggleTag(k, "excludeTagKeys")}
+      />
+
+      {/* Applied products — derived from allProducts matching includeTagKeys */}
+      {isEdit && matchingProducts.length > 0 && (
+        <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", marginBottom: 6 }}>
+            Products at this Location
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+            {matchingProducts.map(p => (
+              <span key={p.key} style={{ fontSize: 11, padding: "2px 8px", background: "#f3f4f6", border: "1px solid #e5e7eb", color: "#374151", fontFamily: "monospace" }}>
+                {p.key}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <SaveRow onCancel={onCancel} onSave={onSave} saving={saving} saveLabel={isEdit ? "Save Changes" : "Create Location"} />
+    </div>
+  );
+}
+
+// ── Tag selector pair ─────────────────────────────────────────────────────────
+function TagSelectorPair({ allTags, includeKeys, excludeKeys, onToggleInclude, onToggleExclude }: {
+  allTags: Tag[]; includeKeys: string[]; excludeKeys: string[];
+  onToggleInclude: (k: string) => void; onToggleExclude: (k: string) => void;
+}) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div style={{ border: "1px solid #bbf7d0", padding: 12, background: "#f0fdf4" }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: "#15803d", textTransform: "uppercase", marginBottom: 6 }}>
+          ✚ Include Tags — products appear here
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+          {allTags.filter(t => !excludeKeys.includes(t.key)).map(t => {
+            const on = includeKeys.includes(t.key);
+            return (
+              <button key={t.key} type="button" onClick={() => onToggleInclude(t.key)} style={{
+                padding: "3px 9px", fontSize: 11, fontWeight: 500, cursor: "pointer", fontFamily: "inherit",
+                background: on ? "#dcfce7" : "#fff", color: on ? "#15803d" : "#6b7280",
+                border: `1px solid ${on ? "#86efac" : "#e5e7eb"}`,
+              }}>{on ? "✓ " : ""}{t.name}</button>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{ border: "1px solid #fca5a5", padding: 12, background: "#fff5f5" }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: "#dc2626", textTransform: "uppercase", marginBottom: 6 }}>
+          ✕ Exclude Tags — products hidden here
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+          {allTags.filter(t => !includeKeys.includes(t.key)).map(t => {
+            const on = excludeKeys.includes(t.key);
+            return (
+              <button key={t.key} type="button" onClick={() => onToggleExclude(t.key)} style={{
+                padding: "3px 9px", fontSize: 11, fontWeight: 500, cursor: "pointer", fontFamily: "inherit",
+                background: on ? "#fee2e2" : "#fff", color: on ? "#dc2626" : "#6b7280",
+                border: `1px solid ${on ? "#fca5a5" : "#e5e7eb"}`,
+              }}>{on ? "✓ " : ""}{t.name}</button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

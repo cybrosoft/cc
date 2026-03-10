@@ -1,242 +1,229 @@
-// app/admin/catalog/categories/CategoriesAdmin.tsx
 "use client";
+// app/admin/catalog/categories/CategoriesAdmin.tsx
 
 import { useCallback, useEffect, useState } from "react";
+import {
+  PageShell, Card, Table, TR, TD, StatusBadge,
+  Btn, Input, Select, Field, Alert, Empty, Modal, SaveRow, FiltersBar,
+  InlinePanel, CLR,
+} from "@/components/ui/admin-ui";
 
-type CategoryRow = { id: string; key: string; name: string; isActive: boolean };
+type CategoryRow = {
+  id: string; key: string; name: string; nameAr: string | null;
+  isActive: boolean; _count?: { products: number };
+};
 
-type CategoriesApiResponse =
-  | { ok: true; data: CategoryRow[] }
-  | { ok: false; error: string };
-
-type EditDraft = { key: string; name: string };
+type EditDraft = { key: string; name: string; nameAr: string; isActive: boolean };
 
 export default function CategoriesAdmin() {
-  const [rows,    setRows]    = useState<CategoryRow[]>([]);
-  const [key,     setKey]     = useState("");
-  const [name,    setName]    = useState("");
-  const [loading, setLoading] = useState(false);
+  const [rows, setRows]       = useState<CategoryRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState<string | null>(null);
 
-  // Inline edit
-  const [editingId,   setEditingId]   = useState<string | null>(null);
-  const [editDraft,   setEditDraft]   = useState<EditDraft | null>(null);
-  const [editLoading, setEditLoading] = useState(false);
+  const [fSearch, setFSearch] = useState("");
+  const [fStatus, setFStatus] = useState("");
 
-  // ── Load ──────────────────────────────────────────────────────────────────────
+  const [open, setOpen]       = useState(false);
+  const [cKey, setCKey]       = useState("");
+  const [cName, setCName]     = useState("");
+  const [cNameAr, setCNameAr] = useState("");
+  const [saving, setSaving]   = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
 
-  const load = useCallback(async (): Promise<void> => {
-    const res  = await fetch("/api/admin/catalog/categories", { cache: "no-store" });
-    const json = (await res.json().catch(() => null)) as CategoriesApiResponse | null;
-    if (res.ok && json?.ok) setRows(json.data);
+  const [editId, setEditId]   = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editErr, setEditErr] = useState<string | null>(null);
+  const [toggling, setToggling] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const r = await fetch("/api/admin/catalog/categories");
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j?.ok) { setError("Failed to load categories"); return; }
+      setRows(j.data);
+    } catch { setError("Network error"); }
+    finally { setLoading(false); }
   }, []);
 
   useEffect(() => { void load(); }, [load]);
 
-  // ── Create ────────────────────────────────────────────────────────────────────
-
-  async function create(): Promise<void> {
-    setLoading(true);
-    try {
-      const res  = await fetch("/api/admin/catalog/categories", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ key: key.trim(), name: name.trim() }),
-      });
-      const json = (await res.json().catch(() => null)) as { ok: boolean; error?: string } | null;
-      if (!res.ok || !json?.ok) { alert(json?.error ?? "Create failed"); return; }
-      setKey(""); setName("");
-      await load();
-    } finally {
-      setLoading(false);
+  const filtered = rows.filter(c => {
+    if (fStatus === "active"   && !c.isActive) return false;
+    if (fStatus === "inactive" &&  c.isActive) return false;
+    if (fSearch) {
+      const q = fSearch.toLowerCase();
+      return c.key.toLowerCase().includes(q) || c.name.toLowerCase().includes(q) || (c.nameAr ?? "").includes(q);
     }
-  }
+    return true;
+  });
 
-  // ── Edit ──────────────────────────────────────────────────────────────────────
+  async function create() {
+    if (!cKey.trim() || !cName.trim()) { setSaveErr("Key and name are required"); return; }
+    setSaving(true); setSaveErr(null);
+    try {
+      const r = await fetch("/api/admin/catalog/categories", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: cKey.trim().toLowerCase(), name: cName.trim(), nameAr: cNameAr.trim() || null }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j?.ok) { setSaveErr(j?.error ?? "Failed to create"); return; }
+      setCKey(""); setCName(""); setCNameAr(""); setOpen(false); void load();
+    } catch { setSaveErr("Network error"); }
+    finally { setSaving(false); }
+  }
 
   function startEdit(c: CategoryRow) {
-    setEditingId(c.id);
-    setEditDraft({ key: c.key, name: c.name });
+    setEditId(c.id);
+    setEditDraft({ key: c.key, name: c.name, nameAr: c.nameAr ?? "", isActive: c.isActive });
+    setEditErr(null);
   }
 
-  function cancelEdit() {
-    setEditingId(null);
-    setEditDraft(null);
-  }
-
-  async function saveEdit(id: string): Promise<void> {
-    if (!editDraft?.key.trim() || !editDraft?.name.trim()) return;
-    setEditLoading(true);
+  async function saveEdit() {
+    if (!editDraft || !editId) return;
+    if (!editDraft.name.trim()) { setEditErr("Name is required"); return; }
+    setEditSaving(true); setEditErr(null);
     try {
-      const res  = await fetch("/api/admin/catalog/categories/update", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ id, key: editDraft.key.trim(), name: editDraft.name.trim() }),
+      const r = await fetch("/api/admin/catalog/categories/update", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: editId, key: editDraft.key.trim().toLowerCase(), name: editDraft.name.trim(), nameAr: editDraft.nameAr.trim() || null, isActive: editDraft.isActive }),
       });
-      const json = (await res.json().catch(() => null)) as { ok: boolean; error?: string } | null;
-      if (!res.ok || !json?.ok) { alert(json?.error ?? "Update failed"); return; }
-      cancelEdit();
-      await load();
-    } finally {
-      setEditLoading(false);
-    }
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j?.ok) { setEditErr(j?.error ?? "Failed to save"); return; }
+      setEditId(null); setEditDraft(null); void load();
+    } catch { setEditErr("Network error"); }
+    finally { setEditSaving(false); }
   }
 
-  // ── Toggle ────────────────────────────────────────────────────────────────────
-
-  async function toggle(id: string, isActive: boolean): Promise<void> {
-    const res  = await fetch("/api/admin/catalog/categories/toggle", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ id, isActive }),
-    });
-    const json = (await res.json().catch(() => null)) as { ok: boolean; error?: string } | null;
-    if (!res.ok || !json?.ok) { alert(json?.error ?? "Update failed"); return; }
-    await load();
+  async function toggle(id: string, current: boolean) {
+    setToggling(id);
+    try {
+      await fetch("/api/admin/catalog/categories/toggle", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, isActive: !current }),
+      });
+      void load();
+    } finally { setToggling(null); }
   }
-
-  // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-4">
+    <PageShell
+      breadcrumb="ADMIN / CATALOG / CATEGORIES"
+      title="Categories"
+      ctaLabel="New Category"
+      ctaOnClick={() => setOpen(true)}
+    >
+      {error && <div style={{ marginBottom: 16 }}><Alert type="error">{error}</Alert></div>}
 
-      {/* ── Create form ── */}
-      <div className="rounded-xl border bg-white p-5 shadow-sm">
-        <h2 className="mb-4 text-sm font-semibold text-gray-700">Add New Category</h2>
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-gray-500">Key <span className="text-gray-400">(unique slug)</span></label>
-            <input
-              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
-              style={{ width: 180 }}
-              placeholder="e.g. cloud-servers"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-gray-500">Name</label>
-            <input
-              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
-              style={{ width: 220 }}
-              placeholder="e.g. Cloud Servers"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          <button
-            onClick={() => void create()}
-            disabled={loading || !key.trim() || !name.trim()}
-            className="rounded-lg bg-gray-900 px-5 py-2 text-sm font-medium text-white transition hover:bg-gray-700 disabled:opacity-40"
-          >
-            {loading ? "Creating…" : "+ Add Category"}
-          </button>
+      <Card>
+        <FiltersBar>
+          <input className="cy-input" value={fSearch} onChange={e => setFSearch(e.target.value)}
+            placeholder="Search key or name…" style={{ width: 200 }} />
+          <select className="cy-input" value={fStatus} onChange={e => setFStatus(e.target.value)} style={{ width: 140 }}>
+            <option value="">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+          {(fSearch || fStatus) && (
+            <Btn variant="ghost" onClick={() => { setFSearch(""); setFStatus(""); }}>Clear</Btn>
+          )}
+          <span style={{ marginLeft: "auto", fontSize: 12, color: "#9ca3af" }}>
+            {filtered.length} categor{filtered.length !== 1 ? "ies" : "y"}
+          </span>
+        </FiltersBar>
+
+        {loading ? (
+          <div style={{ padding: 40, textAlign: "center", color: "#9ca3af" }}>Loading…</div>
+        ) : filtered.length === 0 ? (
+          <Empty message={fSearch || fStatus ? "No categories match your filters." : "No categories yet."} />
+        ) : (
+          <Table cols={["Key", "Name (EN)", "Name (AR)", "Products", "Status", ""]}>
+            {filtered.map(c => (
+              <tbody key={c.id}>
+                <TR highlight={editId === c.id}>
+                  <TD mono muted>{c.key}</TD>
+                  <TD style={{ fontWeight: 500 }}>{c.name}</TD>
+                  <TD>
+                    {c.nameAr
+                      ? <span style={{ direction: "rtl", display: "inline-block" }}>{c.nameAr}</span>
+                      : <span style={{ color: "#d1d5db" }}>—</span>
+                    }
+                  </TD>
+                  <TD muted>{c._count?.products ?? 0}</TD>
+                  <TD><StatusBadge active={c.isActive} /></TD>
+                  <TD right>
+                    <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                      <Btn variant="outline"
+                        onClick={() => editId === c.id ? (setEditId(null), setEditDraft(null)) : startEdit(c)}>
+                        {editId === c.id ? "Close" : "Edit"}
+                      </Btn>
+                      <Btn variant={c.isActive ? "danger" : "outline"}
+                        disabled={toggling === c.id} onClick={() => toggle(c.id, c.isActive)}>
+                        {toggling === c.id ? "…" : c.isActive ? "Disable" : "Enable"}
+                      </Btn>
+                    </div>
+                  </TD>
+                </TR>
+
+                {editId === c.id && editDraft && (
+                  <InlinePanel>
+                    {editErr && <div style={{ marginBottom: 12 }}><Alert type="error">{editErr}</Alert></div>}
+                    <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1.5fr 1fr 140px", gap: 14, alignItems: "end" }}>
+                      <Field label="Name (English)" required>
+                        <input className="cy-input" value={editDraft.name}
+                          onChange={e => setEditDraft(d => d ? { ...d, name: e.target.value } : d)}
+                          placeholder="Cloud VPS" />
+                      </Field>
+                      <Field label="Name (Arabic)">
+                        <input className="cy-input" value={editDraft.nameAr}
+                          onChange={e => setEditDraft(d => d ? { ...d, nameAr: e.target.value } : d)}
+                          placeholder="خوادم سحابية" dir="rtl" />
+                      </Field>
+                      <Field label="Key">
+                        <input className="cy-input" value={editDraft.key}
+                          onChange={e => setEditDraft(d => d ? { ...d, key: e.target.value.toLowerCase() } : d)}
+                          placeholder="cloud-vps" />
+                      </Field>
+                      <Field label="Status">
+                        <select className="cy-input"
+                          value={editDraft.isActive ? "active" : "inactive"}
+                          onChange={e => setEditDraft(d => d ? { ...d, isActive: e.target.value === "active" } : d)}>
+                          <option value="active">Active</option>
+                          <option value="inactive">Inactive</option>
+                        </select>
+                      </Field>
+                    </div>
+                    <div style={{ marginTop: 14 }}>
+                      <SaveRow onCancel={() => { setEditId(null); setEditDraft(null); }} onSave={saveEdit} saving={editSaving} />
+                    </div>
+                  </InlinePanel>
+                )}
+              </tbody>
+            ))}
+          </Table>
+        )}
+      </Card>
+
+      <Modal open={open} onClose={() => { setOpen(false); setSaveErr(null); }} title="New Category">
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {saveErr && <Alert type="error">{saveErr}</Alert>}
+          <Field label="Name (English)" required>
+            <input className="cy-input" value={cName} onChange={e => {
+              const name = e.target.value;
+              setCName(name);
+              setCKey(name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""));
+            }} placeholder="Cloud VPS" />
+          </Field>
+          <Field label="Key" hint="Auto-generated · editable">
+            <input className="cy-input" value={cKey} onChange={e => setCKey(e.target.value.toLowerCase())} placeholder="cloud-vps" />
+          </Field>
+          <Field label="Name (Arabic)" hint="Optional">
+            <input className="cy-input" value={cNameAr} onChange={e => setCNameAr(e.target.value)} placeholder="خوادم سحابية" dir="rtl" />
+          </Field>
+          <SaveRow onCancel={() => setOpen(false)} onSave={create} saving={saving} saveLabel="Create Category" />
         </div>
-      </div>
-
-      {/* ── Table ── */}
-      <div className="overflow-auto rounded-xl border bg-white shadow-sm">
-        <table className="min-w-full text-sm">
-          <thead className="border-b bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-            <tr>
-              <th className="px-4 py-3">Key</th>
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {rows.map((c) => {
-              const isEditing = editingId === c.id;
-              return (
-                <tr key={c.id} className={`transition-colors hover:bg-gray-50 ${!c.isActive ? "opacity-50" : ""}`}>
-
-                  {/* Key */}
-                  <td className="px-4 py-3">
-                    {isEditing && editDraft ? (
-                      <input
-                        autoFocus
-                        className="w-full rounded-md border border-blue-200 bg-white px-2 py-1.5 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-300"
-                        value={editDraft.key}
-                        onChange={(e) => setEditDraft({ ...editDraft, key: e.target.value })}
-                        onKeyDown={(e) => { if (e.key === "Escape") cancelEdit(); }}
-                      />
-                    ) : (
-                      <span className="font-mono text-xs text-gray-500">{c.key}</span>
-                    )}
-                  </td>
-
-                  {/* Name */}
-                  <td className="px-4 py-3">
-                    {isEditing && editDraft ? (
-                      <input
-                        className="w-full rounded-md border border-blue-200 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                        value={editDraft.name}
-                        onChange={(e) => setEditDraft({ ...editDraft, name: e.target.value })}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter")  void saveEdit(c.id);
-                          if (e.key === "Escape") cancelEdit();
-                        }}
-                      />
-                    ) : (
-                      <span className="font-medium text-gray-900">{c.name}</span>
-                    )}
-                  </td>
-
-                  {/* Status */}
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${c.isActive ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-400"}`}>
-                      {c.isActive ? "Active" : "Inactive"}
-                    </span>
-                  </td>
-
-                  {/* Actions */}
-                  <td className="px-4 py-3">
-                    {isEditing ? (
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => void saveEdit(c.id)}
-                          disabled={editLoading || !editDraft?.key.trim() || !editDraft?.name.trim()}
-                          className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
-                        >
-                          {editLoading ? "Saving…" : "Save"}
-                        </button>
-                        <button
-                          onClick={cancelEdit}
-                          className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => startEdit(c)}
-                          className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => void toggle(c.id, !c.isActive)}
-                          className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${c.isActive ? "border-red-200 text-red-600 hover:bg-red-50" : "border-green-200 text-green-600 hover:bg-green-50"}`}
-                        >
-                          {c.isActive ? "Disable" : "Enable"}
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-4 py-10 text-center text-sm text-gray-400">
-                  No categories yet. Add one above.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+      </Modal>
+    </PageShell>
   );
 }

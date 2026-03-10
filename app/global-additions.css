@@ -1,0 +1,26 @@
+/* ── Replace the .cy-input block in your global.css with this ── */
+.cy-input {
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 13.5px;
+  font-family: inherit;
+  background: #ffffff;
+  border: 1px solid #d1d5db !important;
+  color: #111827;
+  outline: none;
+  transition: border-color 0.12s;
+  appearance: auto;
+  -webkit-appearance: auto;
+}
+.cy-input:focus {
+  border-color: #318774 !important;
+  box-shadow: 0 0 0 2px rgba(49, 135, 116, 0.08);
+}
+.cy-input::placeholder { color: #9ca3af; }
+.cy-input:disabled,
+.cy-input[readonly] {
+  background: #f9fafb;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+.cy-row:hover { background: #fafafa !important; }

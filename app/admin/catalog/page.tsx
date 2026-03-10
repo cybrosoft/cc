@@ -1,42 +1,45 @@
+"use client";
 // app/admin/catalog/page.tsx
 import Link from "next/link";
+import { PageShell } from "@/components/ui/admin-ui";
+
+const SECTIONS = [
+  { href: "/admin/catalog/categories", icon: "🗂", title: "Categories",   desc: "Create & enable / disable product categories" },
+  { href: "/admin/catalog/tags",       icon: "🏷", title: "Tags",          desc: "Provider detection, addon rules, price-hide, 2FA exclude" },
+  { href: "/admin/catalog/products",   icon: "📦", title: "Products",      desc: "Plans, addons, services — full CRUD + bilingual" },
+  { href: "/admin/catalog/pricing",    icon: "💰", title: "Pricing",       desc: "Per product × market × customer group × period" },
+  { href: "/admin/catalog/locations",  icon: "📍", title: "Locations",     desc: "Data-centre locations with tag include / exclude rules" },
+  { href: "/admin/catalog/templates",  icon: "💿", title: "OS Templates",  desc: "OS & application templates matched via product tags" },
+];
 
 export default function AdminCatalogHome() {
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Catalog</h1>
-
-      <div className="grid gap-3 md:grid-cols-3">
-        <Link className="rounded-lg border bg-white p-4 hover:bg-gray-50" href="/admin/catalog/categories">
-          <div className="font-medium">Categories</div>
-          <div className="text-sm text-gray-600">Create & enable/disable categories</div>
-        </Link>
-
-        <Link className="rounded-lg border bg-white p-4 hover:bg-gray-50" href="/admin/catalog/tags">
-          <div className="font-medium">Tags</div>
-          <div className="text-sm text-gray-600">Create & manage tags</div>
-        </Link>
-
-        <Link className="rounded-lg border bg-white p-4 hover:bg-gray-50" href="/admin/catalog/templates">
-          <div className="font-medium">Templates</div>
-          <div className="text-sm text-gray-600">Create & manage OS & Applications templates</div>
-        </Link>
-
-        <Link className="rounded-lg border bg-white p-4 hover:bg-gray-50" href="/admin/catalog/locations">
-          <div className="font-medium">Locations</div>
-          <div className="text-sm text-gray-600">Create & manage locations</div>
-        </Link>
-
-        <Link className="rounded-lg border bg-white p-4 hover:bg-gray-50" href="/admin/catalog/products">
-          <div className="font-medium">Products</div>
-          <div className="text-sm text-gray-600">Create plans/addons, Zoho plan id</div>
-        </Link>
-
-        <Link className="rounded-lg border bg-white p-4 hover:bg-gray-50" href="/admin/catalog/pricing">
-          <div className="font-medium">Pricing</div>
-          <div className="text-sm text-gray-600">Set prices per market & customer group</div>
-        </Link>
-      </div>
-    </div>
+    <PageShell breadcrumb="ADMIN / CATALOG" title="Catalog">
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+          gap: 1, background: "#e5e7eb",
+          border: "1px solid #e5e7eb",
+        }}>
+          {SECTIONS.map(s => (
+            <Link key={s.href} href={s.href} style={{ textDecoration: "none" }}>
+              <div style={{
+                background: "#fff", padding: "18px 20px",
+                transition: "background 0.1s",
+                display: "flex", alignItems: "flex-start", gap: 12,
+              }}
+                onMouseEnter={e => (e.currentTarget.style.background = "#fafafa")}
+                onMouseLeave={e => (e.currentTarget.style.background = "#fff")}
+              >
+                <span style={{ fontSize: 20, lineHeight: 1, marginTop: 1 }}>{s.icon}</span>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "#111827", marginBottom: 3 }}>{s.title}</div>
+                  <div style={{ fontSize: 12.5, color: "#6b7280", lineHeight: 1.4 }}>{s.desc}</div>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+    </PageShell>
   );
 }

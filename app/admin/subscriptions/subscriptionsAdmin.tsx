@@ -1,6 +1,14 @@
+"use client";
 // app/admin/subscriptions/subscriptionsAdmin.tsx
-import SubscriptionsTable from "./subscriptionsTable";
+// Step 6 restyled — wraps SubscriptionsTable in PageShell
+
+import { PageShell } from "@/components/ui/admin-ui";
+import { SubscriptionsTable } from "./subscriptionsTable";
 
 export default function SubscriptionsAdmin() {
-  return <SubscriptionsTable />;
+  return (
+    <PageShell breadcrumb="ADMIN / SUBSCRIPTIONS" title="Subscriptions">
+        <SubscriptionsTable />
+    </PageShell>
+  );
 }
