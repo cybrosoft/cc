@@ -7,9 +7,9 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 export async function POST(req: Request) {
   try {
     await requireAdmin();
-
     const body = await req.json();
-    const { id, slug, name, family, description, category, iconType, iconValue, status, sortOrder, isDefault, tagKeys } = body;
+    const { id, slug, name, family, description, category, iconType, iconValue,
+            status, sortOrder, isDefault, includeTags, excludeTags } = body;
 
     if (!id) return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
 
@@ -19,9 +19,8 @@ export async function POST(req: Request) {
       if (existing) return NextResponse.json({ ok: false, error: "Slug already exists" }, { status: 409 });
     }
 
-    // If setting isDefault: true, resolve the family and clear siblings first
+    // Clear siblings' isDefault if this one is being set as default
     if (isDefault === true) {
-      // Use incoming family value if provided, otherwise fetch current record's family
       let effectiveFamily: string | null = null;
       if (family !== undefined) {
         effectiveFamily = family || null;
@@ -29,7 +28,6 @@ export async function POST(req: Request) {
         const current = await prisma.osTemplate.findUnique({ where: { id }, select: { family: true } });
         effectiveFamily = current?.family ?? null;
       }
-
       if (effectiveFamily) {
         await prisma.osTemplate.updateMany({
           where: { family: effectiveFamily, id: { not: id } },
@@ -43,15 +41,16 @@ export async function POST(req: Request) {
       data: {
         ...(slug        !== undefined && { slug        }),
         ...(name        !== undefined && { name        }),
-        ...(family      !== undefined && { family:      family ?? null      }),
+        ...(family      !== undefined && { family:      family      ?? null }),
         ...(description !== undefined && { description: description ?? null }),
         ...(category    !== undefined && { category    }),
         ...(iconType    !== undefined && { iconType    }),
-        ...(iconValue   !== undefined && { iconValue:   iconValue ?? null   }),
+        ...(iconValue   !== undefined && { iconValue:   iconValue   ?? null }),
         ...(status      !== undefined && { status      }),
         ...(sortOrder   !== undefined && { sortOrder   }),
         ...(isDefault   !== undefined && { isDefault   }),
-        ...(tagKeys     !== undefined && { tagKeys     }),
+        ...(includeTags !== undefined && { includeTags }),
+        ...(excludeTags !== undefined && { excludeTags }),
       },
     });
 

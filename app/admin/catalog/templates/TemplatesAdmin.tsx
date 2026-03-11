@@ -14,7 +14,9 @@ type TemplateRow = {
   id: string; slug: string; name: string; family: string | null;
   category: string; iconType: TemplateIconType; iconValue: string | null;
   status: TemplateStatus; sortOrder: number; isDefault: boolean;
-  tagKeys: string[];
+  tagKeys: string[];        // legacy
+  includeTags: string[];    // products with ANY of these tags appear with this template
+  excludeTags: string[];    // products with ANY of these tags are hidden
   products?: { key: string }[];
 };
 
@@ -23,6 +25,8 @@ const EMPTY_DRAFT = {
   iconType: "devicon" as TemplateIconType, iconValue: "",
   status: "active" as TemplateStatus, sortOrder: 1, isDefault: false,
   tagKeys: [] as string[],
+  includeTags: [] as string[],
+  excludeTags: [] as string[],
 };
 
 // Popular devicons with label and class
@@ -98,10 +102,6 @@ export default function TemplatesAdmin() {
     return true;
   });
 
-  function toggleTagKey(key: string, d: typeof EMPTY_DRAFT): typeof EMPTY_DRAFT {
-    return { ...d, tagKeys: d.tagKeys.includes(key) ? d.tagKeys.filter(x => x !== key) : [...d.tagKeys, key] };
-  }
-
   async function create() {
     if (!draft.slug.trim() || !draft.name.trim()) { setSaveErr("Slug and name required"); return; }
     setSaving(true); setSaveErr(null);
@@ -113,7 +113,9 @@ export default function TemplatesAdmin() {
           family: draft.family?.trim() || null, category: draft.category,
           iconType: draft.iconType, iconValue: draft.iconValue?.trim() || null,
           status: draft.status, sortOrder: Number(draft.sortOrder),
-          isDefault: draft.isDefault, tagKeys: draft.tagKeys,
+          isDefault: draft.isDefault,
+          includeTags: draft.includeTags,
+          excludeTags: draft.excludeTags,
         }),
       });
       const j = await r.json().catch(() => null);
@@ -125,7 +127,7 @@ export default function TemplatesAdmin() {
 
   function startEdit(t: TemplateRow) {
     setEditId(t.id);
-    setEditDraft({ slug: t.slug, name: t.name, family: t.family ?? "", category: t.category, iconType: t.iconType, iconValue: t.iconValue ?? "", status: t.status, sortOrder: t.sortOrder, isDefault: t.isDefault, tagKeys: t.tagKeys });
+    setEditDraft({ slug: t.slug, name: t.name, family: t.family ?? "", category: t.category, iconType: t.iconType, iconValue: t.iconValue ?? "", status: t.status, sortOrder: t.sortOrder, isDefault: t.isDefault, tagKeys: t.tagKeys ?? [], includeTags: t.includeTags ?? [], excludeTags: t.excludeTags ?? [] });
   }
 
   async function saveEdit() {
@@ -139,7 +141,9 @@ export default function TemplatesAdmin() {
           family: editDraft.family || null, category: editDraft.category,
           iconType: editDraft.iconType, iconValue: editDraft.iconValue || null,
           status: editDraft.status, sortOrder: Number(editDraft.sortOrder),
-          isDefault: editDraft.isDefault, tagKeys: editDraft.tagKeys,
+          isDefault: editDraft.isDefault,
+          includeTags: editDraft.includeTags,
+          excludeTags: editDraft.excludeTags,
         }),
       });
       const j = await r.json().catch(() => null);
@@ -222,8 +226,15 @@ export default function TemplatesAdmin() {
                     <TD><TypeBadge value={t.category} /></TD>
                     <TD>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                        {allTags.filter(tg => t.tagKeys.includes(tg.key)).map(tg => <TagPill key={tg.key} label={tg.name} />)}
-                        {t.tagKeys.length === 0 && <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>}
+                        {(t.includeTags ?? []).map(k => {
+                          const tg = allTags.find(x => x.key === k);
+                          return tg ? <TagPill key={k} label={tg.name} color="green" /> : null;
+                        })}
+                        {(t.excludeTags ?? []).map(k => {
+                          const tg = allTags.find(x => x.key === k);
+                          return tg ? <TagPill key={k} label={tg.name} color="red" /> : null;
+                        })}
+                        {!(t.includeTags ?? []).length && !(t.excludeTags ?? []).length && <span style={{ color: "#d1d5db", fontSize: 12 }}>—</span>}
                       </div>
                     </TD>
                     <TD><TypeBadge value={t.status} /></TD>
@@ -267,7 +278,6 @@ export default function TemplatesAdmin() {
           <TemplateForm
             draft={draft} setDraft={setDraft as any}
             allTags={allTags} allProducts={allProducts} families={families}
-            onToggleTag={k => setDraft(d => toggleTagKey(k, d))}
           />
           <SaveRow onCancel={() => setOpen(false)} onSave={create} saving={saving} saveLabel="Create Template" />
         </div>
@@ -277,11 +287,10 @@ export default function TemplatesAdmin() {
 }
 
 // ── Shared template form ──────────────────────────────────────────────────────
-function TemplateForm({ draft, setDraft, allTags, allProducts, families, onToggleTag, isEdit }: {
+function TemplateForm({ draft, setDraft, allTags, allProducts, families, isEdit }: {
   draft: typeof EMPTY_DRAFT; setDraft: (d: typeof EMPTY_DRAFT) => void;
   allTags: Tag[]; allProducts?: { id: string; key: string; tags: { key: string }[] }[];
   families: string[];
-  onToggleTag: (k: string) => void;
   isEdit?: boolean;
 }) {
   const set = (k: string, v: unknown) => setDraft({ ...draft, [k]: v });
@@ -435,30 +444,29 @@ function TemplateForm({ draft, setDraft, allTags, allProducts, families, onToggl
         </Field>
       </div>
 
-      <Field label="Match Tags" hint="Products with ANY of these tags will show this template">
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-          {allTags.map(t => {
-            const on = draft.tagKeys.includes(t.key);
-            return (
-              <button key={t.key} type="button" onClick={() => onToggleTag(t.key)} style={{
-                padding: "3px 10px", fontSize: 11, fontWeight: 500, cursor: "pointer", fontFamily: "inherit",
-                background: on ? CLR.primaryBg : "#fff", color: on ? CLR.primary : "#6b7280",
-                border: `1px solid ${on ? CLR.primary : "#e5e7eb"}`,
-              }}>{on ? "✓ " : ""}{t.name}</button>
-            );
-          })}
-        </div>
-      </Field>
+      <TemplateTags
+        includeTags={draft.includeTags}
+        setIncludeTags={v => set("includeTags", v)}
+        excludeTags={draft.excludeTags}
+        setExcludeTags={v => set("excludeTags", v)}
+        allTags={allTags}
+      />
 
-      {/* Applied products — derived from products whose tags match template tagKeys */}
-      {isEdit && (() => {
-        const matching = (allProducts ?? []).filter(p => p.tags.some(t => draft.tagKeys.includes(t.key)));
+      {/* Include / Exclude tags panel */}
+
+      {/* Matched products preview */}
+      {(() => {
+        const matching = (allProducts ?? []).filter(p =>
+          draft.includeTags.length === 0
+            ? true
+            : p.tags.some(t => draft.includeTags.includes(t.key))
+        ).filter(p => !p.tags.some(t => draft.excludeTags.includes(t.key)));
         return matching.length > 0 ? (
           <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", marginBottom: 6 }}>
-              Products Using This Template
+            <div style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase" as const, marginBottom: 6 }}>
+              ✅ {matching.length} Matched Product{matching.length !== 1 ? "s" : ""}
             </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+            <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 5 }}>
               {matching.map(p => (
                 <span key={p.key} style={{ fontSize: 11, padding: "2px 8px", background: "#f3f4f6", border: "1px solid #e5e7eb", color: "#374151", fontFamily: "monospace" }}>
                   {p.key}
@@ -468,6 +476,98 @@ function TemplateForm({ draft, setDraft, allTags, allProducts, families, onToggl
           </div>
         ) : null;
       })()}
+    </div>
+  );
+}
+
+// ── TemplateTags — include / exclude selector ──────────────────────────────────
+
+function TagSelector({ mode, tagKeys, setTagKeys, allTags, otherKeys }: {
+  mode: "include" | "exclude";
+  tagKeys: string[]; setTagKeys: (v: string[]) => void;
+  allTags: Tag[]; otherKeys: string[];
+}) {
+  const isInclude  = mode === "include";
+  const selected   = allTags.filter(t => tagKeys.includes(t.key));
+  const available  = allTags.filter(t => !tagKeys.includes(t.key) && !otherKeys.includes(t.key));
+  const add    = (k: string) => { if (!tagKeys.includes(k)) setTagKeys([...tagKeys, k]); };
+  const remove = (k: string) => setTagKeys(tagKeys.filter(x => x !== k));
+
+  const pillStyle: React.CSSProperties = {
+    display: "inline-flex", alignItems: "center", gap: 4,
+    fontSize: 11, fontWeight: 600, padding: "2px 8px",
+    background: isInclude ? "#f0fdf4" : "#fef2f2",
+    border: `1px solid ${isInclude ? "#86efac" : "#fca5a5"}`,
+    color: isInclude ? "#15803d" : "#dc2626",
+  };
+  const addStyle: React.CSSProperties = {
+    fontSize: 11, padding: "2px 8px", cursor: "pointer", fontFamily: "inherit",
+    background: "#fff",
+    border: `1px dashed ${isInclude ? "#86efac" : "#fca5a5"}`,
+    color: isInclude ? "#16a34a" : "#ef4444",
+  };
+  const wrapStyle: React.CSSProperties = {
+    border: `1px solid ${isInclude ? "#bbf7d0" : "#fecaca"}`,
+    background: isInclude ? "#f0fdf4" : "#fff5f5",
+    padding: 12,
+  };
+
+  return (
+    <div style={wrapStyle}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: isInclude ? "#15803d" : "#dc2626", textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 6 }}>
+        {isInclude ? "✚ Include Tags" : "✕ Exclude Tags"}
+      </div>
+      <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>
+        {isInclude
+          ? "Template appears on products matching ANY of these tags."
+          : "Hidden from products matching ANY of these tags, even if they match an include tag."}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 5, minHeight: 28, marginBottom: 8 }}>
+        {selected.length === 0
+          ? <span style={{ fontSize: 11, color: "#d1d5db" }}>{isInclude ? "No include tags — appears on all products" : "No excludes"}</span>
+          : selected.map(t => (
+              <span key={t.key} style={pillStyle}>
+                {t.name}
+                <button onClick={() => remove(t.key)} style={{ border: "none", background: "none", cursor: "pointer", color: "inherit", fontSize: 14, lineHeight: 1, padding: 0, opacity: 0.6 }}>×</button>
+              </span>
+            ))
+        }
+      </div>
+      {available.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 4 }}>
+          {available.map(t => (
+            <button key={t.key} type="button" onClick={() => add(t.key)} style={addStyle}>+ {t.name}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TemplateTags({ includeTags, setIncludeTags, excludeTags, setExcludeTags, allTags }: {
+  includeTags: string[]; setIncludeTags: (v: string[]) => void;
+  excludeTags: string[]; setExcludeTags: (v: string[]) => void;
+  allTags: Tag[];
+}) {
+  return (
+    <div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 8 }}>
+        Product Matching Tags
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <TagSelector mode="include" tagKeys={includeTags} setTagKeys={setIncludeTags} allTags={allTags} otherKeys={excludeTags} />
+        <TagSelector mode="exclude" tagKeys={excludeTags} setTagKeys={setExcludeTags} allTags={allTags} otherKeys={includeTags} />
+      </div>
+      {includeTags.length > 0 ? (
+        <div style={{ fontSize: 11, color: "#6b7280", marginTop: 6 }}>
+          Shows on products matching: <strong>{includeTags.join(", ")}</strong>
+          {excludeTags.length > 0 && <> — except: <strong style={{ color: "#dc2626" }}>{excludeTags.join(", ")}</strong></>}
+        </div>
+      ) : (
+        <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 6 }}>
+          No include tags set — template appears on all products (use include tags to restrict).
+        </div>
+      )}
     </div>
   );
 }

@@ -495,7 +495,9 @@ model OsTemplate {
   status      TemplateStatus   @default(active)
   sortOrder   Int              @default(1)
   isDefault   Boolean          @default(false)
-  tagKeys     String[]
+  tagKeys     String[]    // legacy — kept for backward compat
+  includeTags String[]    // products with ANY of these tags appear with this template
+  excludeTags String[]    // products with ANY of these tags are hidden, even if they match includeTags
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
