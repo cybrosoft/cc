@@ -170,25 +170,25 @@ function SidebarContent({ userEmail, userName, initials, pathname, onLinkClick }
       {/* Logo */}
       <div style={{
         height: 56, display: "flex", alignItems: "center", padding: "0 18px",
-        background: colors.headerBg, borderBottom: `1px solid ${colors.headerBorder}`, flexShrink: 0,
+        background: colors.headerBg, borderBottom: `1px solid ${colors.headerBorder}`, borderRight: `1px solid #383838`, flexShrink: 0,
       }}>
         <span style={{
-          fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em",
-          background: "linear-gradient(to right, #5ec4b4, #80d8ca)",
+          fontSize: 23, fontWeight: 700, letterSpacing: "-0.02em",
+          background: "linear-gradient(to right, #254b46, #318774)",
           WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
         }}>Cybrosoft</span>
-        <span style={{ fontSize: 12.5, color: "#4b5563", marginLeft: 7 }}>Console</span>
+        <span style={{ fontSize: 12.5, color: "#4b5563", marginLeft: 7, marginTop: 5 }}>Console</span>
       </div>
 
       {/* Nav items */}
-      <nav style={{ flex: 1, overflowY: "auto", padding: "6px 0 12px" }}>
+      <nav style={{ flex: 1, overflowY: "auto", padding: "6px 0 12px", borderRight: `1px solid ${colors.border}` }}>
         {NAV.map(item => (
           <NavItem key={item.id} item={item} pathname={pathname} onLinkClick={onLinkClick} />
         ))}
       </nav>
 
       {/* Footer links */}
-      <div style={{ borderTop: `1px solid ${colors.border}`, padding: "6px 0", flexShrink: 0 }}>
+      <div style={{ borderTop: `1px solid ${colors.border}`, padding: "6px 0", flexShrink: 0, borderRight: `1px solid ${colors.border}` }}>
         {[
           { icon: "settings", label: "Settings", href: "/admin/system/settings" },
           { icon: "help",     label: "Get Help",  href: "#" },
@@ -207,7 +207,7 @@ function SidebarContent({ userEmail, userName, initials, pathname, onLinkClick }
       {/* User row */}
       <div style={{
         padding: "11px 14px", borderTop: `1px solid ${colors.border}`,
-        display: "flex", alignItems: "center", gap: 10, flexShrink: 0,
+        display: "flex", alignItems: "center", gap: 10, flexShrink: 0, borderRight: `1px solid ${colors.border}`
       }}>
         <div style={{
           width: 30, height: 30, background: colors.primary, flexShrink: 0,
@@ -271,7 +271,7 @@ export function AdminNav({ userEmail, userName }: AdminNavProps) {
       {/* ─── Desktop sidebar (hidden < 1024px via CSS above) ─── */}
       <aside className="cy-sidebar-desktop" style={{
         width: 240, minWidth: 240, flexDirection: "column",
-        background: "#ffffff", borderRight: `1px solid ${colors.border}`,
+        background: "#ffffff", borderRight: `0px solid ${colors.border}`,
         overflow: "hidden", height: "100vh", position: "sticky", top: 0,
       }}>
         <SidebarContent
