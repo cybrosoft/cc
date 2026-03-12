@@ -1,15 +1,14 @@
 "use client";
 // app/admin/customers/CustomersTable.tsx
-// Step 6 restyled — same API, same data, new flat UI
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  PageShell, Card, Table, TR, TD, StatusBadge, TypeBadge, TagPill,
-  Btn, Input, Select, FiltersBar, Alert, Empty, Pagination, CLR,
+  PageShell, Card, Table, TR, TD, TypeBadge, TagPill,
+  Btn, Input, Select, FiltersBar, Alert, Empty, CLR,
 } from "@/components/ui/admin-ui";
 
-type Tag   = { id: string; key: string; name: string };
+type Tag    = { id: string; key: string; name: string };
 type Market = { id: string; key: string; name: string };
 type CustomerRow = {
   id: string; customerNumber: number; email: string; fullName: string | null;
@@ -21,48 +20,59 @@ type CustomerRow = {
   _count: { subscriptions: number; servers: number };
 };
 
-type Resp = { ok: true; data: CustomerRow[]; total: number; page: number; pageSize: number } | { ok: false; error: string };
-
 export default function CustomersTable() {
-  const [resp, setResp]       = useState<Resp | null>(null);
+  const [rows, setRows]       = useState<CustomerRow[]>([]);
   const [markets, setMarkets] = useState<Market[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
-  const [page, setPage]       = useState(1);
 
-  // Filters
-  const [fSearch, setFSearch]   = useState("");
-  const [fMarket, setFMarket]   = useState("");
-  const [fRole, setFRole]       = useState("");
+  // Instant client-side filters
+  const [fSearch,  setFSearch]  = useState("");
+  const [fMarket,  setFMarket]  = useState("");
+  const [fRole,    setFRole]    = useState("");
   const [fAccount, setFAccount] = useState("");
 
-  const total     = (resp as any)?.total ?? 0;
-  const pageSize  = (resp as any)?.pageSize ?? 50;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-
-  const load = useCallback(async (p = page) => {
+  // Load ALL customers once
+  const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const qs = new URLSearchParams({ page: String(p) });
-      if (fSearch)  qs.set("search",   fSearch.trim());
-      if (fMarket)  qs.set("marketId", fMarket);
-      if (fRole)    qs.set("role",     fRole);
-      if (fAccount) qs.set("accountType", fAccount);
       const [cr, mr] = await Promise.all([
-        fetch(`/api/admin/users?${qs}`).then(r => r.json()).catch(() => null),
+        fetch("/api/admin/users?pageSize=9999").then(r => r.json()).catch(() => null),
         fetch("/api/admin/markets").then(r => r.json()).catch(() => null),
       ]);
-      if (cr?.ok) setResp(cr); else setError(cr?.error ?? "Failed to load");
+      if (cr?.ok) setRows(cr.data ?? []);
+      else setError(cr?.error ?? "Failed to load customers");
       if (mr?.ok) setMarkets(mr.data ?? []);
     } catch { setError("Network error"); }
     finally { setLoading(false); }
-  }, [page, fSearch, fMarket, fRole, fAccount]);
+  }, []);
 
-  useEffect(() => { void load(); }, [page]);
+  useEffect(() => { void load(); }, [load]);
 
-  function applyFilters() { setPage(1); void load(1); }
+  // Client-side filtering
+  const filtered = useMemo(() => {
+    return rows.filter(c => {
+      if (fSearch) {
+        const q = fSearch.toLowerCase();
+        const match =
+          c.email.toLowerCase().includes(q) ||
+          c.fullName?.toLowerCase().includes(q) ||
+          c.companyName?.toLowerCase().includes(q) ||
+          String(c.customerNumber).includes(q);
+        if (!match) return false;
+      }
+      if (fMarket  && c.market.id   !== fMarket)   return false;
+      if (fRole    && c.role        !== fRole)      return false;
+      if (fAccount && c.accountType !== fAccount)   return false;
+      return true;
+    });
+  }, [rows, fSearch, fMarket, fRole, fAccount]);
 
-  const rows: CustomerRow[] = (resp as any)?.data ?? [];
+  const hasFilters = fSearch || fMarket || fRole || fAccount;
+
+  function clearFilters() {
+    setFSearch(""); setFMarket(""); setFRole(""); setFAccount("");
+  }
 
   return (
     <PageShell
@@ -71,45 +81,50 @@ export default function CustomersTable() {
       ctaLabel="New Customer"
       ctaOnClick={() => window.location.href = "/admin/customers/new"}
     >
-      
-        {error && <div style={{ marginBottom: 16 }}><Alert type="error">{error}</Alert></div>}
+      {error && <div style={{ marginBottom: 16 }}><Alert type="error">{error}</Alert></div>}
 
-        <Card>
-          {/* Filters */}
-          <FiltersBar>
-            <Input value={fSearch} onChange={setFSearch} placeholder="Search name, email, company…" style={{ width: 260 }} />
-            <Select value={fMarket} onChange={setFMarket} style={{ minWidth: 140 }}>
-              <option value="">All Markets</option>
-              {markets.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </Select>
-            <Select value={fRole} onChange={setFRole} style={{ minWidth: 130 }}>
-              <option value="">All Roles</option>
-              <option value="CUSTOMER">Customer</option>
-              <option value="ADMIN">Admin</option>
-              <option value="STAFF">Staff</option>
-            </Select>
-            <Select value={fAccount} onChange={setFAccount} style={{ minWidth: 140 }}>
-              <option value="">All Account Types</option>
-              <option value="BUSINESS">Business</option>
-              <option value="PERSONAL">Personal</option>
-            </Select>
-            <Btn variant="outline" onClick={applyFilters}>Search</Btn>
-            {(fSearch || fMarket || fRole || fAccount) && (
-              <Btn variant="ghost" onClick={() => { setFSearch(""); setFMarket(""); setFRole(""); setFAccount(""); setPage(1); void load(1); }}>Clear</Btn>
-            )}
-            <span style={{ marginLeft: "auto", fontSize: 12, color: "#9ca3af" }}>
-              {total} customer{total !== 1 ? "s" : ""}
-            </span>
-          </FiltersBar>
+      <Card>
+        {/* ── Filter bar ── */}
+        <FiltersBar>
+          <Input
+            value={fSearch} onChange={setFSearch}
+            placeholder="Search name, email, #…"
+            style={{ width: 240, maxWidth: "100%" }}
+          />
+          <Select value={fMarket} onChange={setFMarket} style={{ width: 140, maxWidth: "100%" }}>
+            <option value="">All Markets</option>
+            {markets.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </Select>
+          <Select value={fRole} onChange={setFRole} style={{ width: 140, maxWidth: "100%" }}>
+            <option value="">All Roles</option>
+            <option value="CUSTOMER">Customer</option>
+            <option value="ADMIN">Admin</option>
+            <option value="STAFF">Staff</option>
+          </Select>
+          <Select value={fAccount} onChange={setFAccount} style={{ width: 160, maxWidth: "100%" }}>
+            <option value="">All Account Types</option>
+            <option value="BUSINESS">Business</option>
+            <option value="PERSONAL">Personal</option>
+          </Select>
+          {hasFilters && (
+            <Btn variant="ghost" onClick={clearFilters}>Clear</Btn>
+          )}
+          <span style={{ marginLeft: "auto", fontSize: 12, color: "#9ca3af" }}>
+            {filtered.length} of {rows.length} customer{rows.length !== 1 ? "s" : ""}
+          </span>
+        </FiltersBar>
 
-          {loading ? (
-            <div style={{ padding: 40, textAlign: "center", color: "#9ca3af" }}>Loading…</div>
-          ) : rows.length === 0 ? (
-            <Empty message="No customers found." />
-          ) : (
-            <Table cols={["#", "Customer", "Market", "Group", "Account", "Tags", "Subs", "Servers", "Joined", ""]}>
-              <tbody>
-              {rows.map(c => (
+        {/* ── Table ── */}
+        {loading ? (
+          <div style={{ padding: 40, textAlign: "center", color: "#9ca3af" }}>Loading…</div>
+        ) : rows.length === 0 ? (
+          <Empty message="No customers yet." />
+        ) : filtered.length === 0 ? (
+          <Empty message="No customers match the filters." />
+        ) : (
+          <Table cols={["#", "Customer", "Market", "Group", "Account", "Tags", "Subs", "Servers", "Joined", ""]}>
+            <tbody>
+              {filtered.map(c => (
                 <TR key={c.id}>
                   <TD mono muted>{c.customerNumber}</TD>
                   <TD>
@@ -158,12 +173,10 @@ export default function CustomersTable() {
                   </TD>
                 </TR>
               ))}
-              </tbody>
-            </Table>
-          )}
-
-          <Pagination page={page} total={totalPages} onPrev={() => setPage(p => Math.max(1, p-1))} onNext={() => setPage(p => Math.min(totalPages, p+1))} />
-        </Card>
+            </tbody>
+          </Table>
+        )}
+      </Card>
     </PageShell>
   );
 }
