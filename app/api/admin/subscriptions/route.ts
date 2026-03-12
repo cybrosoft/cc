@@ -1,124 +1,102 @@
-// FILE: app/api/admin/subscriptions/route.ts
+// app/api/admin/subscriptions/route.ts
 export const runtime = "nodejs";
 
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth/get-session-user";
-import { SubscriptionStatus } from "@prisma/client";
+import { NextResponse }        from "next/server";
+import { prisma }              from "@/lib/prisma";
+import { requireAdmin }        from "@/lib/auth/require-admin";
+import { SubscriptionStatus }  from "@prisma/client";
 
-function s(v: string | null): string {
-  return typeof v === "string" ? v : "";
-}
+type PaymentStatusFilter = "PAID" | "PENDING" | "";
 
-type PaymentStatusFilter = "PAID" | "PENDING";
-
+// ── GET /api/admin/subscriptions ──────────────────────────────────────────────
 export async function GET(req: Request) {
-  const admin = await getSessionUser();
-  if (!admin || admin.role !== "ADMIN") {
-    return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
-  }
+  try {
+    await requireAdmin();
 
-  const { searchParams } = new URL(req.url);
-  const page = Number(s(searchParams.get("page")) || "1");
-  const pageSize = 20;
+    const { searchParams } = new URL(req.url);
+    const page         = Math.max(1, Number(searchParams.get("page")     ?? "1"));
+    const pageSize     = Math.min(9999, Math.max(1, Number(searchParams.get("pageSize") ?? "50")));
+    const email        = searchParams.get("email")         ?? "";
+    const marketId     = searchParams.get("marketId")      ?? "";
+    const categoryId   = searchParams.get("categoryId")    ?? "";
+    const statusParam  = searchParams.get("status")        ?? "";
+    const paymentParam = searchParams.get("paymentStatus") ?? "" as PaymentStatusFilter;
+    const expiringParam = searchParams.get("expiringDays") ?? "";
 
-  const email = s(searchParams.get("email")).trim();
-  const statusParam = s(searchParams.get("status")).trim();
-  const marketId = s(searchParams.get("marketId")).trim();
-  const categoryId = s(searchParams.get("categoryId")).trim();
-  const paymentStatusParam = s(searchParams.get("paymentStatus")).trim();
-  const expiringDaysParam = s(searchParams.get("expiringDays")).trim();
-
-  const status =
-    statusParam && Object.values(SubscriptionStatus).includes(statusParam as SubscriptionStatus)
+    const status = Object.values(SubscriptionStatus).includes(statusParam as SubscriptionStatus)
       ? (statusParam as SubscriptionStatus)
       : undefined;
 
-  const paymentStatus =
-    paymentStatusParam === "PAID" || paymentStatusParam === "PENDING"
-      ? (paymentStatusParam as PaymentStatusFilter)
-      : undefined;
+    const where: Record<string, unknown> = {};
 
-  const expiringDays = Number(expiringDaysParam || "0");
-  const expiringWindowDays = Number.isFinite(expiringDays) && expiringDays > 0 ? expiringDays : null;
+    if (status)    where["status"]   = status;
+    if (marketId)  where["marketId"] = marketId;
+    if (email)     where["user"]     = { email: { contains: email, mode: "insensitive" as const } };
+    if (categoryId) where["product"] = { categoryId };
+    if (paymentParam === "PAID")    where["manualPaymentReference"] = { not: null };
+    if (paymentParam === "PENDING") where["currentPeriodStart"]     = null;
 
-  const where: Record<string, unknown> = {
-    ...(status ? { status } : {}),
-    ...(marketId ? { marketId } : {}),
-    ...(email
-      ? {
-          user: {
-            email: { contains: email, mode: "insensitive" as const },
+    if (expiringParam) {
+      const days = Number(expiringParam);
+      if (Number.isFinite(days) && days > 0) {
+        const now = new Date();
+        const end = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+        where["status"]          = SubscriptionStatus.ACTIVE;
+        where["currentPeriodEnd"] = { gte: now, lte: end };
+      }
+    }
+
+    const [subscriptions, total] = await Promise.all([
+      prisma.subscription.findMany({
+        where: where as never,
+        select: {
+          id:                  true,
+          status:              true,
+          paymentStatus:       true,
+          billingPeriod:       true,
+          createdAt:           true,
+          currentPeriodStart:  true,
+          currentPeriodEnd:    true,
+          receiptUrl:          true,
+          productDetails:      true,
+          productNote:         true,
+          parentSubscriptionId: true,
+          parentSubscription: {
+            select: {
+              id: true,
+              status: true,
+              product: { select: { id: true, name: true, key: true, type: true } },
+            },
           },
-        }
-      : {}),
-  };
+          user:    { select: { id: true, email: true } },
+          market:  { select: { id: true, name: true } },
+          product: {
+            select: {
+              id: true, name: true, key: true, type: true,
+              category: { select: { id: true, name: true, key: true } },
+            },
+          },
+          servers: { select: { id: true, hetznerServerId: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        skip:  (page - 1) * pageSize,
+        take:  pageSize,
+      }),
+      prisma.subscription.count({ where: where as never }),
+    ]);
 
-  if (categoryId) where["product"] = { categoryId };
-  if (paymentStatus === "PAID") where["activatedAt"] = { not: null };
-  if (paymentStatus === "PENDING") where["activatedAt"] = null;
+    // Map to match SubRow shape expected by the UI
+    const data = subscriptions.map(s => ({
+      ...s,
+      // UI expects activatedAt — derive from currentPeriodStart presence
+      activatedAt: s.currentPeriodStart ?? null,
+      // UI expects servers with hetznerServerId
+      servers: s.servers.map(sv => ({ ...sv, oracleInstanceId: null })),
+    }));
 
-  if (expiringWindowDays) {
-    const now = new Date();
-    const end = new Date(now.getTime() + expiringWindowDays * 24 * 60 * 60 * 1000);
-    where["status"] = SubscriptionStatus.ACTIVE;
-    where["currentPeriodEnd"] = { gte: now, lte: end };
+    return NextResponse.json({ ok: true, page, pageSize, total, data });
+  } catch (e: any) {
+    console.error("[subscriptions/route]", e);
+    return NextResponse.json({ ok: false, error: e.message ?? "Failed" }, { status: 500 });
   }
-
-  const [subscriptions, total] = await Promise.all([
-    prisma.subscription.findMany({
-      where: where as never,
-      select: {
-        id: true,
-        status: true,
-        paymentStatus: true,
-        billingProvider: true,
-        createdAt: true,
-        activatedAt: true,
-        currentPeriodStart: true,
-        currentPeriodEnd: true,
-        receiptUrl: true,
-
-        provisionLocation: true,
-
-        // details/notes (you said it's done)
-        productDetails: true,
-        productNote: true,
-
-        // ✅ NEW: correct linking (addon -> parent plan)
-        parentSubscriptionId: true,
-        parentSubscription: {
-          select: {
-            id: true,
-            status: true,
-            product: { select: { id: true, name: true, key: true, type: true } },
-          },
-        },
-
-        // ⚠️ legacy column kept but not required for new idea
-        addonPlanProductId: true,
-
-        user: { select: { id: true, email: true } },
-        market: { select: { id: true, name: true } },
-        product: {
-          select: {
-            id: true,
-            name: true,
-            key: true,
-            type: true,
-            category: { select: { id: true, name: true, key: true } },
-          },
-        },
-        servers: {
-          select: { id: true, hetznerServerId: true, oracleInstanceId: true },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-      skip: (Math.max(1, page) - 1) * pageSize,
-      take: pageSize,
-    }),
-    prisma.subscription.count({ where: where as never }),
-  ]);
-
-  return NextResponse.json({ ok: true, page: Math.max(1, page), pageSize, total, data: subscriptions });
 }
