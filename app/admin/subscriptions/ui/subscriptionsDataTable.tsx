@@ -3,7 +3,7 @@
 
 import { useRef, useState } from "react";
 import type { SubRow } from "../subscriptionsTableTypes";
-import { Icon } from "@/components/ui/Icon";
+import Icon from "@/components/ui/Icon";
 import { daysUntil, fmtDate, fmtDateInput, isoFromDateInput, isRecord, readBoolean, readString } from "./subscriptionsUtils";
 
 // ─── Design tokens ─────────────────────────────────────────────────────────────
@@ -62,8 +62,8 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function PayBadge({ activatedAt }: { activatedAt: string | null }) {
-  const paid = !!activatedAt;
+function PayBadge({ paymentStatus }: { paymentStatus: string }) {
+  const paid = paymentStatus === "PAID";
   return (
     <span style={{ display:"inline-flex", alignItems:"center", gap:4, fontSize:11, fontWeight:600, padding:"3px 8px", background:paid?"#f0fdf4":"#fef9c3", color:paid?"#15803d":"#92400e", border:`1px solid ${paid?"#86efac":"#fde047"}` }}>
       <Icon name={paid?"check":"clock"} size={10} color={paid?"#15803d":"#92400e"} />
@@ -108,10 +108,13 @@ function SaveBtn({ busy, saved, activeLabel, onClick }: { busy:boolean; saved:bo
 
 // ─── Billing tab — full featured ────────────────────────────────────────────────
 function BillingTab({ sub, onChanged }: { sub: SubRow; onChanged: () => void }) {
+  // Pre-activation editable fields
+  const [billingPeriod, setBillingPeriod] = useState(sub.billingPeriod ?? "YEARLY");
+  const [location,      setLocation]      = useState(sub.locationCode ?? "");
   // Activation fields
   const [start,    setStart]    = useState(fmtDateInput(sub.currentPeriodStart));
   const [end,      setEnd]      = useState(fmtDateInput(sub.currentPeriodEnd));
-  const [payDate,  setPayDate]  = useState(fmtDateInput(sub.activatedAt));
+  const [payDate,  setPayDate]  = useState(fmtDateInput(sub.paymentStatus === "PAID" ? sub.currentPeriodStart : null));
   // Payment record fields
   const [amount,   setAmount]   = useState("");
   const [note,     setNote]     = useState("");
@@ -129,8 +132,16 @@ function BillingTab({ sub, onChanged }: { sub: SubRow; onChanged: () => void }) 
   const [msg,   setMsg]   = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  const d      = daysUntil(sub.currentPeriodEnd);
-  const urgent = sub.status === "ACTIVE" && d !== null && d <= 30;
+  const isPaid   = sub.paymentStatus === "PAID";
+  const currency = sub.currency ?? (sub.market.name.includes("SAR") ? "SAR" : "USD");
+  const d        = daysUntil(sub.currentPeriodEnd);
+  const urgent   = sub.status === "ACTIVE" && d !== null && d <= 30;
+
+  // Derived totals from entered amount
+  const amountNum    = parseFloat(amount) || 0;
+  const resolvedPrice = sub.resolvedPriceCents ? sub.resolvedPriceCents / 100 : 0;
+  const pendingAmt    = !isPaid && resolvedPrice > 0 ? resolvedPrice : 0;
+  const totalLabel    = resolvedPrice > 0 ? `${resolvedPrice.toFixed(2)} ${currency}` : "—";
   const pct    = (() => {
     if (!sub.currentPeriodStart || !sub.currentPeriodEnd) return 0;
     const tot  = new Date(sub.currentPeriodEnd).getTime() - new Date(sub.currentPeriodStart).getTime();
@@ -162,12 +173,15 @@ function BillingTab({ sub, onChanged }: { sub: SubRow; onChanged: () => void }) 
       const r = await fetch("/api/admin/subscriptions/approve-manual", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id:                    sub.id,
-          currentPeriodStart:    startIso,
-          currentPeriodEnd:      endIso,
-          paymentDate:           isoFromDateInput(payDate),
-          invoiceNumber:         invNum.trim() || null,
+          id:                     sub.id,
+          currentPeriodStart:     startIso,
+          currentPeriodEnd:       endIso,
+          paymentDate:            isoFromDateInput(payDate),
+          invoiceNumber:          invNum.trim() || null,
           manualPaymentReference: ref.trim() || null,
+          billingPeriod:          billingPeriod || undefined,
+          locationCode:           location.trim() || null,
+
         }),
       });
       const j = await r.json().catch(() => null) as unknown;
@@ -182,15 +196,60 @@ function BillingTab({ sub, onChanged }: { sub: SubRow; onChanged: () => void }) 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
 
-      {/* ── Billing period chosen at subscription creation ── */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: C.primaryBg, border: `1px solid ${C.primaryMid}` }}>
-        <Icon name="calendar" size={13} color={C.primary} />
-        <span style={{ fontSize: 11, color: C.muted }}>Billing Period:</span>
-        <span style={{ fontSize: 12, fontWeight: 700, color: C.primary }}>
-          {PERIOD_LABELS[sub.billingPeriod] ?? sub.billingPeriod}
-        </span>
-        <span style={{ fontSize: 11, color: C.faint, marginLeft: 4 }}>— chosen at subscription creation</span>
+      {/* ── Summary cards: total amount + pending ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+        <div style={{ padding: "10px 14px", background: C.primaryBg, border: `1px solid ${C.primaryMid}` }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.faint, textTransform: "uppercase" as const, letterSpacing: "0.07em", marginBottom: 4 }}>Billing Period</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.primary }}>{PERIOD_LABELS[sub.billingPeriod] ?? sub.billingPeriod}</div>
+          <div style={{ fontSize: 10, color: C.faint, marginTop: 2 }}>chosen at creation</div>
+        </div>
+        <div style={{ padding: "10px 14px", background: isPaid ? "#f0fdf4" : "#fef9c3", border: `1px solid ${isPaid ? "#86efac" : "#fde047"}` }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.faint, textTransform: "uppercase" as const, letterSpacing: "0.07em", marginBottom: 4 }}>Payment Status</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: isPaid ? "#15803d" : "#92400e" }}>{isPaid ? "✓ Paid" : "Unpaid"}</div>
+          <div style={{ fontSize: 10, color: C.faint, marginTop: 2 }}>
+            {sub.resolvedPriceCents ? `${(sub.resolvedPriceCents / 100).toFixed(2)} ${currency}` : "—"}
+          </div>
+        </div>
+        {sub.resolvedPriceCents && (
+          <div style={{ padding: "10px 14px", background: "#f8fafc", border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.faint, textTransform: "uppercase" as const, letterSpacing: "0.07em", marginBottom: 4 }}>Subscription Price</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{(sub.resolvedPriceCents / 100).toFixed(2)} {currency}</div>
+            <div style={{ fontSize: 10, color: C.faint, marginTop: 2 }}>{PERIOD_LABELS[sub.billingPeriod] ?? sub.billingPeriod}</div>
+          </div>
+        )}
+        {pendingAmt > 0 && (
+          <div style={{ padding: "10px 14px", background: "#fef2f2", border: "1px solid #fca5a5" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.faint, textTransform: "uppercase" as const, letterSpacing: "0.07em", marginBottom: 4 }}>Pending Amount</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#dc2626" }}>{resolvedPrice.toFixed(2)} {currency}</div>
+            <div style={{ fontSize: 10, color: "#dc2626", marginTop: 2 }}>awaiting payment</div>
+          </div>
+        )}
       </div>
+
+      {/* ── Pre-activation fields: billing period + location ── */}
+      {sub.status !== "ACTIVE" && (
+        <div style={{ background: "#fffbeb", border: "1px solid #fde68a", padding: "12px 14px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#92400e", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+            <Icon name="settings" size={13} color="#d97706" />
+            Pre-activation Settings — editable before approving
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <span style={LBL}>Billing Period</span>
+              <select value={billingPeriod} onChange={e => setBillingPeriod(e.target.value)} style={{ ...INP }}>
+                <option value="MONTHLY">Monthly</option>
+                <option value="SIX_MONTHS">6 Months</option>
+                <option value="YEARLY">Yearly</option>
+                <option value="ONE_TIME">One-time</option>
+              </select>
+            </div>
+            <div>
+              <span style={LBL}>Location Code</span>
+              <input value={location} onChange={e => setLocation(e.target.value)} style={INP} placeholder="e.g. JED, RUH, FRA" />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Current period progress bar ── */}
       {sub.currentPeriodStart && sub.currentPeriodEnd && (
@@ -264,8 +323,8 @@ function BillingTab({ sub, onChanged }: { sub: SubRow; onChanged: () => void }) 
             <input value={ref} onChange={e => setRef(e.target.value)} style={INP} placeholder="Bank transfer ref, cheque no…" />
           </div>
           <div>
-            <span style={LBL}>Amount Paid</span>
-            <input value={amount} onChange={e => setAmount(e.target.value)} style={INP} placeholder={`e.g. 1200.00 ${sub.market.name.includes("SAR") ? "SAR" : "USD"}`} />
+            <span style={LBL}>Amount Paid ({currency})</span>
+            <input type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)} style={INP} placeholder={`e.g. 1200.00`} />
           </div>
           <div>
             <span style={LBL}>Note</span>
@@ -334,30 +393,35 @@ function BillingTab({ sub, onChanged }: { sub: SubRow; onChanged: () => void }) 
       </div>
 
       {/* ── Billing history (single record from DB) ── */}
-      {(sub.activatedAt || sub.currentPeriodStart) && (
+      {(isPaid || sub.currentPeriodStart) && (
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
             <Icon name="clock" size={13} color={C.primary} />
             Billing History
           </div>
           <div style={{ border: `1px solid ${C.border}`, overflow: "hidden" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 100px 120px 140px", gap: 0, background: "#f8fafc", borderBottom: `1px solid ${C.border}`, padding: "7px 14px", fontSize: 10, fontWeight: 700, color: C.faint, textTransform: "uppercase" as const, letterSpacing: "0.07em" }}>
-              <div>Period</div><div>Paid On</div><div>Status</div><div>Invoice #</div><div>Reference</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1.4fr 90px 90px 110px 120px 120px", gap: 0, background: "#f8fafc", borderBottom: `1px solid ${C.border}`, padding: "7px 14px", fontSize: 10, fontWeight: 700, color: C.faint, textTransform: "uppercase" as const, letterSpacing: "0.07em" }}>
+              <div>Period</div><div>Paid On</div><div>Status</div><div>Amount</div><div>Invoice #</div><div>Reference</div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 100px 120px 140px", gap: 0, padding: "10px 14px", fontSize: 12, alignItems: "center" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1.4fr 90px 90px 110px 120px 120px", gap: 0, padding: "10px 14px", fontSize: 12, alignItems: "center" }}>
               <div style={{ color: C.text }}>
                 {sub.currentPeriodStart && sub.currentPeriodEnd
                   ? `${fmtDate(sub.currentPeriodStart)} → ${fmtDate(sub.currentPeriodEnd)}`
                   : "One-time / Pending"}
                 <div style={{ fontSize: 10, color: C.faint, marginTop: 1 }}>{PERIOD_LABELS[sub.billingPeriod] ?? sub.billingPeriod}</div>
               </div>
-              <div style={{ color: sub.activatedAt ? C.text : C.faint }}>
-                {sub.activatedAt ? fmtDate(sub.activatedAt) : "—"}
+              <div style={{ color: isPaid ? C.text : C.faint }}>
+                {isPaid ? fmtDate(sub.currentPeriodStart) : "—"}
               </div>
               <div>
-                <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", background: sub.activatedAt ? "#f0fdf4" : "#fef9c3", color: sub.activatedAt ? "#15803d" : "#92400e", border: `1px solid ${sub.activatedAt ? "#86efac" : "#fde047"}` }}>
-                  {sub.activatedAt ? "Paid" : "Unpaid"}
+                <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", background: isPaid ? "#f0fdf4" : "#fef9c3", color: isPaid ? "#15803d" : "#92400e", border: `1px solid ${isPaid ? "#86efac" : "#fde047"}` }}>
+                  {isPaid ? "Paid" : "Unpaid"}
                 </span>
+              </div>
+              <div style={{ fontWeight: 600, color: isPaid ? "#15803d" : "#92400e" }}>
+                {sub.resolvedPriceCents
+                  ? `${(sub.resolvedPriceCents / 100).toFixed(2)} ${currency}`
+                  : amountNum > 0 ? `${amountNum.toFixed(2)} ${currency}` : "—"}
               </div>
               <div style={{ color: C.muted, fontFamily: "monospace", fontSize: 11 }}>{sub.invoiceNumber ?? "—"}</div>
               <div style={{ color: C.muted, fontSize: 11 }}>{sub.manualPaymentReference ?? "—"}</div>
@@ -527,7 +591,7 @@ function SubRowItem({ sub, isAddon, isOpen, onToggle, onChanged, onOpenVps }: {
           </div>
         </div>
         <div><StatusBadge status={sub.status} /></div>
-        <div><PayBadge activatedAt={sub.activatedAt} /></div>
+        <div><PayBadge paymentStatus={sub.paymentStatus} /></div>
         <div>
           {isOneTime
             ? <span style={{ fontSize:11, padding:"2px 7px", background:"#f1f5f9", color:C.muted, border:`1px solid ${C.border}` }}>One-time</span>

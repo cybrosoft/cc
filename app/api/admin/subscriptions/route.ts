@@ -63,6 +63,7 @@ export async function GET(req: Request) {
           productDetails:           true,
           productNote:              true,
           parentSubscriptionId:     true,
+          locationCode:             true,
           parentSubscription: {
             select: {
               id: true,
@@ -70,8 +71,8 @@ export async function GET(req: Request) {
               product: { select: { id: true, name: true, key: true, type: true } },
             },
           },
-          user:    { select: { id: true, email: true } },
-          market:  { select: { id: true, name: true } },
+          user:    { select: { id: true, email: true, fullName: true, customerGroupId: true } },
+          market:  { select: { id: true, name: true, defaultCurrency: true } },
           product: {
             select: {
               id: true, name: true, key: true, type: true,
@@ -87,12 +88,12 @@ export async function GET(req: Request) {
       prisma.subscription.count({ where: where as never }),
     ]);
 
-    // activatedAt does not exist in DB yet — derive from paymentStatus
     const data = subscriptions.map(s => ({
       ...s,
-      activatedAt:       s.paymentStatus === "PAID" ? s.currentPeriodStart : null,
-      receiptFileName:   null,
-      receiptUploadedAt: null,
+      resolvedPriceCents: null,  // resolved client-side via eligible-products
+      currency:           s.market.defaultCurrency ?? "SAR",
+      receiptFileName:    null,
+      receiptUploadedAt:  null,
     }));
 
     return NextResponse.json({ ok: true, page, pageSize, total, data });

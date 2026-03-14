@@ -21,10 +21,12 @@ export type SubRow = {
   billingPeriod: string;        // chosen at creation: MONTHLY | SIX_MONTHS | YEARLY | ONE_TIME
   createdAt: string;
 
-  activatedAt: string | null;
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
+  locationCode: string | null;
 
+  resolvedPriceCents: number | null;  // from Pricing table
+  currency: string;                   // from market.defaultCurrency
   receiptUrl: string | null;
   receiptFileName: string | null;
   receiptUploadedAt: string | null;
@@ -37,9 +39,10 @@ export type SubRow = {
 
   parentSubscriptionId?: string | null;
 
+  customerGroupId: string | null;
   user: UserMini;
   product: Product;
-  market: Market;
+  market: Market & { defaultCurrency?: string };
 
   servers: ServerMini[];
 };
