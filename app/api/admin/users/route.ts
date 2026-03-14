@@ -17,17 +17,18 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
-  const page       = Math.max(1, Number(searchParams.get("page") ?? "1"));
-  const search     = searchParams.get("search")?.trim() ?? "";
-  const marketId   = searchParams.get("marketId")?.trim() ?? "";
-  const role       = searchParams.get("role")?.trim() ?? "";
+  const page        = Math.max(1, Number(searchParams.get("page") ?? "1"));
+  const pageSizeParam = Number(searchParams.get("pageSize") ?? String(PAGE_SIZE));
+  const effectivePageSize = Math.min(9999, Math.max(1, Number.isFinite(pageSizeParam) ? pageSizeParam : PAGE_SIZE));
+  const search      = searchParams.get("search")?.trim() ?? "";
+  const marketId    = searchParams.get("marketId")?.trim() ?? "";
+  const role        = searchParams.get("role")?.trim() ?? "";
   const accountType = searchParams.get("accountType")?.trim() ?? "";
 
-  const where: Record<string, unknown> = {};
-
-  if (role && Object.values(Role).includes(role as Role)) {
-    where.role = role as Role;
-  }
+  const where: Record<string, unknown> = {
+    // Default to CUSTOMER only — pass role=ADMIN to override
+    role: (role && Object.values(Role).includes(role as Role)) ? role as Role : Role.CUSTOMER,
+  };
 
   if (marketId) where.marketId = marketId;
 
@@ -48,13 +49,14 @@ export async function GET(req: Request) {
     prisma.user.findMany({
       where,
       orderBy: { createdAt: "desc" },
-      skip:  (page - 1) * PAGE_SIZE,
-      take:  PAGE_SIZE,
+      skip:  (page - 1) * effectivePageSize,
+      take:  effectivePageSize,
       select: {
         id:             true,
         customerNumber: true,
         email:          true,
         fullName:       true,
+        mobile:         true,
         role:           true,
         accountType:    true,
         country:        true,
@@ -69,7 +71,7 @@ export async function GET(req: Request) {
     }),
   ]);
 
-  return NextResponse.json({ ok: true, data, total, page, pageSize: PAGE_SIZE });
+  return NextResponse.json({ ok: true, data, total, page, pageSize: effectivePageSize });
 }
 
 // ─── POST /api/admin/users — create customer ─────────────────────────────────

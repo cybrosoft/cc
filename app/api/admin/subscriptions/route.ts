@@ -50,17 +50,19 @@ export async function GET(req: Request) {
       prisma.subscription.findMany({
         where: where as never,
         select: {
-          id:                  true,
-          status:              true,
-          paymentStatus:       true,
-          billingPeriod:       true,
-          createdAt:           true,
-          currentPeriodStart:  true,
-          currentPeriodEnd:    true,
-          receiptUrl:          true,
-          productDetails:      true,
-          productNote:         true,
-          parentSubscriptionId: true,
+          id:                       true,
+          status:                   true,
+          paymentStatus:            true,
+          billingPeriod:            true,
+          createdAt:                true,
+          currentPeriodStart:       true,
+          currentPeriodEnd:         true,
+          receiptUrl:               true,
+          invoiceNumber:            true,
+          manualPaymentReference:   true,
+          productDetails:           true,
+          productNote:              true,
+          parentSubscriptionId:     true,
           parentSubscription: {
             select: {
               id: true,
@@ -76,7 +78,7 @@ export async function GET(req: Request) {
               category: { select: { id: true, name: true, key: true } },
             },
           },
-          servers: { select: { id: true, hetznerServerId: true } },
+          servers: { select: { id: true, hetznerServerId: true, oracleInstanceId: true } },
         },
         orderBy: { createdAt: "desc" },
         skip:  (page - 1) * pageSize,
@@ -85,13 +87,12 @@ export async function GET(req: Request) {
       prisma.subscription.count({ where: where as never }),
     ]);
 
-    // Map to match SubRow shape expected by the UI
+    // activatedAt does not exist in DB yet — derive from paymentStatus
     const data = subscriptions.map(s => ({
       ...s,
-      // UI expects activatedAt — derive from currentPeriodStart presence
-      activatedAt: s.currentPeriodStart ?? null,
-      // UI expects servers with hetznerServerId
-      servers: s.servers.map(sv => ({ ...sv, oracleInstanceId: null })),
+      activatedAt:       s.paymentStatus === "PAID" ? s.currentPeriodStart : null,
+      receiptFileName:   null,
+      receiptUploadedAt: null,
     }));
 
     return NextResponse.json({ ok: true, page, pageSize, total, data });

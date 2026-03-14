@@ -1,4 +1,4 @@
-// FILE: app/admin/subscriptions/subscriptionsTableTypes.ts
+// app/admin/subscriptions/subscriptionsTableTypes.ts
 export type Market = { id: string; name: string };
 
 export type ProductCategoryMini = { id: string; name: string; key: string } | null;
@@ -12,14 +12,13 @@ export type Product = {
 };
 
 export type UserMini = { id: string; email: string };
-export type ServerMini = { id: string; hetznerServerId: string | null };
+export type ServerMini = { id: string; hetznerServerId: string | null; oracleInstanceId?: string | null };
 
 export type SubRow = {
   id: string;
   status: string;
-
   paymentStatus: string;
-  billingProvider: string;
+  billingPeriod: string;        // chosen at creation: MONTHLY | SIX_MONTHS | YEARLY | ONE_TIME
   createdAt: string;
 
   activatedAt: string | null;
@@ -27,16 +26,16 @@ export type SubRow = {
   currentPeriodEnd: string | null;
 
   receiptUrl: string | null;
+  receiptFileName: string | null;
+  receiptUploadedAt: string | null;
+  invoiceNumber: string | null;
+  manualPaymentReference: string | null;
 
   provisionLocation?: string | null;
-
-  // ✅ NEW: customer-visible details stored on subscription
   productDetails: string | null;
   productNote: string | null;
 
-  // ✅ NEW: only meaningful when product.type === "addon"
-  // ✅ changed
-  addonPlanSubscriptionId: string | null;
+  parentSubscriptionId?: string | null;
 
   user: UserMini;
   product: Product;
@@ -56,7 +55,8 @@ export type ListResp = {
 export type PaymentStatusFilter = "" | "PAID" | "PENDING";
 export type ExpiringFilter = "" | "7" | "14" | "30" | "90";
 
-// ✅ Create-subscription modal types
+// ── Create-subscription modal types ──────────────────────────────────────────
+
 export type CustomerOption = {
   id: string;
   email: string;
@@ -68,11 +68,22 @@ export type PricedProductOption = {
   id: string;
   name: string;
   key: string;
+  type: string;                          // "plan" | "addon" | "service" | "product"
+  tags: { key: string; name: string }[]; // for location tag matching
   currency: string;
   yearlyPriceCents: number;
   introMonthCents: number | null;
-
   categoryKey?: string | null;
+};
+
+export type LocationOption = {
+  id: string;
+  code: string;
+  name: string;
+  family: string | null;
+  flag: string | null;
+  includeTags: string[];
+  excludeTags: string[];
 };
 
 export type CreateFormOk = { ok: true; customers: CustomerOption[] };

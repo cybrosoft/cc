@@ -15,7 +15,6 @@ function s(v: unknown): string {
 
 async function getEffectiveGroupId(userGroupId: string | null, marketId: string): Promise<string | null> {
   if (userGroupId) return userGroupId;
-  // Fall back to the default customer group for this market (or global default)
   const def = await prisma.customerGroup.findFirst({
     where: { isDefault: true, isActive: true },
     select: { id: true },
@@ -38,7 +37,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: "CUSTOMER_ID_REQUIRED" }, { status: 400 });
   }
 
-  // Load customer
   const user = await prisma.user.findUnique({
     where: { id: customerId },
     select: {
@@ -58,92 +56,12 @@ export async function GET(req: Request) {
 
   const currency = user.market.defaultCurrency;
 
-  // ── Load group pricing for this customer ─────────────────────────────────
   const groupPricingRows = await prisma.pricing.findMany({
     where: {
       isActive:        true,
       marketId:        user.marketId,
       customerGroupId: effectiveGroupId,
       product:         { isActive: true },
-    },
-    select: {
-      billingPeriod: true,
-      priceCents:    true,
-      product: {
-        select: {
-          id:               true,
-          key:              true,
-          name:             true,
-          type:             true,
-          unitLabel:        true,
-          billingPeriods:   true,
-          addonPricingType: true,
-          addonBehavior:    true,
-          addonUnitLabel:   true,
-          addonMinUnits:    true,
-          addonMaxUnits:    true,
-          addonPercentage:  true,
-          applicableTags:   true,
-          category:         { select: { id: true, key: true, name: true } },
-          tags:             { select: { id: true, key: true, name: true } },
-        },
-      },
-    },
-  });
-
-  // ── Load enterprise per-customer overrides ───────────────────────────────
-  const productIdsFromPricing = [...new Set(groupPricingRows.map(r => r.product.id))];
-
-  const overrides = await prisma.customerPricingOverride.findMany({
-    where: {
-      userId:    user.id,
-      marketId:  user.marketId,
-      productId: { in: productIdsFromPricing },
-    },
-    select: { productId: true, billingPeriod: true, priceCents: true },
-  });
-
-  const overrideMap = new Map<string, number>();
-  for (const o of overrides) {
-    overrideMap.set(`${o.productId}:${o.billingPeriod}`, o.priceCents);
-  }
-
-  // ── Load the effective group object for its key (name) ───────────────────
-  const groupRow = await prisma.customerGroup.findUnique({
-    where: { id: effectiveGroupId },
-    select: { key: true, name: true },
-  });
-
-  // ── Build product map: productId → { product, prices[] } ─────────────────
-  const productMap = new Map<string, {
-    product: (typeof groupPricingRows)[number]["product"];
-    prices: Array<{ billingPeriod: string; priceCents: number; isOverride: boolean }>;
-  }>();
-
-  for (const row of groupPricingRows) {
-    const pid = row.product.id;
-    const overrideKey = `${pid}:${row.billingPeriod}`;
-    const overridePrice = overrideMap.get(overrideKey);
-    const finalPrice = overridePrice ?? row.priceCents;
-    const isOverride = overridePrice !== undefined;
-
-    if (!productMap.has(pid)) {
-      productMap.set(pid, { product: row.product, prices: [] });
-    }
-    productMap.get(pid)!.prices.push({
-      billingPeriod: row.billingPeriod,
-      priceCents:    finalPrice,
-      isOverride,
-    });
-  }
-
-  // ── Also include products that have enterprise-only overrides ─────────────
-  // (products the customer group doesn't have pricing for, but the customer does)
-  const enterpriseOnlyProducts = await prisma.customerPricingOverride.findMany({
-    where: {
-      userId:    user.id,
-      marketId:  user.marketId,
-      productId: { notIn: productIdsFromPricing },
     },
     select: {
       billingPeriod: true,
@@ -161,33 +79,63 @@ export async function GET(req: Request) {
     },
   });
 
-  for (const row of enterpriseOnlyProducts) {
-    if (!row.product.isActive) continue; // type guard — no isActive in select but filter via product.isActive
+  const productIdsFromPricing = [...new Set(groupPricingRows.map(r => r.product.id))];
+
+  const overrides = await prisma.customerPricingOverride.findMany({
+    where: { userId: user.id, marketId: user.marketId, productId: { in: productIdsFromPricing } },
+    select: { productId: true, billingPeriod: true, priceCents: true },
+  });
+
+  const overrideMap = new Map<string, number>();
+  for (const o of overrides) overrideMap.set(`${o.productId}:${o.billingPeriod}`, o.priceCents);
+
+  const groupRow = await prisma.customerGroup.findUnique({
+    where: { id: effectiveGroupId }, select: { key: true, name: true },
+  });
+
+  const productMap = new Map<string, {
+    product: (typeof groupPricingRows)[number]["product"];
+    prices: Array<{ billingPeriod: string; priceCents: number; isOverride: boolean }>;
+  }>();
+
+  for (const row of groupPricingRows) {
     const pid = row.product.id;
-    if (!productMap.has(pid)) {
-      productMap.set(pid, { product: row.product, prices: [] });
-    }
-    productMap.get(pid)!.prices.push({
-      billingPeriod: row.billingPeriod,
-      priceCents:    row.priceCents,
-      isOverride:    true,
-    });
+    const overridePrice = overrideMap.get(`${pid}:${row.billingPeriod}`);
+    const finalPrice = overridePrice ?? row.priceCents;
+    if (!productMap.has(pid)) productMap.set(pid, { product: row.product, prices: [] });
+    productMap.get(pid)!.prices.push({ billingPeriod: row.billingPeriod, priceCents: finalPrice, isOverride: overridePrice !== undefined });
   }
 
-  // ── Also include percentage & required addons that have NO pricing rows ──
-  // Percentage addons derive their price from the parent plan at runtime so
-  // admins never create Pricing rows for them. Without this query they would
-  // never appear in productMap and therefore never show in the modal.
+  // Enterprise-only overrides (no group pricing row)
+  const enterpriseOnly = await prisma.customerPricingOverride.findMany({
+    where: { userId: user.id, marketId: user.marketId, productId: { notIn: productIdsFromPricing } },
+    select: {
+      billingPeriod: true, priceCents: true,
+      product: {
+        select: {
+          id: true, key: true, name: true, type: true, unitLabel: true,
+          billingPeriods: true, addonPricingType: true, addonBehavior: true,
+          addonUnitLabel: true, addonMinUnits: true, addonMaxUnits: true,
+          addonPercentage: true, applicableTags: true,
+          category: { select: { id: true, key: true, name: true } },
+          tags:     { select: { id: true, key: true, name: true } },
+        },
+      },
+    },
+  });
+
+  for (const row of enterpriseOnly) {
+    const pid = row.product.id;
+    if (!productMap.has(pid)) productMap.set(pid, { product: row.product, prices: [] });
+    productMap.get(pid)!.prices.push({ billingPeriod: row.billingPeriod, priceCents: row.priceCents, isOverride: true });
+  }
+
+  // Percentage / required addons that have no pricing rows
   const alreadyInMap = new Set(productMap.keys());
   const pricelessAddons = await prisma.product.findMany({
     where: {
-      isActive: true,
-      type: "addon",
-      id: { notIn: [...alreadyInMap] },
-      OR: [
-        { addonPricingType: "percentage" },
-        { addonBehavior: "required" },
-      ],
+      isActive: true, type: "addon", id: { notIn: [...alreadyInMap] },
+      OR: [{ addonPricingType: "percentage" }, { addonBehavior: "required" }],
     },
     select: {
       id: true, key: true, name: true, type: true, unitLabel: true,
@@ -203,49 +151,31 @@ export async function GET(req: Request) {
     productMap.set(p.id, { product: p as typeof groupPricingRows[number]["product"], prices: [] });
   }
 
-  // ── Convert to rich product list ─────────────────────────────────────────
   const PERIOD_ORDER = ["MONTHLY", "SIX_MONTHS", "YEARLY", "ONE_TIME"];
 
-  function sortPrices(prices: Array<{ billingPeriod: string; priceCents: number; isOverride: boolean }>) {
-    return prices.sort((a, b) => {
-      const ai = PERIOD_ORDER.indexOf(a.billingPeriod);
-      const bi = PERIOD_ORDER.indexOf(b.billingPeriod);
-      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-    });
-  }
-
   const allProducts = [...productMap.values()].map(({ product, prices }) => ({
-    id:   product.id,
-    key:  product.key,
-    name: product.name,
-    type: product.type as string,
-    category: product.category ?? null,
-    tags: product.tags,
+    id: product.id, key: product.key, name: product.name, type: product.type as string,
+    category: product.category ?? null, tags: product.tags,
     billingPeriods: product.billingPeriods as string[],
-    prices: sortPrices(prices).map(p => ({ ...p, currency })),
+    prices: prices
+      .sort((a, b) => (PERIOD_ORDER.indexOf(a.billingPeriod) === -1 ? 99 : PERIOD_ORDER.indexOf(a.billingPeriod)) - (PERIOD_ORDER.indexOf(b.billingPeriod) === -1 ? 99 : PERIOD_ORDER.indexOf(b.billingPeriod)))
+      .map(p => ({ ...p, currency })),
     unitLabel:        product.unitLabel        ?? null,
     addonPricingType: product.addonPricingType ?? null,
     addonBehavior:    product.addonBehavior    ?? null,
     addonUnitLabel:   product.addonUnitLabel   ?? null,
     addonMinUnits:    product.addonMinUnits    ?? null,
     addonMaxUnits:    product.addonMaxUnits    ?? null,
-    addonPercentage:  product.addonPercentage  !== null && product.addonPercentage !== undefined
+    addonPercentage:  product.addonPercentage !== null && product.addonPercentage !== undefined
                         ? Number(product.addonPercentage) : null,
     applicableTags: product.applicableTags ?? [],
-  }));
-
-  // Sort by name
-  allProducts.sort((a, b) => a.name.localeCompare(b.name));
+  })).sort((a, b) => a.name.localeCompare(b.name));
 
   if (!rich) {
-    // Legacy format — simple list for the old modal
     return NextResponse.json({
       ok: true,
       products: allProducts.map(p => ({
-        id:               p.id,
-        name:             p.name,
-        key:              p.key,
-        currency,
+        id: p.id, name: p.name, key: p.key, currency,
         categoryKey:      p.category?.key ?? null,
         yearlyPriceCents: p.prices.find(pr => pr.billingPeriod === "YEARLY")?.priceCents ?? p.prices[0]?.priceCents ?? 0,
         introMonthCents:  p.prices.find(pr => pr.billingPeriod === "MONTHLY")?.priceCents ?? null,
@@ -253,7 +183,6 @@ export async function GET(req: Request) {
     });
   }
 
-  // Rich format — split by type
   return NextResponse.json({
     ok:            true,
     currency,
