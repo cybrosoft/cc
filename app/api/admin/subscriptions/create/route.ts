@@ -1,29 +1,26 @@
-// FILE: app/api/admin/subscriptions/create/route.ts
+// app/api/admin/subscriptions/create/route.ts
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth/get-session-user";
-import {
-  BillingProvider,
-  PaymentStatus,
-  Role,
-  SubscriptionPhase,
-  SubscriptionStatus,
-} from "@prisma/client";
+import { BillingPeriod, Role, SubscriptionStatus, PaymentStatus } from "@prisma/client";
 
 function s(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
 
+// ── Location constants (stored in Subscription.locationCode) ─────────────────
+
 const LOCATIONS_SERVERS_G = ["Europe Central"] as const;
+type ServersGLocation = (typeof LOCATIONS_SERVERS_G)[number];
 
 const LOCATIONS_SERVERS_O = [
   "Saudi Arabia - Jeddah",
   "Saudi Arabia - Riyadh",
   "United States",
-  "United Kingdome",
-  "United Aarab Emirates",
+  "United Kingdom",
+  "United Arab Emirates",
   "Australia",
   "India",
   "Japan",
@@ -31,29 +28,16 @@ const LOCATIONS_SERVERS_O = [
   "Singapore",
   "South Korea",
 ] as const;
-
-type ServersGLocation = (typeof LOCATIONS_SERVERS_G)[number];
 type ServersOLocation = (typeof LOCATIONS_SERVERS_O)[number];
 
 function isServersGLocation(v: string): v is ServersGLocation {
   return (LOCATIONS_SERVERS_G as readonly string[]).includes(v);
 }
-
 function isServersOLocation(v: string): v is ServersOLocation {
   return (LOCATIONS_SERVERS_O as readonly string[]).includes(v);
 }
 
-async function getEffectiveCustomerGroupId(userCustomerGroupId: string | null): Promise<string | null> {
-  if (userCustomerGroupId) return userCustomerGroupId;
-
-  const def = await prisma.customerGroup.findFirst({
-    where: { isDefault: true, isActive: true },
-    select: { id: true },
-    orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
-  });
-
-  return def?.id ?? null;
-}
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
   const admin = await getSessionUser();
@@ -66,8 +50,6 @@ export async function POST(req: Request) {
         customerId?: unknown;
         productId?: unknown;
         location?: unknown;
-
-        // ✅ NEW
         productDetails?: unknown;
         productNote?: unknown;
       }
@@ -76,8 +58,6 @@ export async function POST(req: Request) {
   const customerId = s(body?.customerId).trim();
   const productId = s(body?.productId).trim();
   const locationInput = s(body?.location).trim();
-
-  // ✅ NEW (trim but allow empty -> store null)
   const productDetails = s(body?.productDetails).trim();
   const productNote = s(body?.productNote).trim();
 
@@ -90,18 +70,11 @@ export async function POST(req: Request) {
       id: true,
       role: true,
       marketId: true,
-      customerGroupId: true,
-      market: { select: { billingProvider: true } },
     },
   });
 
   if (!user) return NextResponse.json({ ok: false, error: "CUSTOMER_NOT_FOUND" }, { status: 404 });
   if (user.role !== Role.CUSTOMER) return NextResponse.json({ ok: false, error: "NOT_A_CUSTOMER" }, { status: 400 });
-
-  const effectiveGroupId = await getEffectiveCustomerGroupId(user.customerGroupId);
-  if (!effectiveGroupId) {
-    return NextResponse.json({ ok: false, error: "DEFAULT_CUSTOMER_GROUP_NOT_FOUND" }, { status: 500 });
-  }
 
   const product = await prisma.product.findUnique({
     where: { id: productId },
@@ -116,64 +89,53 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "PRODUCT_NOT_FOUND" }, { status: 404 });
   }
 
+  // ── Location validation ───────────────────────────────────────────────────
   const categoryKey = product.category?.key ?? "";
-
-  let provisionLocation: string | null = null;
+  let locationCode: string | null = null;
 
   if (categoryKey === "servers-g") {
-    if (!locationInput) provisionLocation = LOCATIONS_SERVERS_G[0];
+    if (!locationInput) locationCode = LOCATIONS_SERVERS_G[0];
     else if (!isServersGLocation(locationInput)) {
       return NextResponse.json({ ok: false, error: "INVALID_LOCATION_FOR_SERVERS_G" }, { status: 400 });
-    } else provisionLocation = locationInput;
+    } else locationCode = locationInput;
   } else if (categoryKey === "servers-o") {
-    if (!locationInput) provisionLocation = LOCATIONS_SERVERS_O[0];
+    if (!locationInput) locationCode = LOCATIONS_SERVERS_O[0];
     else if (!isServersOLocation(locationInput)) {
       return NextResponse.json({ ok: false, error: "INVALID_LOCATION_FOR_SERVERS_O" }, { status: 400 });
-    } else provisionLocation = locationInput;
-  } else {
-    provisionLocation = null;
+    } else locationCode = locationInput;
   }
 
-  const pricing = await prisma.productGroupPricing.findFirst({
+  // ── Verify pricing exists for this product + market ───────────────────────
+  const pricing = await prisma.pricing.findFirst({
     where: {
       isActive: true,
       productId,
       marketId: user.marketId,
-      customerGroupId: effectiveGroupId,
-      product: { isActive: true },
+      billingPeriod: BillingPeriod.YEARLY,
     },
-    select: {
-      currency: true,
-      yearlyPriceCents: true,
-      introMonthCents: true,
-    },
+    select: { id: true },
   });
 
   if (!pricing) {
-    return NextResponse.json({ ok: false, error: "PRICING_NOT_FOUND_FOR_CUSTOMER_MARKET_GROUP" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "PRICING_NOT_FOUND_FOR_PRODUCT_AND_MARKET" },
+      { status: 400 }
+    );
   }
 
-  const billingProvider: BillingProvider = user.market?.billingProvider ?? BillingProvider.MANUAL;
-
+  // ── Create subscription (only fields that exist on the current schema) ────
   const sub = await prisma.subscription.create({
     data: {
       userId: user.id,
       productId,
       marketId: user.marketId,
-      customerGroupId: effectiveGroupId,
 
-      billingProvider,
-      currency: pricing.currency,
-      yearlyPriceCents: pricing.yearlyPriceCents,
-      introMonthCents: pricing.introMonthCents ?? null,
-
-      provisionLocation,
-
+      billingPeriod: BillingPeriod.YEARLY,
       status: SubscriptionStatus.PENDING_PAYMENT,
-      phase: SubscriptionPhase.STANDARD,
       paymentStatus: PaymentStatus.UNPAID,
 
-      // ✅ NEW
+      locationCode: locationCode ?? null,
+
       productDetails: productDetails.length > 0 ? productDetails : null,
       productNote: productNote.length > 0 ? productNote : null,
     },
