@@ -71,6 +71,7 @@ export async function GET(req: Request) {
               product: { select: { id: true, name: true, key: true, type: true } },
             },
           },
+          userId:  true,
           user:    { select: { id: true, email: true, fullName: true, customerGroupId: true } },
           market:  { select: { id: true, name: true, defaultCurrency: true } },
           product: {
@@ -88,13 +89,52 @@ export async function GET(req: Request) {
       prisma.subscription.count({ where: where as never }),
     ]);
 
-    const data = subscriptions.map(s => ({
-      ...s,
-      resolvedPriceCents: null,  // resolved client-side via eligible-products
-      currency:           s.market.defaultCurrency ?? "SAR",
-      receiptFileName:    null,
-      receiptUploadedAt:  null,
-    }));
+    // Collect unique lookup keys to fetch pricing in one query
+    const productIds = [...new Set(subscriptions.map(s => s.productId))];
+    const marketIds  = [...new Set(subscriptions.map(s => s.marketId))];
+    const groupIds   = [...new Set(subscriptions.map(s => s.user.customerGroupId).filter(Boolean))] as string[];
+
+    const [pricingRows, overrideRows] = await Promise.all([
+      prisma.pricing.findMany({
+        where: { productId: { in: productIds }, marketId: { in: marketIds }, isActive: true },
+        select: { productId: true, marketId: true, customerGroupId: true, billingPeriod: true, priceCents: true },
+      }),
+      groupIds.length ? prisma.customerPricingOverride.findMany({
+        where: { productId: { in: productIds }, marketId: { in: marketIds } },
+        select: { productId: true, marketId: true, userId: true, billingPeriod: true, priceCents: true },
+      }) : Promise.resolve([]),
+    ]);
+
+    const data = subscriptions.map(s => {
+      const cgId = s.user.customerGroupId;
+      const bp   = s.billingPeriod;
+
+      // 1. Check customer-specific override first
+      const override = overrideRows.find(o =>
+        o.productId === s.productId &&
+        o.marketId  === s.marketId  &&
+        o.userId    === s.userId    &&
+        o.billingPeriod === bp
+      );
+
+      // 2. Fall back to group pricing
+      const groupPrice = pricingRows.find(p =>
+        p.productId       === s.productId &&
+        p.marketId        === s.marketId  &&
+        p.customerGroupId === cgId        &&
+        p.billingPeriod   === bp
+      );
+
+      const resolvedPriceCents = override?.priceCents ?? groupPrice?.priceCents ?? null;
+
+      return {
+        ...s,
+        resolvedPriceCents,
+        currency:         s.market.defaultCurrency ?? "SAR",
+        receiptFileName:  null,
+        receiptUploadedAt: null,
+      };
+    });
 
     return NextResponse.json({ ok: true, page, pageSize, total, data });
   } catch (e: any) {
