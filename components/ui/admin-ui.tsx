@@ -93,7 +93,7 @@ export function PageShell({ breadcrumb, title, ctaLabel, ctaOnClick, children }:
 }) {
   return (
     <>
-      <AdminHeaderBar ctaLabel={ctaLabel} ctaOnClick={ctaOnClick} />
+      <AdminHeaderBar />
       <main style={{ flex: 1, overflowY: "auto", background: CLR.pageBg }}>
         <div style={{ padding: 24 }}>
           <div style={{
@@ -109,6 +109,14 @@ export function PageShell({ breadcrumb, title, ctaLabel, ctaOnClick, children }:
                 {title}
               </h1>
             </div>
+            {ctaLabel && (
+              <button type="button" onClick={ctaOnClick} style={{
+                display: "inline-flex", alignItems: "center", gap: 7,
+                padding: "9px 20px", fontSize: 13, fontWeight: 600,
+                fontFamily: "inherit", background: CLR.primary, color: "#fff",
+                border: "none", cursor: "pointer",
+              }}>+ {ctaLabel}</button>
+            )}
           </div>
           {children}
         </div>
@@ -118,7 +126,7 @@ export function PageShell({ breadcrumb, title, ctaLabel, ctaOnClick, children }:
 }
 
 // Internal topbar used by PageShell
-function AdminHeaderBar({ ctaLabel, ctaOnClick }: { ctaLabel?: string; ctaOnClick?: () => void }) {
+function AdminHeaderBar() {
   return (
     <header style={{
       height: 56, minHeight: 56, background: "#222222",
@@ -161,18 +169,6 @@ function AdminHeaderBar({ ctaLabel, ctaOnClick }: { ctaLabel?: string; ctaOnClic
           <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
         </svg>
       </button>
-
-      {/* CTA button */}
-      {ctaLabel && (
-        <button type="button" onClick={ctaOnClick} style={{
-          background: CLR.primary, color: "#fff", border: "none",
-          padding: "0 16px", height: 34, fontSize: 12.5, fontWeight: 600,
-          cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
-          fontFamily: "inherit", whiteSpace: "nowrap",
-        }}>
-          + {ctaLabel}
-        </button>
-      )}
     </header>
   );
 }

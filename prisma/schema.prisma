@@ -73,13 +73,16 @@ enum BillingProvider {
 
 enum SubscriptionStatus {
   PENDING_PAYMENT
-  PENDING_EXTERNAL
+  PROCESSING        // was PENDING_EXTERNAL — manual or Stripe/Zoho triggered
   ACTIVE
-  CANCELED
+  SUSPENDED         // auto after 15 days unpaid, or manual
+  EXPIRED           // auto when currentPeriodEnd passes
+  CANCELED          // auto 30 days after EXPIRED, or manual
 }
 
 enum PaymentStatus {
   UNPAID
+  PARTIAL
   PAID
   FAILED
 }
@@ -216,6 +219,8 @@ model User {
 
   subscriptions         Subscription[]
   approvedSubscriptions Subscription[] @relation("SubscriptionApprovedBy")
+  statusLogEntries      SubscriptionStatusLog[] @relation("StatusLogChangedBy")
+  renewalEntries        SubscriptionRenewal[]   @relation("RenewalCreatedBy")
 
   servers   Server[]
   auditLogs AuditLog[]
@@ -435,6 +440,10 @@ model Subscription {
   currentPeriodStart DateTime?
   currentPeriodEnd   DateTime?
 
+  autoRenew              Boolean   @default(false)  // auto-renew on expiry
+  renewalBillingPeriod   BillingPeriod?            // if set, overrides billingPeriod on renewal
+  renewalPriceCents      Int?                      // if set, overrides catalog price on renewal
+
   invoiceNumber          String?
   receiptUrl             String?
   receiptFileName        String?
@@ -449,7 +458,9 @@ model Subscription {
 
   zohoSubscriptionId String?
 
-  servers Server[]
+  servers    Server[]
+  statusLogs SubscriptionStatusLog[]
+  renewals   SubscriptionRenewal[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -459,6 +470,64 @@ model Subscription {
   @@index([productId])
   @@index([parentSubscriptionId])
   @@index([approvedByUserId])
+}
+
+// ── Subscription Renewal Log ─────────────────────────────────────────────────
+model SubscriptionRenewal {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  // Period for this renewal
+  periodStart    DateTime
+  periodEnd      DateTime
+  billingPeriod  BillingPeriod
+
+  // Pricing snapshot at time of renewal
+  priceCents     Int               // plan price
+  addonsCents    Int      @default(0) // total addons price
+  totalCents     Int               // grand total
+  currency       String
+
+  // Override price (admin set)
+  overrideCents  Int?              // if set, used instead of catalog price
+  overrideNote   String?
+
+  // Addon subscriptions renewed (comma-separated IDs stored as JSON)
+  renewedAddonIds String  @default("[]")
+
+  isAutomatic    Boolean  @default(false)
+  notes          String?  @db.Text
+
+  renewedByUserId String?
+  renewedBy       User?   @relation("RenewalCreatedBy", fields: [renewedByUserId], references: [id], onDelete: SetNull)
+
+  // Step 5: link to SalesDocument invoice when generated
+  salesDocumentId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([subscriptionId])
+  @@index([createdAt])
+}
+
+// ── Subscription Status Log ───────────────────────────────────────────────────
+model SubscriptionStatusLog {
+  id             String             @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription       @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  status         SubscriptionStatus // the new status set
+  comment        String             @db.Text
+  isAutomatic    Boolean            @default(false) // true = system triggered
+
+  changedByUserId String?
+  changedBy       User?   @relation("StatusLogChangedBy", fields: [changedByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([subscriptionId])
+  @@index([createdAt])
 }
 
 model Server {

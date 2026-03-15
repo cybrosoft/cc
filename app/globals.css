@@ -93,3 +93,6 @@ body {
   .cy-grid-4-equal { grid-template-columns: 1fr !important; }
   .cy-grid-2-equal { grid-template-columns: 1fr !important; }
 }
+
+/* Filters bar inputs keep their explicit widths */
+.cy-filters .cy-input { width: auto !important; flex-shrink: 0; }

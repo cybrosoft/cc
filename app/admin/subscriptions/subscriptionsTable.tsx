@@ -1,53 +1,33 @@
 "use client";
 // app/admin/subscriptions/subscriptionsTable.tsx
-// Instant client-side filters — all data loaded once
 
 import { useEffect, useMemo, useState } from "react";
 import type { SubRow, ListResp, PaymentStatusFilter, ExpiringFilter } from "./subscriptionsTableTypes";
 import { SubscriptionsDataTable } from "./ui/subscriptionsDataTable";
 import { BillingModal }            from "./ui/billingModal";
-import { VpsAssignModal }          from "./ui/vpsAssignModal";
 import { CreateSubscriptionModal } from "./ui/createSubscriptionModal";
-import { CLR }                     from "@/components/ui/admin-ui";
-import Icon from "@/components/ui/Icon";  // ✅ default export, capital I, no s
-import { daysUntil }               from "./ui/subscriptionsUtils";
+import { PageShell, Card, FiltersBar, Input, Select, Btn, Alert, CLR } from "@/components/ui/admin-ui";
+import Icon from "@/components/ui/Icon";
+import { daysUntil } from "./ui/subscriptionsUtils";
 
 type ProductTypeFilter = "" | "plan" | "addon" | "service";
 
-const C = {
-  primary:   "#318774",
-  primaryBg: "#eaf4f2",
-  border:    "#e2e8f0",
-  text:      "#0f172a",
-  muted:     "#64748b",
-  faint:     "#94a3b8",
-};
-
-const INP: React.CSSProperties = {
-  padding: "7px 10px", fontSize: 13, fontFamily: "inherit",
-  background: "#fff", border: `1px solid ${C.border}`,
-  color: C.text, outline: "none",
-};
-
 export function SubscriptionsTable() {
-  const [allRows, setAllRows]     = useState<SubRow[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState<string | null>(null);
+  const [allRows, setAllRows] = useState<SubRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState<string | null>(null);
 
-  // Filters
   const [fEmail,    setFEmail]    = useState("");
   const [fMarket,   setFMarket]   = useState("");
   const [fCategory, setFCategory] = useState("");
   const [fStatus,   setFStatus]   = useState("");
   const [fType,     setFType]     = useState<ProductTypeFilter>("");
+  const [fParent,   setFParent]   = useState("");
   const [fPayment,  setFPayment]  = useState<PaymentStatusFilter>("");
   const [fExpiring, setFExpiring] = useState<ExpiringFilter>("");
 
-  // Modals
-  const [billOpen, setBillOpen]     = useState(false);
-  const [billSub, setBillSub]       = useState<SubRow | null>(null);
-  const [vpsOpen, setVpsOpen]       = useState(false);
-  const [vpsSub, setVpsSub]         = useState<SubRow | null>(null);
+  const [billOpen,   setBillOpen]   = useState(false);
+  const [billSub,    setBillSub]    = useState<SubRow | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
 
   async function load() {
@@ -62,6 +42,7 @@ export function SubscriptionsTable() {
   }
 
   useEffect(() => { void load(); }, []);
+  useEffect(() => { if (fType !== "addon") setFParent(""); }, [fType]);
 
   const markets = useMemo(() => {
     const map = new Map<string, string>();
@@ -75,17 +56,28 @@ export function SubscriptionsTable() {
     return [...map.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
   }, [allRows]);
 
+  const planSubs = useMemo(() =>
+    allRows.filter(r => r.product.type === "plan")
+      .map(r => ({ id: r.id, name: r.product.name, email: r.user.email })),
+    [allRows]);
+
+  const hasPartial = useMemo(() => allRows.some(r => r.paymentStatus === "PARTIAL"), [allRows]);
+
   const filtered = useMemo(() => {
     return allRows.filter(s => {
-      if (fEmail    && !s.user.email.toLowerCase().includes(fEmail.toLowerCase())) return false;
+      if (fEmail) {
+        const q = fEmail.toLowerCase();
+        if (!s.user.email.toLowerCase().includes(q) && !(s.user as any).fullName?.toLowerCase().includes(q)) return false;
+      }
       if (fMarket   && s.market.id !== fMarket)              return false;
       if (fCategory && s.product.category?.id !== fCategory) return false;
       if (fStatus   && s.status !== fStatus)                 return false;
       if (fType     && s.product.type !== fType)             return false;
+      if (fParent   && (s as any).parentSubscriptionId !== fParent) return false;
       if (fPayment) {
-        const paid = !!s.activatedAt;
-        if (fPayment === "PAID" && !paid) return false;
-        if (fPayment === "PENDING" && paid) return false;
+        if (fPayment === "PAID"    && s.paymentStatus !== "PAID")    return false;
+        if (fPayment === "PARTIAL" && s.paymentStatus !== "PARTIAL") return false;
+        if (fPayment === "PENDING" && s.paymentStatus !== "UNPAID")  return false;
       }
       if (fExpiring) {
         if (s.status !== "ACTIVE") return false;
@@ -94,129 +86,94 @@ export function SubscriptionsTable() {
       }
       return true;
     });
-  }, [allRows, fEmail, fMarket, fCategory, fStatus, fType, fPayment, fExpiring]);
+  }, [allRows, fEmail, fMarket, fCategory, fStatus, fType, fPayment, fExpiring, fParent]);
 
-  const hasFilters = fEmail || fMarket || fCategory || fStatus || fType || fPayment || fExpiring;
+  const hasFilters = !!(fEmail || fMarket || fCategory || fStatus || fType || fPayment || fExpiring || fParent);
 
   function clearFilters() {
     setFEmail(""); setFMarket(""); setFCategory("");
-    setFStatus(""); setFType(""); setFPayment(""); setFExpiring("");
+    setFStatus(""); setFType(""); setFPayment(""); setFExpiring(""); setFParent("");
   }
 
-  // Stats for header
-  const activeCount  = allRows.filter(r => r.status === "ACTIVE").length;
-  const pendingCount = allRows.filter(r => r.status === "PENDING_PAYMENT" || r.status === "PENDING_EXTERNAL").length;
+  const activeCount   = allRows.filter(r => r.status === "ACTIVE").length;
+  const pendingCount  = allRows.filter(r => r.status === "PENDING_PAYMENT" || r.status === "PROCESSING").length;
   const expiringCount = allRows.filter(r => {
     const d = daysUntil(r.currentPeriodEnd);
     return r.status === "ACTIVE" && d !== null && d <= 30;
   }).length;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <PageShell
+      breadcrumb="ADMIN / SUBSCRIPTIONS"
+      title="Subscriptions"
+      ctaLabel="Add Subscription"
+      ctaOnClick={() => setCreateOpen(true)}
+    >
+      {/* Stats pills */}
+      {!loading && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+          <span style={{ fontSize: 12, color: CLR.faint }}>{allRows.length} total</span>
+          {activeCount   > 0 && <span style={{ fontSize: 11, padding: "2px 8px", background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac", fontWeight: 600 }}>{activeCount} active</span>}
+          {pendingCount  > 0 && <span style={{ fontSize: 11, padding: "2px 8px", background: "#fffbeb", color: "#92400e", border: "1px solid #fde047", fontWeight: 600 }}>{pendingCount} pending</span>}
+          {expiringCount > 0 && <span style={{ fontSize: 11, padding: "2px 8px", background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5", fontWeight: 600 }}>{expiringCount} expiring</span>}
+        </div>
+      )}
 
-      {/* ── Header bar ── */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: 0 }}>Subscriptions</h1>
-          {!loading && (
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
-              <span style={{ fontSize: 12, color: C.faint }}>{allRows.length} total</span>
-              {activeCount  > 0 && <span style={{ fontSize: 11, padding: "2px 8px", background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac", fontWeight: 600 }}>{activeCount} active</span>}
-              {pendingCount > 0 && <span style={{ fontSize: 11, padding: "2px 8px", background: "#fffbeb", color: "#92400e", border: "1px solid #fde047", fontWeight: 600 }}>{pendingCount} pending</span>}
-              {expiringCount > 0 && <span style={{ fontSize: 11, padding: "2px 8px", background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5", fontWeight: 600 }}>{expiringCount} expiring soon</span>}
-            </div>
+      {error && <div style={{ marginBottom: 16 }}><Alert type="error">{error}</Alert></div>}
+
+      <Card>
+        <FiltersBar>
+          <Input value={fEmail} onChange={setFEmail} placeholder="Search name or email…" style={{ width: 220 }} />
+          <Select value={fMarket} onChange={setFMarket} style={{ minWidth: 130 }}>
+            <option value="">All Markets</option>
+            {markets.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </Select>
+          <Select value={fCategory} onChange={setFCategory} style={{ minWidth: 140 }}>
+            <option value="">All Categories</option>
+            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+          <Select value={fType} onChange={v => setFType(v as ProductTypeFilter)} style={{ minWidth: 120 }}>
+            <option value="">All Types</option>
+            <option value="plan">Plan</option>
+            <option value="addon">Addon</option>
+            <option value="service">Service</option>
+          </Select>
+          {fType === "addon" && planSubs.length > 0 && (
+            <Select value={fParent} onChange={setFParent} style={{ minWidth: 180 }}>
+              <option value="">All Plans</option>
+              {planSubs.map(p => <option key={p.id} value={p.id}>{p.name} · {p.email}</option>)}
+            </Select>
           )}
-        </div>
-        <button
-          onClick={() => setCreateOpen(true)}
-          style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 18px", fontSize: 13, fontWeight: 600, fontFamily: "inherit", background: C.primary, color: "#fff", border: "none", cursor: "pointer", flexShrink: 0 }}
-        >
-          <Icon name="plus" size={14} color="#fff" />
-          Add Subscription
-        </button>
-      </div>
-
-      {/* ── Filter bar ── */}
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "12px 16px", background: "#fff", border: `1px solid ${C.border}` }}>
-        <div style={{ position: "relative" as const, display: "flex", alignItems: "center" }}>
-          <Icon name="search" size={13} color={C.faint} style={{ position: "absolute", left: 9, pointerEvents: "none" }} />
-          <input
-            style={{ ...INP, width: 220, paddingLeft: 30 }}
-            placeholder="Search email…"
-            value={fEmail} onChange={e => setFEmail(e.target.value)}
-          />
-        </div>
-
-        <select style={INP} value={fMarket} onChange={e => setFMarket(e.target.value)}>
-          <option value="">All Markets</option>
-          {markets.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-        </select>
-
-        <select style={INP} value={fCategory} onChange={e => setFCategory(e.target.value)}>
-          <option value="">All Categories</option>
-          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-
-        <select style={INP} value={fType} onChange={e => setFType(e.target.value as ProductTypeFilter)}>
-          <option value="">All Types</option>
-          <option value="plan">Plan</option>
-          <option value="addon">Addon</option>
-          <option value="service">Service</option>
-        </select>
-
-        <select style={INP} value={fStatus} onChange={e => setFStatus(e.target.value)}>
-          <option value="">All Statuses</option>
-          <option value="ACTIVE">Active</option>
-          <option value="PENDING_PAYMENT">Pending Payment</option>
-          <option value="PENDING_EXTERNAL">Pending External</option>
-          <option value="CANCELED">Cancelled</option>
-          <option value="SUSPENDED">Suspended</option>
-          <option value="EXPIRED">Expired</option>
-        </select>
-
-        <select style={INP} value={fPayment} onChange={e => setFPayment(e.target.value as PaymentStatusFilter)}>
-          <option value="">All Payments</option>
-          <option value="PAID">Paid</option>
-          <option value="PENDING">Unpaid</option>
-        </select>
-
-        <select style={INP} value={fExpiring} onChange={e => setFExpiring(e.target.value as ExpiringFilter)}>
-          <option value="">Any Expiry</option>
-          <option value="7">Expiring in 7d</option>
-          <option value="14">Expiring in 14d</option>
-          <option value="30">Expiring in 30d</option>
-          <option value="90">Expiring in 90d</option>
-        </select>
-
-        {hasFilters && (
-          <button onClick={clearFilters} style={{ ...INP, color: C.muted, background: "#f8fafc", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5 }}>
-            <Icon name="x" size={11} color={C.faint} /> Clear
-          </button>
-        )}
-
-        {error && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "#dc2626" }}>
-            <Icon name="alertCircle" size={13} color="#dc2626" /> {error}
+          <Select value={fStatus} onChange={setFStatus} style={{ minWidth: 150 }}>
+            <option value="">All Statuses</option>
+            <option value="ACTIVE">Active</option>
+            <option value="PENDING_PAYMENT">Pending Payment</option>
+            <option value="PROCESSING">Processing</option>
+            <option value="SUSPENDED">Suspended</option>
+            <option value="EXPIRED">Expired</option>
+            <option value="CANCELED">Cancelled</option>
+          </Select>
+          <Select value={fPayment} onChange={v => setFPayment(v as PaymentStatusFilter)} style={{ minWidth: 130 }}>
+            <option value="">All Payments</option>
+            <option value="PAID">Paid</option>
+            {hasPartial && <option value="PARTIAL">Partially Paid</option>}
+            <option value="PENDING">Unpaid</option>
+          </Select>
+          <Select value={fExpiring} onChange={v => setFExpiring(v as ExpiringFilter)} style={{ minWidth: 140 }}>
+            <option value="">Any Expiry</option>
+            <option value="7">Expiring in 7d</option>
+            <option value="14">Expiring in 14d</option>
+            <option value="30">Expiring in 30d</option>
+            <option value="90">Expiring in 90d</option>
+          </Select>
+          {hasFilters && <Btn variant="ghost" onClick={clearFilters}>Clear</Btn>}
+          <span style={{ marginLeft: "auto", fontSize: 12, color: CLR.faint }}>
+            {loading ? "Loading…" : `${filtered.length} of ${allRows.length}`}
           </span>
-        )}
+        </FiltersBar>
 
-        <span style={{ marginLeft: "auto", fontSize: 12, color: C.faint }}>
-          {loading ? "Loading…" : `${filtered.length} of ${allRows.length}`}
-        </span>
-      </div>
-
-      {/* ── Data table ── */}
-      <SubscriptionsDataTable
-        rows={filtered}
-        loading={loading}
-        onOpenVps={sub => { setVpsSub(sub); setVpsOpen(true); }}
-        onOpenBilling={sub => { setBillSub(sub); setBillOpen(true); }}
-        onChanged={() => void load()}
-      />
-
-      <VpsAssignModal open={vpsOpen} sub={vpsSub}
-        onClose={() => { setVpsOpen(false); setVpsSub(null); }}
-        onSaved={() => void load()} />
+        <SubscriptionsDataTable rows={filtered} loading={loading} onChanged={() => void load()} />
+      </Card>
 
       <BillingModal open={billOpen} sub={billSub}
         onClose={() => { setBillOpen(false); setBillSub(null); }}
@@ -225,6 +182,6 @@ export function SubscriptionsTable() {
       <CreateSubscriptionModal open={createOpen}
         onClose={() => setCreateOpen(false)}
         onCreated={() => void load()} />
-    </div>
+    </PageShell>
   );
 }

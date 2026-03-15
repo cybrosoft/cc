@@ -8,10 +8,15 @@ export type Product = {
   name: string;
   key: string;
   type: string;
+  billingPeriods:   string[];
+  unitLabel:        string | null;
+  addonPricingType: string | null;
+  addonPercentage:  number | null;
+  tags:             { key: string }[];
   category: ProductCategoryMini;
 };
 
-export type UserMini = { id: string; email: string };
+export type UserMini = { id: string; email: string; customerGroupId: string | null };
 export type ServerMini = { id: string; hetznerServerId: string | null; oracleInstanceId?: string | null };
 
 export type SubRow = {
@@ -25,7 +30,9 @@ export type SubRow = {
   currentPeriodEnd: string | null;
   locationCode: string | null;
 
+  quantity:           number | null;
   resolvedPriceCents: number | null;  // from Pricing table
+  allPrices: Record<string, number>;  // billingPeriod -> priceCents
   currency: string;                   // from market.defaultCurrency
   receiptUrl: string | null;
   receiptFileName: string | null;
@@ -39,7 +46,6 @@ export type SubRow = {
 
   parentSubscriptionId?: string | null;
 
-  customerGroupId: string | null;
   user: UserMini;
   product: Product;
   market: Market & { defaultCurrency?: string };
@@ -55,7 +61,7 @@ export type ListResp = {
   data: SubRow[];
 };
 
-export type PaymentStatusFilter = "" | "PAID" | "PENDING";
+export type PaymentStatusFilter = "" | "PAID" | "PARTIAL" | "PENDING";
 export type ExpiringFilter = "" | "7" | "14" | "30" | "90";
 
 // ── Create-subscription modal types ──────────────────────────────────────────
@@ -64,7 +70,6 @@ export type CustomerOption = {
   id: string;
   email: string;
   marketId: string;
-  customerGroupId: string | null;
 };
 
 export type PricedProductOption = {
