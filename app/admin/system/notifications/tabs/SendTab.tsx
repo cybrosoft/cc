@@ -6,6 +6,7 @@ import { CLR } from "@/components/ui/admin-ui";
 interface Market { id: string; key: string; name: string; }
 interface Group  { id: string; key: string; name: string; }
 interface Customer { id: string; fullName: string | null; email: string; customerNumber: number; }
+interface Tag     { id: string; key: string; name: string; }
 
 const CHANNEL_OPTIONS = [
   { id: "inapp", label: "In-App",  hint: "Bell icon in customer portal"   },
@@ -17,6 +18,7 @@ const TARGET_TYPES = [
   { id: "all",      label: "All Customers"  },
   { id: "market",   label: "By Market"      },
   { id: "group",    label: "By Group"       },
+  { id: "tag",      label: "By Tag"         },
   { id: "customer", label: "Single Customer"},
 ];
 
@@ -33,6 +35,7 @@ const lbl: React.CSSProperties = {
 export default function SendTab() {
   const [markets,   setMarkets]   = useState<Market[]>([]);
   const [groups,    setGroups]    = useState<Group[]>([]);
+  const [tags,      setTags]      = useState<Tag[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [custSearch, setCustSearch] = useState("");
 
@@ -46,6 +49,7 @@ export default function SendTab() {
   const [scheduledAt,  setScheduledAt]  = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
 
+  const [broadcastType, setBroadcastType] = useState<"ESSENTIAL" | "MARKETING">("ESSENTIAL");
   const [sending,  setSending]  = useState(false);
   const [result,   setResult]   = useState<{ ok: boolean; message: string } | null>(null);
 
@@ -53,9 +57,11 @@ export default function SendTab() {
     Promise.all([
       fetch("/api/admin/settings/markets").then(r => r.json()),
       fetch("/api/admin/catalog/pricing/meta").then(r => r.json()),
-    ]).then(([m, meta]) => {
+      fetch("/api/admin/catalog/tags").then(r => r.json()),
+    ]).then(([m, meta, t]) => {
       if (m.ok)    setMarkets(m.markets ?? []);
       if (meta.ok) setGroups(meta.data?.groups ?? []);
+      if (t.ok)    setTags(t.data ?? []);
     });
   }, []);
 
@@ -90,7 +96,7 @@ export default function SendTab() {
       const res  = await fetch("/api/admin/notifications/send", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title, body, emailSubject: emailSubject || title,
+          title, body, emailSubject: emailSubject || title, broadcastType,
           smsBody: smsBody || undefined,
           channels, targetType, targetId: targetId || undefined,
           scheduledAt: scheduledAt || undefined,
@@ -118,6 +124,52 @@ export default function SendTab() {
       <p style={{ fontSize: 13, color: CLR.muted, marginBottom: 20 }}>
         Send a notification to customers. Choose channels, target audience, and compose your message.
       </p>
+
+      {/* Broadcast Type */}
+      <div style={{ background: "#fff", border: "1px solid #e5e7eb", padding: "18px 20px", marginBottom: 14 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: CLR.muted, letterSpacing: "0.06em", textTransform: "uppercase" as const, marginBottom: 14 }}>Broadcast Type</p>
+        <div style={{ display: "flex", gap: 12 }}>
+          {([
+            {
+              id: "ESSENTIAL" as const,
+              label: "Essential",
+              desc: "Always delivered. Cannot be opted out. Use for maintenance, security alerts, policy changes.",
+              border: CLR.primary,
+              bg: CLR.primaryBg,
+            },
+            {
+              id: "MARKETING" as const,
+              label: "Marketing",
+              desc: "Customers can opt out per channel. Use for promotions, new features, announcements.",
+              border: "#7c3aed",
+              bg: "#f5f3ff",
+            },
+          ] as const).map(t => (
+            <label key={t.id} style={{
+              flex: 1, display: "flex", alignItems: "flex-start", gap: 10,
+              padding: "12px 16px", cursor: "pointer",
+              border: `1px solid ${broadcastType === t.id ? t.border : "#e5e7eb"}`,
+              background: broadcastType === t.id ? t.bg : "#fff",
+            }}>
+              <input type="radio" name="broadcastType" value={t.id}
+                checked={broadcastType === t.id}
+                onChange={() => setBroadcastType(t.id)}
+                style={{ accentColor: t.border, marginTop: 2, flexShrink: 0 }} />
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 700, margin: "0 0 3px", color: broadcastType === t.id ? t.border : CLR.text }}>
+                  {t.label}
+                </p>
+                <p style={{ fontSize: 12, color: CLR.muted, margin: 0, lineHeight: 1.5 }}>{t.desc}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+        {broadcastType === "MARKETING" && (
+          <div style={{ marginTop: 10, padding: "8px 12px", background: "#fffbeb", border: "1px solid #fcd34d", fontSize: 12, color: "#92400e" }}>
+            Customers who opted out of marketing on the selected channel(s) will be excluded automatically.
+          </div>
+        )}
+      </div>
 
       {/* Target */}
       <div style={{ background: "#fff", border: "1px solid #e5e7eb", padding: "18px 20px", marginBottom: 14 }}>
@@ -151,6 +203,24 @@ export default function SendTab() {
             </select>
           </div>
         )}
+        {targetType === "tag" && (
+          <div>
+            <label style={lbl}>Select Tag</label>
+            <select value={targetId} onChange={e => setTargetId(e.target.value)} style={inp}>
+              <option value="">— Choose tag —</option>
+              {tags.map(t => (
+                <option key={t.id} value={t.id}>
+                  {t.name} <span style={{ fontFamily: "monospace" }}>({t.key})</span>
+                </option>
+              ))}
+            </select>
+            {targetId && (
+              <p style={{ fontSize: 11, color: CLR.muted, marginTop: 6 }}>
+                Will send to all customers who have the <code style={{ background: "#f3f4f6", padding: "1px 5px" }}>{tags.find(t => t.id === targetId)?.key}</code> tag assigned.
+              </p>
+            )}
+          </div>
+        )}
         {targetType === "customer" && (
           <div>
             <label style={lbl}>Search Customer</label>
@@ -172,7 +242,7 @@ export default function SendTab() {
         )}
         {targetType === "all" && (
           <p style={{ fontSize: 12, color: "#b45309", background: "#fffbeb", border: "1px solid #fcd34d", padding: "8px 12px" }}>
-            ⚠️ This will send to ALL customers across all markets.
+            This will send to ALL customers across all markets.
           </p>
         )}
       </div>
@@ -227,7 +297,7 @@ export default function SendTab() {
                 <textarea style={{ ...inp, resize: "vertical" as const }} rows={2} value={smsBody} onChange={e => setSmsBody(e.target.value)} placeholder={body.slice(0, 160) || "Uses body (truncated) if blank"} />
                 <p style={{ fontSize: 11, color: smsStats.len > 160 ? "#dc2626" : CLR.faint, marginTop: 4 }}>
                   {smsStats.len} chars · {smsStats.segments} SMS segment{smsStats.segments !== 1 ? "s" : ""} per recipient
-                  {smsStats.len > 160 && " — ⚠️ exceeds 1 segment, costs multiply"}
+                  {smsStats.len > 160 && " — exceeds 1 segment, costs multiply"}
                 </p>
               </div>
             )}

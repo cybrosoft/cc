@@ -57,7 +57,7 @@ export default function PortalSettingsTab() {
       <TabHeader title="Portal Settings" description="Branding and contact information shown throughout the admin and customer portal." />
 
       <div style={card}>
-        <p style={sectionTitle}>🌐 Portal Identity</p>
+        <p style={sectionTitle}>Portal Identity</p>
         <Field label="Portal Name" hint="Shown in browser tab, emails, and document footers.">
           <input style={inp} value={v(KEYS.name)} onChange={e => set(KEYS.name, e.target.value)} placeholder="Cybrosoft Cloud Console" />
         </Field>
@@ -81,7 +81,7 @@ export default function PortalSettingsTab() {
       </div>
 
       <div style={card}>
-        <p style={sectionTitle}>📞 Support Contact</p>
+        <p style={sectionTitle}>Support Contact</p>
         <Row>
           <Field label="Support Email" half hint="Shown to customers for help requests.">
             <input style={inp} type="email" value={v(KEYS.supportEmail)} onChange={e => set(KEYS.supportEmail, e.target.value)} placeholder="support@yourcompany.com" />

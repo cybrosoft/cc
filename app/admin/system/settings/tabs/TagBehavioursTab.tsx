@@ -82,7 +82,7 @@ export default function TagBehavioursTab() {
       />
 
       <div style={card}>
-        <p style={sectionTitle}>💲 Hide Prices Tag</p>
+        <p style={sectionTitle}>Hide Prices Tag</p>
         <p style={{ fontSize: 13, color: CLR.muted, marginBottom: 14 }}>
           Customers with this tag will <strong>not see prices</strong> in the catalogue or subscribe flow.
           Instead, they will see an RFQ / inquiry button. Used for enterprise or custom-pricing customers.
@@ -93,7 +93,7 @@ export default function TagBehavioursTab() {
       </div>
 
       <div style={card}>
-        <p style={sectionTitle}>🔐 Exclude from 2FA Tag</p>
+        <p style={sectionTitle}>Exclude from 2FA Tag</p>
         <p style={{ fontSize: 13, color: CLR.muted, marginBottom: 14 }}>
           Customers with this tag will <strong>skip two-factor authentication</strong> (OTP) during login.
           Useful for service accounts or customers using SSO.

@@ -150,7 +150,7 @@ export default function TemplatesTab() {
         {/* Email section */}
         <div style={{ background: "#fff", border: "1px solid #e5e7eb", padding: "16px 18px", marginBottom: 14 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: CLR.muted, letterSpacing: "0.06em", textTransform: "uppercase" as const, margin: 0 }}>📧 Email</p>
+            <p style={{ fontSize: 11, fontWeight: 700, color: CLR.muted, letterSpacing: "0.06em", textTransform: "uppercase" as const, margin: 0 }}>Email</p>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
               <input type="checkbox" checked={draft.defaultEmail} onChange={e => patch("defaultEmail", e.target.checked)} style={{ accentColor: CLR.primary }} />
               Send by default
@@ -178,7 +178,7 @@ export default function TemplatesTab() {
         {/* SMS section */}
         <div style={{ background: "#fff", border: "1px solid #e5e7eb", padding: "16px 18px", marginBottom: 14 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: CLR.muted, letterSpacing: "0.06em", textTransform: "uppercase" as const, margin: 0 }}>📱 SMS</p>
+            <p style={{ fontSize: 11, fontWeight: 700, color: CLR.muted, letterSpacing: "0.06em", textTransform: "uppercase" as const, margin: 0 }}>SMS</p>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
               <input type="checkbox" checked={draft.defaultSms} onChange={e => patch("defaultSms", e.target.checked)} style={{ accentColor: CLR.primary }} />
               Send by default
@@ -215,7 +215,7 @@ export default function TemplatesTab() {
           </div>
           {draft.lockChannels && (
             <div style={{ marginTop: 10, padding: "8px 12px", background: "#fef2f2", border: "1px solid #fecaca", fontSize: 12, color: "#dc2626" }}>
-              ⚠️ Channels are locked — customers cannot change their preferences for this event type. Use only for critical notifications (payment overdue, suspension).
+              Channels are locked — customers cannot change their preferences for this event type. Use only for critical notifications (payment overdue, suspension).
             </div>
           )}
         </div>

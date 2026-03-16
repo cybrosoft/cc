@@ -25,7 +25,7 @@ interface NavGroup {
   children?: NavChild[];
   badge?: string;
   alert?: boolean;
-  exactMatch?: boolean; // if true, only highlight on exact path match
+  exactMatch?: boolean;
 }
 
 const NAV: NavGroup[] = [
@@ -44,7 +44,7 @@ const NAV: NavGroup[] = [
   {
     id: "sales", label: "Sales", icon: "sales",
     children: [
-      { id: "rfq",      label: "RFQ Received",     icon: "rfq",      href: "/admin/sales/rfq",      badge: "0", alert: true },
+      { id: "rfq",      label: "RFQ Received",     icon: "rfq",      href: "/admin/sales/rfq",               badge: "0", alert: true },
       { id: "quotes",   label: "Quotations",        icon: "quote",    href: "/admin/sales/quotations" },
       { id: "po",       label: "Issued PO",         icon: "po",       href: "/admin/sales/po" },
       { id: "dn",       label: "Delivery Notes",    icon: "delivery", href: "/admin/sales/delivery-notes" },
@@ -65,8 +65,9 @@ const NAV: NavGroup[] = [
   {
     id: "system", label: "System", icon: "system",
     children: [
-      { id: "pages",    label: "Pages CMS",    icon: "pages",    href: "/admin/system/pages" },
-      { id: "settings", label: "Administrator", icon: "settings", href: "/admin/system/settings" },
+      { id: "pages",         label: "Pages CMS",     icon: "pages",    href: "/admin/system/pages" },
+      { id: "notifications", label: "Notifications", icon: "bell",     href: "/admin/system/notifications" },
+      { id: "settings",      label: "Administrator", icon: "settings", href: "/admin/system/settings" },
     ],
   },
 ];
@@ -100,12 +101,10 @@ function NavItem({ item, pathname, onLinkClick, openGroup, setOpenGroup }: {
   const highlight   = selfActive || childActive;
   const isOpen      = openGroup === item.id;
 
-  // open but current page is NOT a child → use neutral bg (#f3f4f6)
-  // open AND current page is a child (childActive) OR selfActive → use primary bg
   const bgColor = highlight
-    ? colors.primaryLight         // active page is here
+    ? colors.primaryLight
     : isOpen && !childActive
-      ? "#f3f4f6"                 // open but active page is elsewhere
+      ? "#f3f4f6"
       : "transparent";
 
   const rowStyle: React.CSSProperties = {
@@ -185,7 +184,6 @@ function SidebarContent({ userEmail, userName, initials, pathname, onLinkClick }
   userEmail: string; userName?: string | null; initials: string;
   pathname: string; onLinkClick?: () => void;
 }) {
-  // Only one group open at a time — default to whichever contains the current page
   const defaultOpen = NAV.find(item =>
     item.children?.some(c => isActive(pathname, c.href))
   )?.id ?? null;
@@ -307,7 +305,7 @@ export function AdminNav({ userEmail, userName }: AdminNavProps) {
         <SidebarContent userEmail={userEmail} userName={userName} initials={initials} pathname={pathname} onLinkClick={() => {}} />
       </aside>
 
-      {/* Mobile topbar — replaces desktop dark header on small screens */}
+      {/* Mobile topbar */}
       <header className="cy-mobile-topbar" style={{
         position: "fixed", top: 0, left: 0, right: 0, zIndex: 300,
         height: 56, minHeight: 56, background: "#222222",
@@ -315,14 +313,12 @@ export function AdminNav({ userEmail, userName }: AdminNavProps) {
         alignItems: "center", gap: 10, padding: "0 14px",
         flexShrink: 0,
       }}>
-        {/* Logo initial — same gradient style as sidebar logo */}
         <span style={{
           fontSize: 23, fontWeight: 700, letterSpacing: "-0.02em",
           background: "linear-gradient(to right, #254b46, #318774)",
           WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
         }}>CC</span>
 
-        {/* Search — full remaining space */}
         <div style={{
           flex: 1, display: "flex", alignItems: "center", gap: 8,
           background: "#2c2c2c", border: "1px solid #383838",
@@ -337,10 +333,8 @@ export function AdminNav({ userEmail, userName }: AdminNavProps) {
           }} placeholder="Search…" />
         </div>
 
-        {/* Bell */}
         <Bell />
 
-        {/* Hamburger — far right */}
         <button
           onClick={() => setDrawerOpen(v => !v)}
           aria-label="Toggle navigation"
@@ -355,10 +349,8 @@ export function AdminNav({ userEmail, userName }: AdminNavProps) {
         </button>
       </header>
 
-      {/* Spacer — pushes content below fixed mobile topbar */}
       <div className="cy-mobile-spacer" />
 
-      {/* Backdrop */}
       {drawerOpen && <div onClick={() => setDrawerOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 350, background: "rgba(0,0,0,0.5)" }} />}
 
       {/* Mobile drawer */}

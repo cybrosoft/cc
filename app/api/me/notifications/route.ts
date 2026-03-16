@@ -44,7 +44,26 @@ export async function GET(req: NextRequest) {
       getUnreadCount(user.id),
     ]);
 
-    return NextResponse.json({ ok: true, notifications, total, unreadCount, page, pageSize });
+    // Also return marketing opt-out prefs for the preferences page
+    const userPrefs = await prisma.user.findUnique({
+      where:  { id: user.id },
+      select: { notifPrefs: true, timezone: true, dndStart: true, dndEnd: true },
+    });
+
+    const prefs       = (userPrefs?.notifPrefs as Record<string, unknown>) ?? {};
+    const marketingPrefs = {
+      "marketing.inapp": prefs["marketing.inapp"] !== false,  // default ON
+      "marketing.email": prefs["marketing.email"] !== false,  // default ON
+      "marketing.sms":   prefs["marketing.sms"]   !== false,  // default ON
+    };
+
+    return NextResponse.json({
+      ok: true, notifications, total, unreadCount, page, pageSize,
+      marketingPrefs,
+      timezone:  userPrefs?.timezone  ?? null,
+      dndStart:  userPrefs?.dndStart  ?? null,
+      dndEnd:    userPrefs?.dndEnd    ?? null,
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

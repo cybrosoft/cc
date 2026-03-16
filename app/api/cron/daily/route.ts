@@ -228,6 +228,13 @@ async function resolveTargetUsers(targetType: string, targetId?: string): Promis
       if (!targetId) return [];
       return (await prisma.user.findMany({ where: { ...baseWhere, marketId: targetId }, select: { id: true } })).map(u => u.id);
     }
+    case "tag": {
+      if (!targetId) return [];
+      return (await prisma.user.findMany({
+        where: { ...baseWhere, tags: { some: { id: targetId } } },
+        select: { id: true },
+      })).map(u => u.id);
+    }
     case "all":
       return (await prisma.user.findMany({ where: baseWhere, select: { id: true } })).map(u => u.id);
     default: return [];

@@ -184,7 +184,7 @@ export default function CompanyProfilesTab() {
 
       {/* ── Company Identity ──────────────────────────────────────────────── */}
       <div style={card}>
-        <p style={sectionTitle}>🏢 Company Identity</p>
+        <p style={sectionTitle}>Company Identity</p>
         <Row>
           <Field label="Company Name (English)" half>
             <input style={inp} value={li("companyName")} onChange={e => setLI("companyName", e.target.value)} placeholder="Cybrosoft Technology LLC" />
@@ -215,7 +215,7 @@ export default function CompanyProfilesTab() {
 
       {/* ── Address ───────────────────────────────────────────────────────── */}
       <div style={card}>
-        <p style={sectionTitle}>📍 Address</p>
+        <p style={sectionTitle}>Address</p>
         <Row>
           <Field label="Address Line 1" half>
             <input style={inp} value={li("address1")} onChange={e => setLI("address1", e.target.value)} placeholder="123 Business District" />
@@ -278,7 +278,7 @@ export default function CompanyProfilesTab() {
 
       {/* ── Contact ───────────────────────────────────────────────────────── */}
       <div style={card}>
-        <p style={sectionTitle}>📞 Contact Information</p>
+        <p style={sectionTitle}>Contact Information</p>
         <Row>
           <Field label="Phone" half>
             <input style={inp} value={li("phone")} onChange={e => setLI("phone", e.target.value)} placeholder="+966 11 000 0000" />
@@ -299,7 +299,7 @@ export default function CompanyProfilesTab() {
 
       {/* ── VAT / Tax Rate ────────────────────────────────────────────────── */}
       <div style={card}>
-        <p style={sectionTitle}>💰 Tax Rate</p>
+        <p style={sectionTitle}>Tax Rate</p>
         <Row>
           <Field label="Tax / VAT Percentage (%)" half
             hint={draft.key === "SA" ? "Saudi Arabia: 15% standard rate" : draft.key === "AE" ? "UAE: 5% VAT" : "Set to 0 for tax-exempt markets"}>
@@ -315,7 +315,7 @@ export default function CompanyProfilesTab() {
 
       {/* ── Bank Details ──────────────────────────────────────────────────── */}
       <div style={card}>
-        <p style={sectionTitle}>🏦 Bank Details</p>
+        <p style={sectionTitle}>Bank Details</p>
         <p style={{ fontSize: 12, color: CLR.muted, marginBottom: 14 }}>
           Printed on invoices and quotations for bank transfer payments. Fill only what applies to this market.
         </p>
@@ -380,7 +380,7 @@ export default function CompanyProfilesTab() {
 
       {/* ── Payment Methods ───────────────────────────────────────────────── */}
       <div style={card}>
-        <p style={sectionTitle}>💳 Accepted Payment Methods</p>
+        <p style={sectionTitle}>Accepted Payment Methods</p>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {PAYMENT_OPTIONS.map(method => {
             const isActive = draft.paymentMethods.includes(method);
@@ -408,7 +408,7 @@ export default function CompanyProfilesTab() {
 
       {/* ── Branding ──────────────────────────────────────────────────────── */}
       <div style={card}>
-        <p style={sectionTitle}>🖼️ Document Branding</p>
+        <p style={sectionTitle}>Document Branding</p>
         <Row>
           <Field label="Logo URL" half hint="Used on document headers. Recommended: 300×80px PNG with transparent background.">
             <input style={inp} value={cp("logoUrl")} onChange={e => setCP("logoUrl", e.target.value)} placeholder="https://cdn.yourcompany.com/logo.png" />

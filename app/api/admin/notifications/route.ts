@@ -9,7 +9,8 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 
 export async function GET(req: NextRequest) {
   try {
-    await requireAdmin();
+    const auth = await requireAdmin();
+    if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { searchParams } = new URL(req.url);
 
     const eventType  = searchParams.get("eventType")  ?? undefined;

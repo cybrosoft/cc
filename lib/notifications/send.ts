@@ -119,13 +119,14 @@ export async function sendNotification(params: SendNotificationParams): Promise<
 // ── Broadcast send (admin manual) ─────────────────────────────────────────────
 
 export interface BroadcastParams {
-  broadcastId:  string;
-  title:        string;
-  body:         string;
+  broadcastId:   string;
+  broadcastType: string;    // "ESSENTIAL" | "MARKETING"
+  title:         string;
+  body:          string;
   emailSubject?: string;
-  smsBody?:     string;
-  channels:     string[];   // ["inapp", "email", "sms"]
-  userIds:      string[];
+  smsBody?:      string;
+  channels:      string[];  // ["inapp", "email", "sms"]
+  userIds:       string[];
 }
 
 export async function sendBroadcast(params: BroadcastParams): Promise<{ sent: number; failed: number }> {
@@ -135,25 +136,30 @@ export async function sendBroadcast(params: BroadcastParams): Promise<{ sent: nu
     try {
       const user = await prisma.user.findUnique({
         where:  { id: userId },
-        select: { id: true, email: true, fullName: true, mobile: true, timezone: true, dndStart: true, dndEnd: true },
+        select: {
+          id: true, email: true, fullName: true, mobile: true,
+          timezone: true, dndStart: true, dndEnd: true,
+          notifPrefs: true,
+        },
       });
       if (!user) continue;
 
-      const vars = {
-        title:        params.title,
-        body:         params.body,
-        customerName: user.fullName ?? user.email,
-        portalName:   "Cybrosoft Cloud Console",
-      };
+      // Per-channel marketing opt-out check
+      // ESSENTIAL bypasses this — always sends to all requested channels
+      const marketingPrefs = (user.notifPrefs as Record<string, unknown>) ?? {};
+      function canSend(channel: string): boolean {
+        if (params.broadcastType !== "MARKETING") return true;
+        return marketingPrefs[`marketing.${channel}`] !== false;
+      }
 
       await Promise.allSettled([
-        params.channels.includes("inapp")
+        (params.channels.includes("inapp") && canSend("inapp"))
           ? sendInApp({ userId, title: params.title, body: params.body, eventType: "BROADCAST", broadcastId: params.broadcastId })
           : Promise.resolve(),
-        params.channels.includes("email")
+        (params.channels.includes("email") && canSend("email"))
           ? sendEmail({ user, subject: params.emailSubject ?? params.title, htmlBody: `<p>${params.body}</p>`, eventType: "BROADCAST" })
           : Promise.resolve(),
-        (params.channels.includes("sms") && user.mobile && !isDNDActive(user.timezone, user.dndStart, user.dndEnd))
+        (params.channels.includes("sms") && canSend("sms") && !!user.mobile && !isDNDActive(user.timezone, user.dndStart, user.dndEnd))
           ? sendSMS({ user, body: params.smsBody ?? params.body, eventType: "BROADCAST" })
           : Promise.resolve(),
       ]);

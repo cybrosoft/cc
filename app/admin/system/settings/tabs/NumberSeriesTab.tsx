@@ -81,7 +81,7 @@ export default function NumberSeriesTab() {
 
       <div style={{ ...card, background: "#fffbeb", border: "1px solid #fcd34d", marginBottom: 16 }}>
         <p style={{ fontSize: 12, color: "#92400e" }}>
-          ⚠️ <strong>Caution:</strong> Changing the next number will not affect already-issued documents.
+          <strong>Caution:</strong> Changing the next number will not affect already-issued documents.
           Only increase the next number — never decrease it, as this can create duplicate document numbers.
         </p>
       </div>

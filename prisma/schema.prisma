@@ -234,6 +234,15 @@ model User {
   salesDocuments SalesDocument[]
   notifications  Notification[]
 
+  // NEW Step 9 — Notification preferences
+  notifPrefs Json?   // { "INVOICE_ISSUED": { email: true, sms: false, inapp: true }, ... }
+  timezone   String? // IANA e.g. "Asia/Riyadh"
+  dndStart   Int?    // DND hour start 0-23 (e.g. 22 = 10pm)
+  dndEnd     Int?    // DND hour end   0-23 (e.g. 8  = 8am)
+
+  // NEW Step 9 — Broadcasts created by this admin
+  broadcastsCreated NotificationBroadcast[] @relation("BroadcastCreatedBy")
+
   createdAt DateTime @default(now())
 
   @@index([marketId])
@@ -657,11 +666,13 @@ model SalesDocument {
   vatPercent   Decimal @default(0)
   vatAmount    Int     @default(0) // cents
   total        Int     @default(0) // cents
-  subject            String?          // document subject / title line
-  referenceNumber    String?          // customer PO ref, ticket # etc.
+
+  // NEW Step 7
+  subject            String?
+  referenceNumber    String?
   notes              String? @db.Text
   internalNote       String? @db.Text
-  termsAndConditions String? @db.Text // printed at bottom of document
+  termsAndConditions String? @db.Text
 
   issueDate DateTime  @default(now())
   dueDate   DateTime?
@@ -697,12 +708,12 @@ model SalesDocumentLine {
   product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
   description   String
-  billingPeriod String?         // MONTHLY | SIX_MONTHS | YEARLY | ONE_TIME | null
+  billingPeriod String? // MONTHLY | SIX_MONTHS | YEARLY | ONE_TIME | null
   quantity      Decimal @default(1)
-  unitPrice     Int     // cents
-  discount      Decimal @default(0) // percentage 0–100
-  lineTotal     Int     // cents, after discount
-  sortOrder     Int     @default(0)
+  unitPrice   Int     // cents
+  discount    Decimal @default(0) // percentage 0–100
+  lineTotal   Int     // cents, after discount
+  sortOrder   Int     @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -752,11 +763,27 @@ model Notification {
   emailSent   Boolean   @default(false)
   emailSentAt DateTime?
 
+  // NEW Step 9
+  eventType      String?   // INVOICE_ISSUED | SUB_EXPIRING | etc.
+  channel        String?   // "inapp" | "email" | "sms"
+  smsSent        Boolean   @default(false)
+  smsSentAt      DateTime?
+  smsDelivered   Boolean   @default(false)
+  emailDelivered Boolean   @default(false)
+  retryCount     Int       @default(0)
+  failureReason  String?
+  broadcastId    String?
+  scheduledAt    DateTime?
+  sentAt         DateTime?
+
   createdAt DateTime @default(now())
 
   @@index([userId])
   @@index([isRead])
   @@index([createdAt])
+  @@index([eventType])
+  @@index([broadcastId])
+  @@index([channel])
 }
 
 // ── Portal Page (CMS) ─────────────────────────────────────────────────────────
@@ -778,9 +805,6 @@ model PortalPage {
 }
 
 // ── Portal Settings ───────────────────────────────────────────────────────────
-// Generic key-value store for all admin-configurable settings
-// Key examples: "smtp.host", "smtp.port", "smtp.user", "smtp.pass",
-//               "portal.name", "portal.logoUrl", "portal.supportEmail"
 model PortalSetting {
   id    String @id @default(cuid())
   key   String @unique
@@ -789,4 +813,59 @@ model PortalSetting {
   updatedAt DateTime @updatedAt
 
   @@index([key])
+}
+
+//////////////////////////////////////////////////////
+// NEW MODELS — Step 9
+//////////////////////////////////////////////////////
+
+// Admin-editable templates per notification event type.
+// One template covers both email (HTML) and SMS (plain text).
+model NotificationTemplate {
+  id           String  @id @default(cuid())
+  eventType    String  @unique // system key — immutable
+  name         String
+  emailSubject String  @default("")
+  emailBody    String  @db.Text @default("")
+  smsBody      String?
+  defaultEmail Boolean @default(true)
+  defaultSms   Boolean @default(false)
+  defaultInapp Boolean @default(true)
+  lockChannels Boolean @default(false)
+  isActive     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([eventType])
+  @@index([isActive])
+}
+
+// Admin manual broadcast — tracks group sends.
+model NotificationBroadcast {
+  id            String   @id @default(cuid())
+  title         String
+  body          String   @db.Text
+  emailSubject  String?
+  smsBody       String?
+  broadcastType String   @default("ESSENTIAL") // "ESSENTIAL" | "MARKETING"
+  channels      String[] // ["inapp", "email", "sms"]
+  targetType    String   // "customer" | "group" | "market" | "tag" | "all"
+  targetId      String?
+
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  totalCount  Int @default(0)
+  sentCount   Int @default(0)
+  failCount   Int @default(0)
+
+  createdByUserId String
+  createdBy       User   @relation("BroadcastCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([sentAt])
+  @@index([targetType])
+  @@index([broadcastType])
 }

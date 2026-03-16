@@ -10,10 +10,10 @@ async function getCustomerData(userId: string) {
 
   const [subs, servers] = await Promise.all([
     prisma.subscription.findMany({
-      where: { userId },
+      where:   { userId },
       orderBy: { createdAt: "desc" },
       include: {
-        product: { select: { name: true, type: true } },
+        product: { select: { name: true, type: true } }, // nullable — product may be null
         market:  { select: { name: true, key: true, defaultCurrency: true } },
       },
     }),
@@ -24,17 +24,17 @@ async function getCustomerData(userId: string) {
 
   return {
     subs: subs.map(s => ({
-      id: s.id,
-      productName: s.product.name,
-      productType: s.product.type,
-      marketKey: s.market.key,
-      currency: s.market.defaultCurrency,
-      status: s.status,
-      paymentStatus: s.paymentStatus,
-      billingPeriod: s.billingPeriod,
+      id:               s.id,
+      productName:      s.product?.name ?? "—",
+      productType:      s.product?.type ?? "service",
+      marketKey:        s.market.key,
+      currency:         s.market.defaultCurrency,
+      status:           s.status,
+      paymentStatus:    s.paymentStatus,
+      billingPeriod:    s.billingPeriod,
       currentPeriodEnd: s.currentPeriodEnd?.toISOString() ?? null,
     })),
-    serverCount: servers.length,
+    serverCount:  servers.length,
     expiringSoon: subs.filter(s =>
       s.status === "ACTIVE" &&
       s.currentPeriodEnd &&

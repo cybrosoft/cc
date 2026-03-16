@@ -9,7 +9,8 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 
 export async function GET() {
   try {
-    await requireAdmin();
+    const auth = await requireAdmin();
+    if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const templates = await prisma.notificationTemplate.findMany({
       orderBy: { eventType: "asc" },
     });
@@ -21,7 +22,8 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    await requireAdmin();
+    const auth = await requireAdmin();
+    if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const body = await req.json();
     const { id, emailSubject, emailBody, smsBody, defaultEmail, defaultSms, defaultInapp, lockChannels, isActive } = body;
 
