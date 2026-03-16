@@ -657,8 +657,11 @@ model SalesDocument {
   vatPercent   Decimal @default(0)
   vatAmount    Int     @default(0) // cents
   total        Int     @default(0) // cents
-  notes        String? @db.Text
-  internalNote String? @db.Text
+  subject            String?          // document subject / title line
+  referenceNumber    String?          // customer PO ref, ticket # etc.
+  notes              String? @db.Text
+  internalNote       String? @db.Text
+  termsAndConditions String? @db.Text // printed at bottom of document
 
   issueDate DateTime  @default(now())
   dueDate   DateTime?
@@ -693,12 +696,13 @@ model SalesDocumentLine {
   productId String?
   product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
-  description String
-  quantity    Decimal @default(1)
-  unitPrice   Int     // cents
-  discount    Decimal @default(0) // percentage 0–100
-  lineTotal   Int     // cents, after discount
-  sortOrder   Int     @default(0)
+  description   String
+  billingPeriod String?         // MONTHLY | SIX_MONTHS | YEARLY | ONE_TIME | null
+  quantity      Decimal @default(1)
+  unitPrice     Int     // cents
+  discount      Decimal @default(0) // percentage 0–100
+  lineTotal     Int     // cents, after discount
+  sortOrder     Int     @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

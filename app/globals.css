@@ -1,17 +1,5 @@
+/* app/global.css */
 @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap');
-@import "tailwindcss";
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -65,19 +53,27 @@ body {
   cursor: not-allowed;
 }
 
+/* cy-input inside filter bars — auto width, don't stretch full */
+.cy-filters .cy-input { width: auto !important; flex-shrink: 0; }
+
 /* ════════════════════════════════════════════════════
    RESPONSIVE — inner page content grids
    ════════════════════════════════════════════════════ */
 
+/* Stat grids */
 .cy-grid-5       { grid-template-columns: repeat(5, 1fr); }
 .cy-grid-4       { grid-template-columns: repeat(4, 1fr); }
 .cy-grid-2       { grid-template-columns: 1.6fr 1fr; }
 .cy-grid-4-equal { grid-template-columns: repeat(4, 1fr); }
 .cy-grid-2-equal { grid-template-columns: 1fr 1fr; }
 
+/* Table wrapper — horizontal scroll on small screens */
 .cy-table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* Page padding */
 .cy-page-inner { padding: 24px; }
 
+/* ── Tablet (< 1024px) ──────────────────────────────── */
 @media (max-width: 1023px) {
   .cy-grid-5       { grid-template-columns: repeat(3, 1fr) !important; }
   .cy-grid-4       { grid-template-columns: repeat(2, 1fr) !important; }
@@ -85,6 +81,7 @@ body {
   .cy-grid-4-equal { grid-template-columns: repeat(2, 1fr) !important; }
 }
 
+/* ── Mobile (< 640px) ───────────────────────────────── */
 @media (max-width: 639px) {
   .cy-page-inner   { padding: 16px !important; }
   .cy-grid-5       { grid-template-columns: repeat(2, 1fr) !important; }
@@ -94,5 +91,21 @@ body {
   .cy-grid-2-equal { grid-template-columns: 1fr !important; }
 }
 
-/* Filters bar inputs keep their explicit widths */
-.cy-filters .cy-input { width: auto !important; flex-shrink: 0; }
+/* ════════════════════════════════════════════════════
+   MOBILE NAV — AdminNav responsive header
+   ════════════════════════════════════════════════════ */
+
+/* Desktop topbar (AdminHeader) — shown on desktop, hidden on mobile */
+.cy-desktop-topbar { display: flex !important; }
+
+/* Mobile spacer — pushes content below fixed mobile topbar (56px) */
+.cy-mobile-spacer { display: none; height: 56px; flex-shrink: 0; }
+
+@media (max-width: 1023px) {
+  .cy-desktop-topbar { display: none !important; }
+  .cy-mobile-spacer  { display: block !important; }
+  /* PageShell pages (Catalog, Customers, Subscriptions) — spacer + extra offset */
+  .cy-main       { padding-top: 60px !important; }
+  /* Direct pages (Dashboard, Sales, System) — spacer handles offset, small buffer */
+  .cy-main-flush { padding-top: 80px !important; }
+}
