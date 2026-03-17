@@ -105,16 +105,40 @@ enum SalesDocumentType {
 }
 
 enum SalesDocumentStatus {
+  // Shared
   DRAFT
   ISSUED
   SENT
-  ACCEPTED
-  REJECTED
   CONVERTED
-  PAID
-  PARTIAL
-  OVERDUE
   VOID
+
+  // RFQ
+  PENDING      // submitted by customer, awaiting review
+  IN_REVIEW    // admin is actively reviewing
+  QUOTED       // admin responded with a quotation
+  CLOSED       // closed without action
+
+  // Quotation
+  REVISED      // quote was revised after sending
+  ACCEPTED     // customer accepted
+  REJECTED     // customer declined
+  EXPIRED      // validity period passed (cron or manual)
+
+  // PO
+  PROCESSING   // PO being fulfilled
+
+  // Delivery Note
+  DELIVERED    // confirmed received
+  CANCELLED    // delivery cancelled or failed
+
+  // Invoice
+  PARTIALLY_PAID  // partial payment recorded (auto)
+  PAID            // fully paid (auto)
+  OVERDUE         // due date passed, unpaid (cron)
+  WRITTEN_OFF     // bad debt — admin only, customer sees OVERDUE
+
+  // Credit Note
+  APPLIED      // credit applied against invoice or refunded
 }
 
 enum PaymentMethod {
@@ -144,11 +168,21 @@ model Market {
   billingProvider BillingProvider @default(MANUAL)
   isActive        Boolean         @default(true)
 
-  // NEW Step 4 fields
+  // Step 4 fields
   vatPercent     Decimal? // e.g. 15.00 for Saudi, 0.00 for Global
-  legalInfo      Json?    // { companyName, crNumber, vatNumber, address, bankDetails }
-  companyProfile Json?    // { logoUrl, letterheadUrl, primaryColor }
+  legalInfo      Json?
+  // legalInfo shape: { companyName, companyNameAr, tagline, taglineAr,
+  //   crNumber, vatNumber, address, addressAr, phone, email, website,
+  //   footerText, defaultPaymentTerms, quotationValidityDays,
+  //   bankDetails: { bankName, accountName, iban, swift, currency } }
+  companyProfile Json?
+  // companyProfile shape: { logoUrl, primaryColor }
   paymentMethods String[] // ["BANK_TRANSFER", "STRIPE"]
+
+  // Step 10 — Stripe per market
+  stripePublicKey String?  // Stripe publishable key (safe to expose to client)
+  stripeSecretKey String?  // Stripe secret key — NEVER expose in client responses
+  showPayOnline   Boolean  @default(false) // show Pay Online button on documents
 
   users                    User[]
   subscriptions            Subscription[]
@@ -230,7 +264,7 @@ model User {
   notePublic  String? @db.Text
   notePrivate String? @db.Text
 
-  // NEW Step 4
+  // Step 4
   salesDocuments SalesDocument[]
   notifications  Notification[]
 
@@ -666,19 +700,23 @@ model SalesDocument {
   vatPercent   Decimal @default(0)
   vatAmount    Int     @default(0) // cents
   total        Int     @default(0) // cents
+
   subject            String?
   referenceNumber    String?
   notes              String? @db.Text
   internalNote       String? @db.Text
   termsAndConditions String? @db.Text
 
+  language String @default("en") // "en" | "ar" | "bi"
+
   // Email tracking
   emailSentAt    DateTime?
   emailSentCount Int       @default(0)
 
-  issueDate DateTime  @default(now())
-  dueDate   DateTime?
-  paidAt    DateTime?
+  issueDate  DateTime  @default(now())
+  dueDate    DateTime?
+  validUntil DateTime? // quotation expiry
+  paidAt     DateTime?
 
   // RFQ-specific
   rfqTitle   String?
@@ -699,6 +737,7 @@ model SalesDocument {
   @@index([status])
   @@index([issueDate])
   @@index([emailSentAt])
+  @@index([validUntil])
 }
 
 // ── Sales Document Line ───────────────────────────────────────────────────────
@@ -711,8 +750,11 @@ model SalesDocumentLine {
   product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
   description   String
+  descriptionAr String? // Arabic name override for this line only
   billingPeriod String? // MONTHLY | SIX_MONTHS | YEARLY | ONE_TIME | null
-  quantity      Decimal @default(1)
+  productDetails String? @db.Text // EN details override for this line only
+  detailsAr      String? @db.Text // AR details override for this line only
+  quantity    Decimal @default(1)
   unitPrice   Int     // cents
   discount    Decimal @default(0) // percentage 0–100
   lineTotal   Int     // cents, after discount

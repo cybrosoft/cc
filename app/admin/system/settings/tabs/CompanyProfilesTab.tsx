@@ -5,41 +5,44 @@ import { CLR } from "@/components/ui/admin-ui";
 import { inp, card, sectionTitle, Field, Row, SaveBar, TabHeader } from "./settings-ui";
 
 interface LegalInfo {
-  companyName?:         string;
-  companyNameAr?:       string;
-  registrationLabel?:   string;   // "CR No." / "EIN" / "Company No." etc.
-  registrationNumber?:  string;
-  taxLabel?:            string;   // "VAT No." / "Tax ID" / "GST No." etc.
-  taxNumber?:           string;
-  address1?:            string;
-  address1Ar?:          string;
-  address2?:            string;
-  district?:            string;
-  districtAr?:          string;
-  city?:                string;
-  cityAr?:              string;
-  state?:               string;   // US state, UK county, Indian state etc.
-  postalCode?:          string;
-  country?:             string;
-  countryAr?:           string;
-  countryCode?:         string;   // ISO 3166-1 alpha-2 e.g. SA, US, GB, AE
-  phone?:               string;
-  fax?:                 string;
-  email?:               string;
-  website?:             string;
+  companyName?:           string;
+  companyNameAr?:         string;
+  registrationLabel?:     string;
+  registrationNumber?:    string;
+  taxLabel?:              string;
+  taxNumber?:             string;
+  address1?:              string;
+  address1Ar?:            string;
+  address2?:              string;
+  district?:              string;
+  districtAr?:            string;
+  city?:                  string;
+  cityAr?:                string;
+  state?:                 string;
+  postalCode?:            string;
+  country?:               string;
+  countryAr?:             string;
+  countryCode?:           string;
+  phone?:                 string;
+  fax?:                   string;
+  email?:                 string;
+  website?:               string;
+  // ── NEW ──────────────────────────────────────────────────────────
+  footerText?:            string;
+  defaultPaymentTerms?:   string;
   bankDetails?: {
-    bankName?:        string;
-    bankNameAr?:      string;
-    accountName?:     string;
-    accountNameAr?:   string;
-    accountNumber?:   string;
-    iban?:            string;
-    swift?:           string;
-    currency?:        string;
-    branch?:          string;
-    branchAr?:        string;
-    routingNumber?:   string;   // US ACH routing
-    sortCode?:        string;   // UK sort code
+    bankName?:      string;
+    bankNameAr?:    string;
+    accountName?:   string;
+    accountNameAr?: string;
+    accountNumber?: string;
+    iban?:          string;
+    swift?:         string;
+    currency?:      string;
+    branch?:        string;
+    branchAr?:      string;
+    routingNumber?: string;
+    sortCode?:      string;
   };
 }
 
@@ -49,18 +52,25 @@ interface CompanyProfile {
 }
 
 interface Market {
-  id: string; key: string; name: string; defaultCurrency: string;
-  vatPercent: string | number | null;
+  id:             string;
+  key:            string;
+  name:           string;
+  defaultCurrency:string;
+  vatPercent:     string | number | null;
   legalInfo:      LegalInfo | null;
   companyProfile: CompanyProfile | null;
   paymentMethods: string[];
+  // ── NEW ──────────────────────────────────────────────────────────
+  stripePublicKey?: string;
+  stripeSecretKey?: string;
+  hasStripeSecret?: boolean;
+  showPayOnline?:   boolean;
 }
 
 const PAYMENT_OPTIONS = ["BANK_TRANSFER", "STRIPE", "CASH", "OTHER"];
 
-// Per-market default labels so the form pre-fills sensibly
 const MARKET_DEFAULTS: Record<string, Partial<LegalInfo>> = {
-  SA: { registrationLabel: "CR No.",  taxLabel: "VAT No.",  countryCode: "SA", country: "Saudi Arabia", countryAr: "المملكة العربية السعودية" },
+  SA: { registrationLabel: "CR No.",  taxLabel: "VAT No.",  countryCode: "SA", country: "Saudi Arabia",        countryAr: "المملكة العربية السعودية" },
   GL: { registrationLabel: "EIN",     taxLabel: "Tax ID",   countryCode: "US", country: "United States" },
   AE: { registrationLabel: "TRN",     taxLabel: "TRN",      countryCode: "AE", country: "United Arab Emirates" },
   GB: { registrationLabel: "Co. No.", taxLabel: "VAT No.",  countryCode: "GB", country: "United Kingdom" },
@@ -70,14 +80,34 @@ function getDefaults(marketKey: string): Partial<LegalInfo> {
   return MARKET_DEFAULTS[marketKey] ?? {};
 }
 
+function Toggle({ value, onChange, label: lbl }: {
+  value: boolean; onChange: (v: boolean) => void; label: string;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => onChange(!value)}>
+      <div style={{
+        width: 40, height: 22, background: value ? CLR.primary : "#d1d5db",
+        position: "relative", transition: "background 0.15s", flexShrink: 0,
+      }}>
+        <div style={{
+          position: "absolute", top: 3, left: value ? 21 : 3,
+          width: 16, height: 16, background: "#fff",
+          transition: "left 0.15s",
+        }} />
+      </div>
+      <span style={{ fontSize: 13, color: CLR.text }}>{lbl}</span>
+    </div>
+  );
+}
+
 export default function CompanyProfilesTab() {
-  const [markets, setMarkets]   = useState<Market[]>([]);
+  const [markets,  setMarkets]  = useState<Market[]>([]);
   const [activeId, setActiveId] = useState<string>("");
-  const [draft, setDraft]       = useState<Market | null>(null);
-  const [saving, setSaving]     = useState(false);
-  const [saved, setSaved]       = useState(false);
-  const [error, setError]       = useState("");
-  const [loading, setLoading]   = useState(true);
+  const [draft,    setDraft]    = useState<Market | null>(null);
+  const [saving,   setSaving]   = useState(false);
+  const [saved,    setSaved]    = useState(false);
+  const [error,    setError]    = useState("");
+  const [loading,  setLoading]  = useState(true);
 
   useEffect(() => {
     fetch("/api/admin/settings/markets")
@@ -90,16 +120,21 @@ export default function CompanyProfilesTab() {
         }
       })
       .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function normMarket(m: Market): Market {
     const defaults = getDefaults(m.key);
     return {
       ...m,
-      vatPercent:     m.vatPercent ?? 0,
-      legalInfo:      { ...defaults, ...(m.legalInfo ?? {}), bankDetails: (m.legalInfo as any)?.bankDetails ?? {} },
-      companyProfile: m.companyProfile ?? {},
-      paymentMethods: m.paymentMethods ?? [],
+      vatPercent:      m.vatPercent ?? 0,
+      legalInfo:       { ...defaults, ...(m.legalInfo ?? {}), bankDetails: (m.legalInfo as any)?.bankDetails ?? {} },
+      companyProfile:  m.companyProfile ?? {},
+      paymentMethods:  m.paymentMethods ?? [],
+      stripePublicKey: m.stripePublicKey ?? "",
+      stripeSecretKey: m.stripeSecretKey ?? "",
+      hasStripeSecret: m.hasStripeSecret ?? false,
+      showPayOnline:   m.showPayOnline   ?? false,
     };
   }
 
@@ -108,9 +143,9 @@ export default function CompanyProfilesTab() {
     if (m) { setActiveId(id); setDraft(normMarket(m)); setSaved(false); setError(""); }
   }
 
-  const li  = (k: keyof LegalInfo) => (draft?.legalInfo as any)?.[k] ?? "";
-  const bd  = (k: string) => (draft?.legalInfo as any)?.bankDetails?.[k] ?? "";
-  const cp  = (k: keyof CompanyProfile) => (draft?.companyProfile as any)?.[k] ?? "";
+  const li = (k: keyof LegalInfo)       => (draft?.legalInfo as any)?.[k]             ?? "";
+  const bd = (k: string)                => (draft?.legalInfo as any)?.bankDetails?.[k] ?? "";
+  const cp = (k: keyof CompanyProfile)  => (draft?.companyProfile as any)?.[k]         ?? "";
 
   function setLI(k: keyof LegalInfo, v: string) {
     setDraft(d => d ? { ...d, legalInfo: { ...d.legalInfo, [k]: v } } : d);
@@ -134,13 +169,19 @@ export default function CompanyProfilesTab() {
     setSaving(true); setError(""); setSaved(false);
     try {
       const res = await fetch(`/api/admin/settings/markets/${draft.id}`, {
-        method: "PATCH",
+        method:  "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          vatPercent:     draft.vatPercent,
-          legalInfo:      draft.legalInfo,
-          companyProfile: draft.companyProfile,
-          paymentMethods: draft.paymentMethods,
+          vatPercent:      draft.vatPercent,
+          legalInfo:       draft.legalInfo,
+          companyProfile:  draft.companyProfile,
+          paymentMethods:  draft.paymentMethods,
+          showPayOnline:   draft.showPayOnline,
+          stripePublicKey: draft.stripePublicKey || null,
+          // only send secret if it's a real new value — not the masked placeholder
+          ...(draft.stripeSecretKey && draft.stripeSecretKey !== "••••••••••••••••"
+            ? { stripeSecretKey: draft.stripeSecretKey }
+            : {}),
         }),
       });
       const data = await res.json();
@@ -154,16 +195,17 @@ export default function CompanyProfilesTab() {
   if (loading) return <div style={{ padding: 40, color: CLR.faint, fontSize: 13 }}>Loading…</div>;
   if (!draft)  return <div style={{ padding: 40, color: CLR.faint, fontSize: 13 }}>No markets found.</div>;
 
-  const isArabic = ["SA", "AE"].includes(draft.key);
+  const isArabic        = ["SA", "AE"].includes(draft.key);
+  const stripeConfigured = !!(draft.stripePublicKey) || (draft.hasStripeSecret ?? false);
 
   return (
     <div>
       <TabHeader
         title="Company Profiles"
-        description="Legal information, address, bank details and payment settings per market. All fields are stored in the database and used on generated documents."
+        description="Legal information, address, bank details and payment settings per market. All fields are used on generated documents."
       />
 
-      {/* Market selector tabs */}
+      {/* ── Market tabs ────────────────────────────────────────────────────── */}
       <div style={{ display: "flex", gap: 0, marginBottom: 20, border: "1px solid #e5e7eb", background: "#fff", flexWrap: "wrap" }}>
         {markets.map(m => (
           <button key={m.id} onClick={() => selectMarket(m.id)} style={{
@@ -171,7 +213,6 @@ export default function CompanyProfilesTab() {
             fontWeight: activeId === m.id ? 700 : 400,
             background: activeId === m.id ? CLR.primaryBg : "none",
             color: activeId === m.id ? CLR.primary : CLR.muted,
-            borderRight: "1px solid #e5e7eb",
             border: "none",
             borderBottom: activeId === m.id ? `2px solid ${CLR.primary}` : "2px solid transparent",
             cursor: "pointer", fontFamily: "inherit",
@@ -182,7 +223,7 @@ export default function CompanyProfilesTab() {
         ))}
       </div>
 
-      {/* ── Company Identity ──────────────────────────────────────────────── */}
+      {/* ── Company Identity ────────────────────────────────────────────────── */}
       <div style={card}>
         <p style={sectionTitle}>Company Identity</p>
         <Row>
@@ -213,7 +254,7 @@ export default function CompanyProfilesTab() {
         </Row>
       </div>
 
-      {/* ── Address ───────────────────────────────────────────────────────── */}
+      {/* ── Address ─────────────────────────────────────────────────────────── */}
       <div style={card}>
         <p style={sectionTitle}>Address</p>
         <Row>
@@ -276,7 +317,7 @@ export default function CompanyProfilesTab() {
         </Row>
       </div>
 
-      {/* ── Contact ───────────────────────────────────────────────────────── */}
+      {/* ── Contact ─────────────────────────────────────────────────────────── */}
       <div style={card}>
         <p style={sectionTitle}>Contact Information</p>
         <Row>
@@ -297,7 +338,7 @@ export default function CompanyProfilesTab() {
         </Row>
       </div>
 
-      {/* ── VAT / Tax Rate ────────────────────────────────────────────────── */}
+      {/* ── Tax Rate ────────────────────────────────────────────────────────── */}
       <div style={card}>
         <p style={sectionTitle}>Tax Rate</p>
         <Row>
@@ -313,7 +354,7 @@ export default function CompanyProfilesTab() {
         </Row>
       </div>
 
-      {/* ── Bank Details ──────────────────────────────────────────────────── */}
+      {/* ── Bank Details ────────────────────────────────────────────────────── */}
       <div style={card}>
         <p style={sectionTitle}>Bank Details</p>
         <p style={{ fontSize: 12, color: CLR.muted, marginBottom: 14 }}>
@@ -352,7 +393,10 @@ export default function CompanyProfilesTab() {
             <input style={{ ...inp, fontFamily: "monospace", textTransform: "uppercase" as const }} value={bd("swift")} onChange={e => setBD("swift", e.target.value.toUpperCase())} placeholder="RJHISARIXXX" />
           </Field>
           <Field label="Currency" half>
-            <input style={{ ...inp, fontFamily: "monospace", textTransform: "uppercase" as const }} value={bd("currency") || draft.defaultCurrency} onChange={e => setBD("currency", e.target.value.toUpperCase())} placeholder="SAR / USD / GBP" />
+            <input style={{ ...inp, fontFamily: "monospace", textTransform: "uppercase" as const }}
+              value={bd("currency") || draft.defaultCurrency}
+              onChange={e => setBD("currency", e.target.value.toUpperCase())}
+              placeholder="SAR / USD / GBP" />
           </Field>
         </Row>
         <Row>
@@ -365,7 +409,6 @@ export default function CompanyProfilesTab() {
             </Field>
           )}
         </Row>
-        {/* US / UK specific */}
         {!isArabic && (
           <Row>
             <Field label="Routing Number (US ACH)" half hint="9-digit ABA routing number for US bank transfers">
@@ -378,7 +421,26 @@ export default function CompanyProfilesTab() {
         )}
       </div>
 
-      {/* ── Payment Methods ───────────────────────────────────────────────── */}
+      {/* ── Document Defaults ── NEW ─────────────────────────────────────────── */}
+      <div style={card}>
+        <p style={sectionTitle}>Document Defaults</p>
+        <Field label="Default Terms & Conditions" hint="Pre-filled on all new documents. Admin can edit per document before sending.">
+          <textarea
+            style={{ ...inp, resize: "vertical" as const, minHeight: 90 }}
+            value={li("defaultPaymentTerms")}
+            onChange={e => setLI("defaultPaymentTerms", e.target.value)}
+            placeholder="Payment due within 14 days of invoice date. Late payments subject to a 2% monthly finance charge."
+          />
+        </Field>
+        <Field label="Document Footer Text" hint="Appears at the bottom of all generated documents.">
+          <input style={inp}
+            value={li("footerText")}
+            onChange={e => setLI("footerText", e.target.value)}
+            placeholder={`${li("companyName") || "Company Name"} · ${li("email") || "email"} · ${li("phone") || "phone"}`} />
+        </Field>
+      </div>
+
+      {/* ── Payment Methods ──────────────────────────────────────────────────── */}
       <div style={card}>
         <p style={sectionTitle}>Accepted Payment Methods</p>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -401,12 +463,49 @@ export default function CompanyProfilesTab() {
         </div>
         {draft.defaultCurrency === "USD" && (
           <p style={{ fontSize: 11, color: CLR.faint, marginTop: 8 }}>
-            Stripe requires API keys configured in environment variables.
+            Stripe requires API keys configured below.
           </p>
         )}
       </div>
 
-      {/* ── Branding ──────────────────────────────────────────────────────── */}
+      {/* ── Online Payment (Stripe) ── NEW ───────────────────────────────────── */}
+      <div style={card}>
+        <p style={sectionTitle}>Online Payment (Stripe)</p>
+        <div style={{ marginBottom: 16 }}>
+          <Toggle
+            value={draft.showPayOnline ?? false}
+            onChange={v => setDraft(d => d ? { ...d, showPayOnline: v } : d)}
+            label="Show Pay Online button on documents for this market"
+          />
+          <p style={{ fontSize: 11, color: CLR.faint, marginTop: 6, marginLeft: 50 }}>
+            Only visible on documents when Stripe keys are configured below. Customers pay outstanding balance directly from the document.
+          </p>
+        </div>
+        {draft.showPayOnline && !stripeConfigured && (
+          <div style={{ padding: "8px 12px", background: "#fef3c7", border: "1px solid #fcd34d", fontSize: 12, color: "#92400e", marginBottom: 14 }}>
+            Pay Online is enabled but Stripe keys are not yet configured — the button will not appear on documents until keys are added.
+          </div>
+        )}
+        <Row>
+          <Field label="Stripe Publishable Key (pk_...)" half hint="Safe to expose — used client-side on payment forms.">
+            <input
+              style={{ ...inp, fontFamily: "monospace", fontSize: 12 }}
+              value={draft.stripePublicKey ?? ""}
+              onChange={e => setDraft(d => d ? { ...d, stripePublicKey: e.target.value.trim() } : d)}
+              placeholder="pk_live_..." />
+          </Field>
+          <Field label="Stripe Secret Key (sk_...)" half hint="Never exposed to customers. Use a restricted key with invoice:write scope only.">
+            <input
+              style={{ ...inp, fontFamily: "monospace", fontSize: 12 }}
+              type="password"
+              value={draft.stripeSecretKey ?? ""}
+              onChange={e => setDraft(d => d ? { ...d, stripeSecretKey: e.target.value.trim() } : d)}
+              placeholder={draft.hasStripeSecret ? "••••••••  (saved — type to replace)" : "sk_live_..."} />
+          </Field>
+        </Row>
+      </div>
+
+      {/* ── Branding ────────────────────────────────────────────────────────── */}
       <div style={card}>
         <p style={sectionTitle}>Document Branding</p>
         <Row>

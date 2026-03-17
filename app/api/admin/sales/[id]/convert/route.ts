@@ -1,60 +1,88 @@
 // app/api/admin/sales/[id]/convert/route.ts
-// Converts a source document (RFQ / Quotation / Proforma / PO) into a new
-// target document type, copying lines + customer + market.
-// The origin doc gets status CONVERTED (unless it's an RFQ → QUOTED).
-
+// POST — converts a document to another type.
+// Marks source as CONVERTED, creates new doc copying lines + customer + market.
+export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/require-admin";
-import { createSalesDocument } from "../../shared/create-document";
-import type { SalesDocumentType, SalesDocumentStatus } from "@prisma/client";
+import { createDocument } from "@/lib/sales/create-document";
+import { SalesDocumentType } from "@prisma/client";
 
-type Params = { params: { id: string } };
+const CONVERT_OPTIONS: Record<string, SalesDocumentType[]> = {
+  RFQ:           ["QUOTATION","PROFORMA","DELIVERY_NOTE","INVOICE"],
+  QUOTATION:     ["PROFORMA","DELIVERY_NOTE","INVOICE"],
+  PO:            ["INVOICE"],
+  DELIVERY_NOTE: ["PROFORMA","INVOICE"],
+  PROFORMA:      ["DELIVERY_NOTE","INVOICE"],
+  INVOICE:       ["CREDIT_NOTE"],
+};
 
-export async function POST(req: NextRequest, { params }: Params) {
+export async function POST(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
   try {
-    await requireAdmin();
-    const { targetType } = await req.json() as { targetType: SalesDocumentType };
+    const auth = await requireAdmin();
+    if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    if (!targetType) {
-      return NextResponse.json({ error: "targetType is required" }, { status: 400 });
+    const { id } = await context.params;
+    const body = await req.json().catch(() => null);
+    const targetType: SalesDocumentType = body?.targetType;
+
+    if (!targetType) return NextResponse.json({ error: "targetType required" }, { status: 400 });
+
+    const source = await prisma.salesDocument.findUnique({
+      where: { id },
+      include: {
+        lines: { orderBy: { sortOrder: "asc" } },
+      },
+    });
+
+    if (!source) return NextResponse.json({ error: "Document not found" }, { status: 404 });
+    if (source.status === "VOID") return NextResponse.json({ error: "Cannot convert a voided document" }, { status: 400 });
+    if (source.status === "CONVERTED") return NextResponse.json({ error: "Document already converted" }, { status: 400 });
+
+    const allowed = CONVERT_OPTIONS[source.type] ?? [];
+    if (!allowed.includes(targetType)) {
+      return NextResponse.json({
+        error: `Cannot convert ${source.type} to ${targetType}. Allowed: ${allowed.join(", ")}`,
+      }, { status: 400 });
     }
 
-    // Load source doc with lines
-    const source = await prisma.salesDocument.findUniqueOrThrow({
-      where:   { id: params.id },
-      include: { lines: { orderBy: { sortOrder: "asc" } } },
-    });
-
-    // Create the new doc (copy lines + origin pointer)
-    const newDoc = await createSalesDocument({
+    // Create new document copying lines from source
+    const newDoc = await createDocument({
       type:        targetType,
-      customerId:  source.customerId,
       marketId:    source.marketId,
+      customerId:  source.customerId,
+      createdByAdminId: auth.user.id,
       originDocId: source.id,
-      lines: source.lines.map((l) => ({
-        productId:   l.productId ?? undefined,
-        description: l.description,
-        quantity:    Number(l.quantity),
-        unitPrice:   l.unitPrice,
-        discount:    Number(l.discount),
-        sortOrder:   l.sortOrder,
+      subject:     source.subject,
+      referenceNumber: source.referenceNumber,
+      notes:       source.notes,
+      internalNote:source.internalNote,
+      termsAndConditions: source.termsAndConditions,
+      language:    source.language,
+      lines: source.lines.map(l => ({
+        productId:     l.productId,
+        description:   l.description,
+        descriptionAr: l.descriptionAr ?? null,
+        billingPeriod: l.billingPeriod ?? null,
+        productDetails:l.productDetails ?? null,
+        detailsAr:     l.detailsAr ?? null,
+        quantity:      Number(l.quantity),
+        unitPrice:     l.unitPrice,
+        discount:      Number(l.discount),
       })),
-      notes:       source.notes ?? undefined,
-      internalNote:source.internalNote ?? undefined,
     });
 
-    // Update source status
-    const nextStatus: SalesDocumentStatus =
-      source.type === "RFQ" && targetType === "QUOTATION" ? "CONVERTED" : "CONVERTED";
-
+    // Mark source as CONVERTED
     await prisma.salesDocument.update({
       where: { id: source.id },
-      data:  { status: nextStatus },
+      data:  { status: "CONVERTED" },
     });
 
-    return NextResponse.json({ doc: newDoc }, { status: 201 });
+    return NextResponse.json({ ok: true, doc: newDoc });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: e.status ?? 500 });
+    return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }

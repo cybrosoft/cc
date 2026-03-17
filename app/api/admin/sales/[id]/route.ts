@@ -21,11 +21,13 @@ export async function GET(
           select: {
             id: true, fullName: true, email: true, mobile: true,
             customerNumber: true, companyName: true,
+            vatTaxId: true, commercialRegistrationNumber: true,
+            addressLine1: true, addressLine2: true,
+            city: true, province: true, country: true, district: true,
             market: {
               select: {
                 id: true, key: true, name: true,
                 defaultCurrency: true, vatPercent: true,
-                legalInfo: true,
               },
             },
           },
@@ -34,22 +36,33 @@ export async function GET(
           select: {
             id: true, key: true, name: true,
             defaultCurrency: true, vatPercent: true,
-            legalInfo: true,
+            legalInfo: true, companyProfile: true,
+            showPayOnline: true, stripePublicKey: true,
+            // stripeSecretKey intentionally excluded
           },
         },
         lines: {
           orderBy: { sortOrder: "asc" },
           include: {
-            product: { select: { id: true, key: true, name: true, nameAr: true } },
+            product: {
+              select: { id: true, key: true, name: true, nameAr: true },
+            },
           },
         },
-        payments: { orderBy: { paidAt: "desc" } },
-        originDoc: { select: { id: true, docNum: true, type: true } },
-        derivedDocs: { select: { id: true, docNum: true, type: true, status: true } },
+        payments: {
+          orderBy: { paidAt: "desc" },
+        },
+        originDoc: {
+          select: { id: true, docNum: true, type: true, status: true },
+        },
+        derivedDocs: {
+          select: { id: true, docNum: true, type: true, status: true },
+          orderBy: { createdAt: "asc" },
+        },
       },
     });
 
-    if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!doc) return NextResponse.json({ error: "Document not found" }, { status: 404 });
 
     return NextResponse.json({ ok: true, doc });
   } catch (e: any) {

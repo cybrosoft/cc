@@ -1009,10 +1009,11 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
   // FIX 1: Read VAT from market.vatPercent — not hardcoded key check
   const vatPercent = customer ? Number(customer.market.vatPercent ?? 0) : 0;
 
-  const [subject, setSubject]     = useState("");
-  const [issueDate, setIssueDate] = useState(todayISO());
-  const [dueDate, setDueDate]     = useState("");
-  const [refNum, setRefNum]       = useState("");
+  const [subject, setSubject]       = useState("");
+  const [issueDate, setIssueDate]   = useState(todayISO());
+  const [dueDate, setDueDate]       = useState("");
+  const [validUntil, setValidUntil] = useState("");
+  const [refNum, setRefNum]         = useState("");
   const [lines, setLines]         = useState<LineItem[]>([]);
   const [notes, setNotes]         = useState("");
   const [intNote, setIntNote]     = useState("");
@@ -1083,6 +1084,17 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
 
   useEffect(() => { setLines([]); }, [customer]);
 
+  // Auto-compute validUntil for QUOTATION (30 days from issueDate) unless already set
+  useEffect(() => {
+    if (docType !== "QUOTATION") return;
+    if (validUntil) return;
+    if (!issueDate) return;
+    const d = new Date(issueDate);
+    d.setDate(d.getDate() + 30);
+    setValidUntil(d.toISOString().split("T")[0]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [issueDate, docType]);
+
   const label = TYPE_LABEL[docType] ?? docType;
 
   const inp: React.CSSProperties = { width: "100%", padding: "9px 12px", fontSize: 13, border: "1px solid #d1d5db", fontFamily: "inherit", outline: "none" };
@@ -1101,6 +1113,7 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
         notes: notes || null, internalNote: intNote || null,
         termsAndConditions: terms || null,
         issueDate, dueDate: dueDate || null,
+        ...(docType === "QUOTATION" ? { validUntil: validUntil || null } : {}),
         lines: lines.map(l => ({
           productId:      l.productId ?? null,
           description:    l.description,
@@ -1167,6 +1180,13 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
                 <label style={fl}>Due Date (optional)</label>
                 <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} style={inp} />
               </div>
+              {docType === "QUOTATION" && (
+                <div>
+                  <label style={fl}>Valid Until</label>
+                  <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} style={inp} />
+                  <p style={{ fontSize: 11, color: CLR.faint, marginTop: 3 }}>Auto-set to 30 days from issue date. Edit to override.</p>
+                </div>
+              )}
               <div>
                 <label style={fl}>Reference Number</label>
                 <input value={refNum} onChange={e => setRefNum(e.target.value)}
