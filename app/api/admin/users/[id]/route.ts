@@ -29,7 +29,7 @@ export async function GET(
       companyName: true, vatTaxId: true, commercialRegistrationNumber: true,
       notePublic: true, notePrivate: true,
       customerNumber: true, createdAt: true,
-      market:        { select: { id: true, key: true, name: true } },
+      market:        { select: { id: true, key: true, name: true, defaultCurrency: true, vatPercent: true } },
       customerGroup: { select: { id: true, key: true, name: true } },
       tags:          { select: { id: true, key: true, name: true } },
       subscriptions: { select: { id: true, status: true } },
@@ -51,55 +51,60 @@ export async function PATCH(
     return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
   const { id: userId } = await params;
-  const body = await req.json().catch(() => null);
-  if (!body) return NextResponse.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
 
-  const email = body.email?.trim().toLowerCase();
-  if (!email)         return NextResponse.json({ ok: false, error: "Email is required" },  { status: 400 });
-  if (!body.marketId) return NextResponse.json({ ok: false, error: "Market is required" }, { status: 400 });
+  const body = (await req.json().catch(() => null)) as {
+    marketId?:                     string;
+    customerGroupId?:              string | null;
+    fullName?:                     string | null;
+    mobile?:                       string | null;
+    accountType?:                  AccountType | null;
+    country?:                      string | null;
+    province?:                     string | null;
+    companyName?:                  string | null;
+    vatTaxId?:                     string | null;
+    commercialRegistrationNumber?: string | null;
+    addressLine1?:                 string | null;
+    addressLine2?:                 string | null;
+    district?:                     string | null;
+    city?:                         string | null;
+    notePublic?:                   string | null;
+    notePrivate?:                  string | null;
+  } | null;
 
-  if (body.accountType && !VALID_ACCOUNT_TYPES.includes(body.accountType))
+  if (!body) return NextResponse.json({ ok: false, error: "No body" }, { status: 400 });
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  if (!user) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+
+  if (body.accountType && !VALID_ACCOUNT_TYPES.includes(body.accountType)) {
     return NextResponse.json({ ok: false, error: "Invalid accountType" }, { status: 400 });
-
-  const existing = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, role: true } });
-  if (!existing) return NextResponse.json({ ok: false, error: "User not found" }, { status: 404 });
-
-  const conflict = await prisma.user.findFirst({ where: { email, NOT: { id: userId } } });
-  if (conflict) return NextResponse.json({ ok: false, error: "Email already in use" }, { status: 409 });
-
-  const isBusiness = (body.accountType ?? "BUSINESS") === "BUSINESS";
+  }
 
   const updated = await prisma.user.update({
     where: { id: userId },
     data: {
-      email,
-      marketId:        body.marketId,
-      customerGroupId: body.customerGroupId ?? null,
-      fullName:        body.fullName  ?? null,
-      mobile:          body.mobile    ?? null,
-      accountType:     body.accountType ?? "BUSINESS",
-      country:         body.country   ?? null,
-      province:        body.province  ?? null,
-      city:            body.city      ?? null,
-      district:        body.district  ?? null,
-      addressLine1:    body.addressLine1 ?? null,
-      addressLine2:    body.addressLine2 ?? null,
-      companyName:                  isBusiness ? (body.companyName  ?? null) : null,
-      vatTaxId:                     isBusiness ? (body.vatTaxId     ?? null) : null,
-      commercialRegistrationNumber: isBusiness ? (body.commercialRegistrationNumber ?? null) : null,
-      notePublic:  body.publicNote  ?? null,
-      notePrivate: body.privateNote ?? null,
+      ...(body.marketId                     !== undefined ? { marketId:                     body.marketId }                     : {}),
+      ...(body.customerGroupId              !== undefined ? { customerGroupId:              body.customerGroupId }              : {}),
+      ...(body.fullName                     !== undefined ? { fullName:                     body.fullName }                     : {}),
+      ...(body.mobile                       !== undefined ? { mobile:                       body.mobile }                       : {}),
+      ...(body.accountType                  !== undefined ? { accountType:                  body.accountType }                  : {}),
+      ...(body.country                      !== undefined ? { country:                      body.country }                      : {}),
+      ...(body.province                     !== undefined ? { province:                     body.province }                     : {}),
+      ...(body.companyName                  !== undefined ? { companyName:                  body.companyName }                  : {}),
+      ...(body.vatTaxId                     !== undefined ? { vatTaxId:                     body.vatTaxId }                     : {}),
+      ...(body.commercialRegistrationNumber !== undefined ? { commercialRegistrationNumber: body.commercialRegistrationNumber } : {}),
+      ...(body.addressLine1                 !== undefined ? { addressLine1:                 body.addressLine1 }                 : {}),
+      ...(body.addressLine2                 !== undefined ? { addressLine2:                 body.addressLine2 }                 : {}),
+      ...(body.district                     !== undefined ? { district:                     body.district }                     : {}),
+      ...(body.city                         !== undefined ? { city:                         body.city }                         : {}),
+      ...(body.notePublic                   !== undefined ? { notePublic:                   body.notePublic }                   : {}),
+      ...(body.notePrivate                  !== undefined ? { notePrivate:                  body.notePrivate }                  : {}),
     },
-    select: { id: true, email: true },
+    select: {
+      id: true, email: true, fullName: true, customerNumber: true,
+      market: { select: { id: true, key: true, name: true, defaultCurrency: true, vatPercent: true } },
+    },
   });
-
-  // Update tags if provided
-  if (Array.isArray(body.tagIds)) {
-    await prisma.user.update({
-      where: { id: userId },
-      data: { tags: { set: body.tagIds.map((id: string) => ({ id })) } },
-    });
-  }
 
   await prisma.auditLog.create({
     data: {
@@ -107,7 +112,7 @@ export async function PATCH(
       action:       "CUSTOMER_UPDATED",
       entityType:   "User",
       entityId:     userId,
-      metadataJson: JSON.stringify({ email }),
+      metadataJson: JSON.stringify(body),
     },
   });
 

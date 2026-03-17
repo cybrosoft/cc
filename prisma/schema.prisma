@@ -234,13 +234,13 @@ model User {
   salesDocuments SalesDocument[]
   notifications  Notification[]
 
-  // NEW Step 9 — Notification preferences
+  // Step 9 — Notification preferences
   notifPrefs Json?   // { "INVOICE_ISSUED": { email: true, sms: false, inapp: true }, ... }
   timezone   String? // IANA e.g. "Asia/Riyadh"
-  dndStart   Int?    // DND hour start 0-23 (e.g. 22 = 10pm)
-  dndEnd     Int?    // DND hour end   0-23 (e.g. 8  = 8am)
+  dndStart   Int?    // DND hour start 0-23
+  dndEnd     Int?    // DND hour end   0-23
 
-  // NEW Step 9 — Broadcasts created by this admin
+  // Step 9 — Broadcasts created by this admin
   broadcastsCreated NotificationBroadcast[] @relation("BroadcastCreatedBy")
 
   createdAt DateTime @default(now())
@@ -666,13 +666,15 @@ model SalesDocument {
   vatPercent   Decimal @default(0)
   vatAmount    Int     @default(0) // cents
   total        Int     @default(0) // cents
-
-  // NEW Step 7
   subject            String?
   referenceNumber    String?
   notes              String? @db.Text
   internalNote       String? @db.Text
   termsAndConditions String? @db.Text
+
+  // Email tracking
+  emailSentAt    DateTime?
+  emailSentCount Int       @default(0)
 
   issueDate DateTime  @default(now())
   dueDate   DateTime?
@@ -696,6 +698,7 @@ model SalesDocument {
   @@index([type])
   @@index([status])
   @@index([issueDate])
+  @@index([emailSentAt])
 }
 
 // ── Sales Document Line ───────────────────────────────────────────────────────
@@ -763,9 +766,9 @@ model Notification {
   emailSent   Boolean   @default(false)
   emailSentAt DateTime?
 
-  // NEW Step 9
-  eventType      String?   // INVOICE_ISSUED | SUB_EXPIRING | etc.
-  channel        String?   // "inapp" | "email" | "sms"
+  // Step 9
+  eventType      String?
+  channel        String?
   smsSent        Boolean   @default(false)
   smsSentAt      DateTime?
   smsDelivered   Boolean   @default(false)
@@ -805,6 +808,9 @@ model PortalPage {
 }
 
 // ── Portal Settings ───────────────────────────────────────────────────────────
+// Generic key-value store for all admin-configurable settings
+// Key examples: "smtp.host", "smtp.port", "smtp.user", "smtp.pass",
+//               "portal.name", "portal.logoUrl", "portal.supportEmail"
 model PortalSetting {
   id    String @id @default(cuid())
   key   String @unique
@@ -815,15 +821,14 @@ model PortalSetting {
   @@index([key])
 }
 
+
 //////////////////////////////////////////////////////
-// NEW MODELS — Step 9
+// Step 9 — Notification System
 //////////////////////////////////////////////////////
 
-// Admin-editable templates per notification event type.
-// One template covers both email (HTML) and SMS (plain text).
 model NotificationTemplate {
   id           String  @id @default(cuid())
-  eventType    String  @unique // system key — immutable
+  eventType    String  @unique
   name         String
   emailSubject String  @default("")
   emailBody    String  @db.Text @default("")
@@ -841,7 +846,6 @@ model NotificationTemplate {
   @@index([isActive])
 }
 
-// Admin manual broadcast — tracks group sends.
 model NotificationBroadcast {
   id            String   @id @default(cuid())
   title         String
@@ -849,7 +853,7 @@ model NotificationBroadcast {
   emailSubject  String?
   smsBody       String?
   broadcastType String   @default("ESSENTIAL") // "ESSENTIAL" | "MARKETING"
-  channels      String[] // ["inapp", "email", "sms"]
+  channels      String[]
   targetType    String   // "customer" | "group" | "market" | "tag" | "all"
   targetId      String?
 

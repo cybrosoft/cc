@@ -228,9 +228,9 @@ export function CustomerSearch({ value, onChange }: { value: Customer | null; on
                     <span style={{ fontWeight: 600, fontSize: 13 }}>{c.fullName ?? c.email}</span>
                     <span style={{
                       fontSize: 10, fontWeight: 700, padding: "1px 6px",
-                      background: c.market.key === "SA" ? "#dcfce7" : "#eff6ff",
-                      color: c.market.key === "SA" ? "#15803d" : "#1d4ed8",
-                      border: `1px solid ${c.market.key === "SA" ? "#86efac" : "#bfdbfe"}`,
+                      background: c.market.key === "SAUDI" ? "#dcfce7" : "#eff6ff",
+                      color: c.market.key === "SAUDI" ? "#15803d" : "#1d4ed8",
+                      border: `1px solid ${c.market.key === "SAUDI" ? "#86efac" : "#bfdbfe"}`,
                     }}>
                       {c.market.key} · {c.market.defaultCurrency}
                     </span>
@@ -410,7 +410,6 @@ export function LineItemsEditor({
     background: readOnly ? "#f9fafb" : "#fff",
   };
 
-  // cols: product-id | description | ▼ | period | qty | unit-price | disc% | total | ✕
   const grid = "88px 1fr 22px 110px 58px 100px 58px 100px 24px";
 
   return (
@@ -443,21 +442,18 @@ export function LineItemsEditor({
         )}
 
         {lines.map((line, i) => {
-          // Product lines search eligible only; full catalog lines include allProducts for lookup
           const searchPool = line.isNonInventory ? [] : eligibleProducts;
           const lookupPool = [...eligibleProducts, ...allProducts];
           const prod = lookupPool.find(p => p.id === line.productId);
 
           return (
             <React.Fragment key={i}>
-              {/* Main row */}
               <div style={{
                 display: "grid", gridTemplateColumns: grid, gap: "0 2px",
                 borderBottom: line.showDetails ? "none" : "1px solid #f3f4f6",
                 alignItems: "center",
                 background: line.showDetails ? "#fffef9" : undefined,
               }}>
-
                 {/* Product ID */}
                 <div style={{ padding: "5px 5px", position: "relative" }}>
                   {readOnly
@@ -490,17 +486,12 @@ export function LineItemsEditor({
                   }
                 </div>
 
-                {/* Details toggle ▼ */}
+                {/* Details toggle */}
                 <div style={{ padding: "5px 2px", textAlign: "center" as const }}>
                   <button
                     onClick={() => patchLine(i, { showDetails: !line.showDetails })}
                     title="Toggle Arabic name and product details"
-                    style={{
-                      background: "none", border: "none", cursor: "pointer",
-                      fontSize: 11, color: line.showDetails ? CLR.primary : CLR.faint,
-                      padding: 0, lineHeight: 1,
-                    }}
-                  >
+                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: line.showDetails ? CLR.primary : CLR.faint, padding: 0, lineHeight: 1 }}>
                     {line.showDetails ? "▲" : "▼"}
                   </button>
                 </div>
@@ -555,33 +546,23 @@ export function LineItemsEditor({
               {line.showDetails && (
                 <div style={{ borderBottom: "1px solid #f3f4f6", background: "#fffef9", padding: "12px 14px" }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: CLR.primary, letterSpacing: "0.04em", marginBottom: 10, textTransform: "uppercase" as const }}>
-                    ✎ Line-level overrides — these edits apply to this document only and will NOT change the product catalog
+                    Line-level overrides — these edits apply to this document only and will NOT change the product catalog
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                     <div>
-                      <label style={{ fontSize: 10, fontWeight: 600, color: CLR.muted, display: "block", marginBottom: 3, textTransform: "uppercase" as const }}>
-                        Arabic Name (this line only)
-                      </label>
-                      <input value={line.descriptionAr}
-                        onChange={e => patchLine(i, { descriptionAr: e.target.value })}
-                        disabled={readOnly} dir="rtl" placeholder="الاسم بالعربية…"
-                        style={{ ...txtInp }} />
+                      <label style={{ fontSize: 10, fontWeight: 600, color: CLR.muted, display: "block", marginBottom: 3, textTransform: "uppercase" as const }}>Arabic Name (this line only)</label>
+                      <input value={line.descriptionAr} onChange={e => patchLine(i, { descriptionAr: e.target.value })}
+                        disabled={readOnly} dir="rtl" placeholder="الاسم بالعربية…" style={txtInp} />
                     </div>
                     <div>
-                      <label style={{ fontSize: 10, fontWeight: 600, color: CLR.muted, display: "block", marginBottom: 3, textTransform: "uppercase" as const }}>
-                        Details EN (this line only)
-                      </label>
-                      <textarea value={line.productDetails}
-                        onChange={e => patchLine(i, { productDetails: e.target.value })}
+                      <label style={{ fontSize: 10, fontWeight: 600, color: CLR.muted, display: "block", marginBottom: 3, textTransform: "uppercase" as const }}>Details EN (this line only)</label>
+                      <textarea value={line.productDetails} onChange={e => patchLine(i, { productDetails: e.target.value })}
                         disabled={readOnly} rows={2} placeholder="Product details in English…"
                         style={{ ...txtInp, resize: "vertical" }} />
                     </div>
                     <div style={{ gridColumn: "1/-1" }}>
-                      <label style={{ fontSize: 10, fontWeight: 600, color: CLR.muted, display: "block", marginBottom: 3, textTransform: "uppercase" as const }}>
-                        Details AR (this line only)
-                      </label>
-                      <textarea value={line.detailsAr}
-                        onChange={e => patchLine(i, { detailsAr: e.target.value })}
+                      <label style={{ fontSize: 10, fontWeight: 600, color: CLR.muted, display: "block", marginBottom: 3, textTransform: "uppercase" as const }}>Details AR (this line only)</label>
+                      <textarea value={line.detailsAr} onChange={e => patchLine(i, { detailsAr: e.target.value })}
                         disabled={readOnly} rows={2} dir="rtl" placeholder="تفاصيل المنتج بالعربية…"
                         style={{ ...txtInp, resize: "vertical" }} />
                     </div>
@@ -603,21 +584,18 @@ export function LineItemsEditor({
             + Add Non-Inventory Item
           </button>
           {eligibleProducts.length > 0 && (
-            <button onClick={addAllEligible}
-              title="Add all products available for this customer's market & group"
+            <button onClick={addAllEligible} title="Add all products available for this customer's market & group"
               style={{ fontSize: 12, fontWeight: 600, padding: "6px 14px", background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac", cursor: "pointer", fontFamily: "inherit" }}>
               + Add All Available ({eligibleProducts.length})
             </button>
           )}
-          <button onClick={() => setShowCatalogPicker(true)}
-            title="Pick a product from the full catalog (shows only products not in eligible list)"
+          <button onClick={() => setShowCatalogPicker(true)} title="Pick a product from the full catalog"
             style={{ fontSize: 12, fontWeight: 600, padding: "6px 14px", background: "#f5f3ff", color: "#7c3aed", border: "1px solid #ddd6fe", cursor: "pointer", fontFamily: "inherit" }}>
             + From Full Catalog
           </button>
         </div>
       )}
 
-      {/* Catalog picker modal */}
       {showCatalogPicker && (
         <CatalogPickerModal
           allProducts={allProducts}
@@ -665,8 +643,7 @@ function ProductIDCell({ value, products, onSelect, onChange }: {
           width: "100%", padding: "6px 7px", fontSize: 11, fontFamily: "monospace",
           border: `1px solid ${value ? CLR.primary : "#d1d5db"}`,
           background: value ? CLR.primaryBg : "#fff",
-          color: CLR.primary, outline: "none",
-          boxSizing: "border-box" as const,
+          color: CLR.primary, outline: "none", boxSizing: "border-box" as const,
         }}
       />
       {open && (
@@ -702,11 +679,7 @@ function DescriptionCell({ value, products, onSelect, onChange }: {
         onChange={e => { onChange(e.target.value); setOpen(true); }}
         onFocus={() => { if (value.length > 1) setOpen(true); }}
         placeholder="Description or search product name…"
-        style={{
-          width: "100%", padding: "6px 8px", fontSize: 12,
-          border: "1px solid #d1d5db", fontFamily: "inherit",
-          outline: "none", boxSizing: "border-box" as const,
-        }}
+        style={{ width: "100%", padding: "6px 8px", fontSize: 12, border: "1px solid #d1d5db", fontFamily: "inherit", outline: "none", boxSizing: "border-box" as const }}
       />
       {open && filtered.length > 0 && (
         <ProductPicker
@@ -719,15 +692,13 @@ function DescriptionCell({ value, products, onSelect, onChange }: {
   );
 }
 
-// ── Period cell — always N/A + all 4 periods; green when priced ─────────────
+// ── Period cell ─────────────────────────────────────────────────────────────
 
 function PeriodCell({ value, prod, currency, readOnly, onChange }: {
   value: string; prod?: EligibleProduct;
   currency: string; readOnly?: boolean;
   onChange: (p: string) => void;
 }) {
-  // Auto-select best period when product is linked:
-  // 1st: first period that has a price, 2nd: first period in billingPeriods[], 3rd: N/A ("")
   useEffect(() => {
     if (value) return;
     const firstPriced = PERIOD_ORDER.find(p => prod?.prices.find(pr => pr.billingPeriod === p));
@@ -763,9 +734,7 @@ function PeriodCell({ value, prod, currency, readOnly, onChange }: {
       {PERIOD_ORDER.map(p => {
         const pr = prod?.prices.find(pr2 => pr2.billingPeriod === p);
         return (
-          <option key={p} value={p}
-            style={{ color: pr ? "#15803d" : "#9ca3af", fontWeight: pr ? 600 : 400 }}
-          >
+          <option key={p} value={p} style={{ color: pr ? "#15803d" : "#9ca3af", fontWeight: pr ? 600 : 400 }}>
             {pr ? "✓ " : ""}{PERIOD_LABEL[p]}{pr ? ` — ${fmtAmount(pr.priceCents, currency)}` : "  (no price)"}
           </option>
         );
@@ -774,19 +743,14 @@ function PeriodCell({ value, prod, currency, readOnly, onChange }: {
   );
 }
 
-// ── Catalog Picker Modal — shows products NOT in eligible list ────────────
+// ── Catalog Picker Modal ───────────────────────────────────────────────────
 
 function CatalogPickerModal({ allProducts, eligibleProducts, currency, onSelect, onClose }: {
-  allProducts: EligibleProduct[];
-  eligibleProducts: EligibleProduct[];
-  currency: string;
-  onSelect: (p: EligibleProduct) => void;
-  onClose: () => void;
+  allProducts: EligibleProduct[]; eligibleProducts: EligibleProduct[];
+  currency: string; onSelect: (p: EligibleProduct) => void; onClose: () => void;
 }) {
   const [q, setQ] = useState("");
   const eligibleIds = new Set(eligibleProducts.map(p => p.id));
-
-  // Show only products NOT in the eligible list
   const catalogOnly = allProducts.filter(p => !eligibleIds.has(p.id));
   const filtered = catalogOnly.filter(p =>
     !q
@@ -802,8 +766,7 @@ function CatalogPickerModal({ allProducts, eligibleProducts, currency, onSelect,
           Showing {catalogOnly.length} products not in this customer's eligible list.
           These products have no pricing for the customer's market/group — you can set price manually after adding.
         </p>
-        <input
-          autoFocus value={q} onChange={e => setQ(e.target.value)}
+        <input autoFocus value={q} onChange={e => setQ(e.target.value)}
           placeholder="Search by product ID or name…"
           style={{ width: "100%", padding: "9px 12px", fontSize: 13, border: "1px solid #d1d5db", fontFamily: "inherit", outline: "none", marginBottom: 12, boxSizing: "border-box" as const }}
         />
@@ -814,8 +777,7 @@ function CatalogPickerModal({ allProducts, eligibleProducts, currency, onSelect,
         ) : (
           <div style={{ maxHeight: 360, overflowY: "auto", border: "1px solid #e5e7eb" }}>
             {filtered.map(p => (
-              <div key={p.id}
-                onClick={() => onSelect(p)}
+              <div key={p.id} onClick={() => onSelect(p)}
                 style={{ padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}
                 onMouseEnter={e => (e.currentTarget.style.background = "#f9fafb")}
                 onMouseLeave={e => (e.currentTarget.style.background = "")}>
@@ -842,7 +804,6 @@ function CatalogPickerModal({ allProducts, eligibleProducts, currency, onSelect,
     </Overlay>
   );
 }
-
 
 function TRow({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
   return (
@@ -941,7 +902,7 @@ function fmtDate(d: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Filters Bar
+// Filters Bar — FIX 2: market keys updated to SAUDI / GLOBAL
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function SalesFilters({ q, setQ, status, setStatus, marketKey, setMarketKey, statuses }: {
@@ -958,8 +919,8 @@ export function SalesFilters({ q, setQ, status, setStatus, marketKey, setMarketK
       </select>
       <select value={marketKey} onChange={e => setMarketKey(e.target.value)} style={inp}>
         <option value="">All Markets</option>
-        <option value="SA">Saudi (SAR)</option>
-        <option value="GL">Global (USD)</option>
+        <option value="SAUDI">Saudi Arabia (SAR)</option>
+        <option value="GLOBAL">Global (USD)</option>
       </select>
     </div>
   );
@@ -1030,11 +991,12 @@ export function ConvertModal({ docId, docNum, docType, onClose, onConverted }: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Create Document Modal
+// Create Document Modal — FIX 1 + FIX 3
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function CreateDocModal({ docType, onClose, onCreated }: {
-  docType: SalesDocumentType; onClose: () => void; onCreated: () => void;
+  docType: SalesDocumentType; onClose: () => void;
+  onCreated: (docNum?: string, docId?: string) => void;
 }) {
   const [customer, setCustomer]         = useState<Customer | null>(null);
   const [eligibleProducts, setEligible] = useState<EligibleProduct[]>([]);
@@ -1043,7 +1005,9 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
 
   const currency   = customer?.market.defaultCurrency ?? "USD";
   const marketId   = customer?.market.id ?? "";
-  const vatPercent = customer ? (customer.market.key === "SA" ? 15 : 0) : 0;
+
+  // FIX 1: Read VAT from market.vatPercent — not hardcoded key check
+  const vatPercent = customer ? Number(customer.market.vatPercent ?? 0) : 0;
 
   const [subject, setSubject]     = useState("");
   const [issueDate, setIssueDate] = useState(todayISO());
@@ -1058,7 +1022,7 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState("");
 
-  // Eligible (market+group filtered) products when customer selected
+  // Eligible products for selected customer
   useEffect(() => {
     if (!customer) { setEligible([]); return; }
     setLoadingProds(true);
@@ -1066,26 +1030,30 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
       .then(r => r.json())
       .then(d => {
         if (d.ok) {
-          setEligible([...(d.plans ?? []), ...(d.addons ?? []), ...(d.services ?? [])]);
+          // FIX 3: also spread d.products in case API returns that key
+          setEligible([
+            ...(d.plans    ?? []),
+            ...(d.addons   ?? []),
+            ...(d.services ?? []),
+            ...(d.products ?? []),
+          ]);
         }
       })
       .catch(() => {})
       .finally(() => setLoadingProds(false));
   }, [customer]);
 
-  // Full catalog (no filter) — loaded once, then enrich with standard pricing
+  // Full catalog with standard group pricing
   useEffect(() => {
     Promise.all([
       fetch("/api/admin/catalog/products").then(r => r.json()).catch(() => ({ data: [] })),
       fetch("/api/admin/catalog/pricing").then(r => r.json()).catch(() => ({ data: [] })),
       fetch("/api/admin/catalog/pricing/meta").then(r => r.json()).catch(() => ({ data: { groups: [] } })),
     ]).then(([catalog, pricingResp, metaResp]) => {
-      // Find standard group ID
       const groups: any[] = metaResp.data?.groups ?? [];
-      const stdGroup = groups.find((g: any) => g.key === "standard") ?? groups[0];
+      const stdGroup   = groups.find((g: any) => g.key === "standard") ?? groups[0];
       const stdGroupId = stdGroup?.id ?? "";
 
-      // Build a map: productId+period → priceCents from standard group only
       const pricingRows: any[] = pricingResp.data ?? [];
       const stdMap = new Map<string, number>();
       for (const row of pricingRows) {
@@ -1096,7 +1064,6 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
 
       setAllProducts((catalog.data ?? []).map((p: any) => {
         const periods: string[] = p.billingPeriods ?? [];
-        // Build prices from standard group pricing if available
         const prices = periods
           .map((period: string) => {
             const cents = stdMap.get(`${p.id}:${period}`);
@@ -1114,7 +1081,6 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
     });
   }, []);
 
-  // Clear lines when customer changes (currency/VAT change)
   useEffect(() => { setLines([]); }, [customer]);
 
   const label = TYPE_LABEL[docType] ?? docType;
@@ -1150,7 +1116,7 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
       const res  = await fetch(ENDPOINT_MAP[docType], { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
-      onCreated();
+      onCreated(data.doc?.docNum, data.doc?.id);
     } catch (e: any) { setError(e.message); }
     setLoading(false);
   }
@@ -1160,35 +1126,30 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
       <ModalBox title={`New ${label}`} wide>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
-          {/* 1 — Customer */}
+          {/* Customer */}
           <div style={sec}>
             <p style={st}>Customer</p>
             <CustomerSearch value={customer} onChange={setCustomer} />
             {customer && (
               <div style={{ display: "flex", gap: 20, marginTop: 10, padding: "8px 12px", background: CLR.primaryBg, border: `1px solid ${CLR.primary}33`, fontSize: 12, flexWrap: "wrap" }}>
                 <span><span style={{ color: CLR.muted }}>Market: </span><strong>{customer.market.name}</strong></span>
-                <span>
-                  <span style={{ color: CLR.muted }}>Currency: </span>
-                  <strong style={{ color: CLR.primary }}>{currency}</strong>
-                </span>
+                <span><span style={{ color: CLR.muted }}>Currency: </span><strong style={{ color: CLR.primary }}>{currency}</strong></span>
                 <span>
                   <span style={{ color: CLR.muted }}>VAT: </span>
                   <strong style={{ color: vatPercent > 0 ? "#b45309" : CLR.muted }}>{vatPercent}%</strong>
                   <span style={{ color: CLR.faint, marginLeft: 4, fontSize: 11 }}>
-                    {vatPercent === 0 ? "(USD · no tax)" : "(SAR · 15% VAT)"}
+                    {vatPercent === 0 ? "(no tax)" : `(${currency} · ${vatPercent}% VAT)`}
                   </span>
                 </span>
                 {loadingProds && <span style={{ color: CLR.faint }}>Loading products…</span>}
                 {!loadingProds && eligibleProducts.length > 0 && (
-                  <span style={{ color: CLR.primary, fontWeight: 600 }}>
-                    {eligibleProducts.length} products available for this customer
-                  </span>
+                  <span style={{ color: CLR.primary, fontWeight: 600 }}>{eligibleProducts.length} products available</span>
                 )}
               </div>
             )}
           </div>
 
-          {/* 2 — Document Info */}
+          {/* Document Info */}
           <div style={sec}>
             <p style={st}>Document Info</p>
             <div style={{ marginBottom: 12 }}>
@@ -1214,7 +1175,7 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
             </div>
           </div>
 
-          {/* 3 — Line Items */}
+          {/* Line Items */}
           <div style={sec}>
             <p style={st}>Line Items</p>
             <LineItemsEditor
@@ -1225,24 +1186,22 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
             />
           </div>
 
-          {/* 4 — Notes */}
+          {/* Notes */}
           <div style={sec}>
             <p style={st}>Notes</p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <div>
                 <label style={fl}>Customer-visible notes</label>
-                <textarea value={notes} onChange={e => setNotes(e.target.value)}
-                  rows={3} style={{ ...inp, resize: "vertical" }} />
+                <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} style={{ ...inp, resize: "vertical" }} />
               </div>
               <div>
                 <label style={fl}>Internal note (admin only)</label>
-                <textarea value={intNote} onChange={e => setIntNote(e.target.value)}
-                  rows={3} style={{ ...inp, resize: "vertical", background: "#fffbeb" }} />
+                <textarea value={intNote} onChange={e => setIntNote(e.target.value)} rows={3} style={{ ...inp, resize: "vertical", background: "#fffbeb" }} />
               </div>
             </div>
           </div>
 
-          {/* 5 — Terms */}
+          {/* Terms */}
           <div style={sec}>
             <p style={st}>Terms &amp; Conditions</p>
             <textarea value={terms} onChange={e => setTerms(e.target.value)} rows={4}
@@ -1250,7 +1209,7 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
               style={{ ...inp, resize: "vertical" }} />
           </div>
 
-          {/* 6 — Attachment */}
+          {/* Attachment */}
           <div style={sec}>
             <p style={st}>Attachment</p>
             <div
@@ -1264,9 +1223,7 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
                   <p style={{ fontSize: 11, color: CLR.muted, marginTop: 2 }}>
                     {(file.size / 1024).toFixed(1)} KB ·
                     <button onClick={e => { e.stopPropagation(); setFile(null); }}
-                      style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 11, marginLeft: 4 }}>
-                      Remove
-                    </button>
+                      style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 11, marginLeft: 4 }}>Remove</button>
                   </p>
                 </div>
               ) : (

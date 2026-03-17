@@ -17,16 +17,15 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
-  const page        = Math.max(1, Number(searchParams.get("page") ?? "1"));
-  const pageSizeParam = Number(searchParams.get("pageSize") ?? String(PAGE_SIZE));
+  const page              = Math.max(1, Number(searchParams.get("page") ?? "1"));
+  const pageSizeParam     = Number(searchParams.get("pageSize") ?? String(PAGE_SIZE));
   const effectivePageSize = Math.min(9999, Math.max(1, Number.isFinite(pageSizeParam) ? pageSizeParam : PAGE_SIZE));
-  const search      = searchParams.get("search")?.trim() ?? "";
-  const marketId    = searchParams.get("marketId")?.trim() ?? "";
-  const role        = searchParams.get("role")?.trim() ?? "";
-  const accountType = searchParams.get("accountType")?.trim() ?? "";
+  const search            = searchParams.get("search")?.trim() ?? "";
+  const marketId          = searchParams.get("marketId")?.trim() ?? "";
+  const role              = searchParams.get("role")?.trim() ?? "";
+  const accountType       = searchParams.get("accountType")?.trim() ?? "";
 
   const where: Record<string, unknown> = {
-    // Default to CUSTOMER only — pass role=ADMIN to override
     role: (role && Object.values(Role).includes(role as Role)) ? role as Role : Role.CUSTOMER,
   };
 
@@ -49,8 +48,8 @@ export async function GET(req: Request) {
     prisma.user.findMany({
       where,
       orderBy: { createdAt: "desc" },
-      skip:  (page - 1) * effectivePageSize,
-      take:  effectivePageSize,
+      skip:    (page - 1) * effectivePageSize,
+      take:    effectivePageSize,
       select: {
         id:             true,
         customerNumber: true,
@@ -63,7 +62,7 @@ export async function GET(req: Request) {
         city:           true,
         companyName:    true,
         createdAt:      true,
-        market:         { select: { id: true, name: true, key: true } },
+        market:         { select: { id: true, name: true, key: true, defaultCurrency: true, vatPercent: true } },
         customerGroup:  { select: { id: true, name: true, key: true } },
         tags:           { select: { id: true, key: true, name: true } },
         _count:         { select: { subscriptions: true, servers: true } },
@@ -97,56 +96,60 @@ export async function POST(req: Request) {
     addressLine2?:                 string | null;
     district?:                     string | null;
     city?:                         string | null;
+    notePublic?:                   string | null;
+    notePrivate?:                  string | null;
+    tagKeys?:                      string[];
   } | null;
 
-  const email = body?.email?.trim().toLowerCase();
-  if (!email)          return NextResponse.json({ ok: false, error: "Email is required" },  { status: 400 });
-  if (!body?.marketId) return NextResponse.json({ ok: false, error: "Market is required" }, { status: 400 });
+  const email    = body?.email?.trim().toLowerCase();
+  const marketId = body?.marketId?.trim();
 
-  if (body.accountType && !VALID_ACCOUNT_TYPES.includes(body.accountType))
-    return NextResponse.json({ ok: false, error: "Invalid accountType" }, { status: 400 });
+  if (!email)    return NextResponse.json({ ok: false, error: "email is required" },    { status: 400 });
+  if (!marketId) return NextResponse.json({ ok: false, error: "marketId is required" }, { status: 400 });
 
   const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) return NextResponse.json({ ok: false, error: "Email already in use" }, { status: 409 });
+  if (existing)  return NextResponse.json({ ok: false, error: "A customer with this email already exists" }, { status: 409 });
 
-  // Resolve customer group
-  let resolvedGroupId = body.customerGroupId ?? null;
-  if (!resolvedGroupId) {
-    const defaultGroup = await prisma.customerGroup.findFirst({
-      where:   { isActive: true, key: "standard" },
-      select:  { id: true },
-    }) ?? await prisma.customerGroup.findFirst({
-      where:   { isActive: true },
-      orderBy: { createdAt: "asc" },
-      select:  { id: true },
-    });
-    resolvedGroupId = defaultGroup?.id ?? null;
+  const market = await prisma.market.findUnique({ where: { id: marketId } });
+  if (!market)   return NextResponse.json({ ok: false, error: "Market not found" }, { status: 404 });
+
+  // Resolve customerGroupId — use provided or fall back to default group
+  let customerGroupId: string | null = body?.customerGroupId ?? null;
+  if (!customerGroupId) {
+    const defaultGroup = await prisma.customerGroup.findFirst({ orderBy: { name: "asc" } });
+    customerGroupId = defaultGroup?.id ?? null;
   }
 
-  const isBusinessType = (body.accountType ?? "BUSINESS") === "BUSINESS";
+  // Resolve tag ids
+  const tagKeys: string[] = body?.tagKeys ?? [];
+  const tags = tagKeys.length
+    ? await prisma.tag.findMany({ where: { key: { in: tagKeys } }, select: { id: true } })
+    : [];
 
-  const created = await prisma.user.create({
+  const user = await prisma.user.create({
     data: {
       email,
-      role:            "CUSTOMER",
-      marketId:        body.marketId,
-      customerGroupId: resolvedGroupId,
-      fullName:        body.fullName  ?? null,
-      mobile:          body.mobile    ?? null,
-      accountType:     body.accountType ?? "BUSINESS",
-      country:         body.country   ?? null,
-      province:        body.province  ?? null,
-      companyName:                  isBusinessType ? (body.companyName  ?? null) : null,
-      vatTaxId:                     isBusinessType ? (body.vatTaxId     ?? null) : null,
-      commercialRegistrationNumber: isBusinessType ? (body.commercialRegistrationNumber ?? null) : null,
-      addressLine1: body.addressLine1 ?? null,
-      addressLine2: body.addressLine2 ?? null,
-      district:     body.district     ?? null,
-      city:         body.city         ?? null,
+      marketId,
+      customerGroupId,
+      fullName:                     body?.fullName    ?? null,
+      mobile:                       body?.mobile      ?? null,
+      accountType:                  body?.accountType ?? null,
+      country:                      body?.country     ?? null,
+      province:                     body?.province    ?? null,
+      companyName:                  body?.companyName ?? null,
+      vatTaxId:                     body?.vatTaxId    ?? null,
+      commercialRegistrationNumber: body?.commercialRegistrationNumber ?? null,
+      addressLine1:                 body?.addressLine1 ?? null,
+      addressLine2:                 body?.addressLine2 ?? null,
+      district:                     body?.district    ?? null,
+      city:                         body?.city        ?? null,
+      notePublic:                   body?.notePublic  ?? null,
+      notePrivate:                  body?.notePrivate ?? null,
+      tags: tags.length ? { connect: tags.map(t => ({ id: t.id })) } : undefined,
     },
     select: {
-      id: true, email: true, role: true,
-      marketId: true, customerGroupId: true, createdAt: true,
+      id: true, customerNumber: true, email: true, fullName: true,
+      market: { select: { id: true, key: true, name: true, defaultCurrency: true, vatPercent: true } },
     },
   });
 
@@ -155,10 +158,10 @@ export async function POST(req: Request) {
       actorUserId:  admin.id,
       action:       "CUSTOMER_CREATED",
       entityType:   "User",
-      entityId:     created.id,
-      metadataJson: JSON.stringify({ email, marketId: body.marketId }),
+      entityId:     user.id,
+      metadataJson: JSON.stringify({ email, marketId }),
     },
   });
 
-  return NextResponse.json({ ok: true, user: created });
+  return NextResponse.json({ ok: true, data: user }, { status: 201 });
 }
