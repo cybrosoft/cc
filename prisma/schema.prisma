@@ -725,6 +725,12 @@ model SalesDocument {
   // Saudi e-Invoice Phase 1 QR
   zatcaQrCode String?
 
+  // Invoice reminder — weekly automated reminders, up to 4 times
+  // Only applies to INVOICE type with unpaid status (ISSUED / SENT / PARTIAL / OVERDUE)
+  reminderEnabled    Boolean   @default(false)
+  reminderCount      Int       @default(0)       // how many reminders sent so far (max 4)
+  reminderLastSentAt DateTime?                   // when last reminder was sent
+
   lines    SalesDocumentLine[]
   payments SalesPayment[]
 
@@ -738,6 +744,7 @@ model SalesDocument {
   @@index([issueDate])
   @@index([emailSentAt])
   @@index([validUntil])
+  @@index([reminderEnabled])
 }
 
 // ── Sales Document Line ───────────────────────────────────────────────────────

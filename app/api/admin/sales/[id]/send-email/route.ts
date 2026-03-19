@@ -1,6 +1,13 @@
 // app/api/admin/sales/[id]/send-email/route.ts
 // POST — sends document email to customer using market legalInfo for company details.
 // Updates emailSentAt + emailSentCount. Auto-advances DRAFT/ISSUED → SENT.
+//
+// mode:
+//   "default"      — send with default template text
+//   "resend"       — resend (same as default, subject prefixed with Reminder:)
+//   "reminder"     — weekly invoice reminder (invoice unpaid only)
+//   "custom"       — custom subject/body/to/cc/bcc
+//   "mark_as_sent" — record as sent without sending any email (sets manualSent=true)
 export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -14,7 +21,7 @@ const PERIOD_LABEL: Record<string, string> = {
 };
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -22,6 +29,8 @@ export async function POST(
     if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { id } = await context.params;
+    const body   = await req.json().catch(() => ({}));
+    const mode   = (body.mode ?? "default") as "default" | "resend" | "reminder" | "custom" | "mark_as_sent";
 
     const doc = await prisma.salesDocument.findUnique({
       where: { id },
@@ -34,29 +43,105 @@ export async function POST(
             showPayOnline: true, stripePublicKey: true,
           },
         },
-        lines: { orderBy: { sortOrder: "asc" } },
+        lines:    { orderBy: { sortOrder: "asc" } },
         payments: { orderBy: { paidAt: "desc" } },
       },
     });
 
     if (!doc) return NextResponse.json({ error: "Document not found" }, { status: 404 });
 
+    // ── Mark as Sent — no email, just record the date ─────────────────────
+    if (mode === "mark_as_sent") {
+      const now = new Date();
+      await prisma.salesDocument.update({
+        where: { id },
+        data: {
+          emailSentAt:    now,
+          emailSentCount: { increment: 1 },
+          manualSent:     true,
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          actorUserId:  auth.user.id,
+          action:       "SALES_DOCUMENT_MARKED_AS_SENT",
+          entityType:   "SalesDocument",
+          entityId:     id,
+          metadataJson: JSON.stringify({ docNum: doc.docNum }),
+        },
+      });
+
+      return NextResponse.json({
+        ok:             true,
+        emailSentAt:    now.toISOString(),
+        emailSentCount: (doc.emailSentCount ?? 0) + 1,
+        manualSent:     true,
+      });
+    }
+
+    // ── All other modes — actual email send ───────────────────────────────
     const apiKey   = process.env.RESEND_API_KEY;
     const fromAddr = process.env.EMAIL_FROM ?? "noreply@cybrosoft.com";
     if (!apiKey) return NextResponse.json({ error: "Email not configured — RESEND_API_KEY missing" }, { status: 500 });
 
+    // Reminder: invoice-only + unpaid statuses
+    if (mode === "reminder") {
+      if (doc.type !== "INVOICE") {
+        return NextResponse.json({ error: "Reminders are only available for invoices" }, { status: 400 });
+      }
+      if (!["ISSUED", "SENT", "PARTIALLY_PAID", "OVERDUE"].includes(doc.status)) {
+        return NextResponse.json({ error: "Reminders can only be sent for unpaid invoices" }, { status: 400 });
+      }
+    }
+
     // Pull company details from legalInfo
-    const li         = (doc.market.legalInfo ?? {}) as Record<string, unknown>;
-    const cp         = (doc.market.companyProfile ?? {}) as Record<string, unknown>;
-    const fromName   = String(li.companyName ?? doc.market.name ?? "Cybrosoft");
-    const replyTo    = String(li.email ?? "");
-    const typeLabel  = DOC_TYPE_LABEL[doc.type] ?? doc.type;
-    const isResend   = (doc.emailSentCount ?? 0) > 0;
-    const currency   = doc.currency;
-    const isSaudi    = doc.market.key === "SAUDI";
+    const li        = (doc.market.legalInfo  ?? {}) as Record<string, unknown>;
+    const cp        = (doc.market.companyProfile ?? {}) as Record<string, unknown>;
+    const fromName  = String(li.companyName ?? doc.market.name ?? "Cybrosoft");
+    const replyTo   = String(li.email ?? "");
+    const typeLabel = DOC_TYPE_LABEL[doc.type] ?? doc.type;
+    const isResend  = mode === "resend" || mode === "reminder";
+    const currency  = doc.currency;
+
+    // Load default CC/BCC from portal settings
+    const [defaultCCSetting, defaultBCCSetting, fromNameSetting] = await Promise.all([
+      prisma.portalSetting.findUnique({ where: { key: "email.defaultCC" } }),
+      prisma.portalSetting.findUnique({ where: { key: "email.defaultBCC" } }),
+      prisma.portalSetting.findUnique({ where: { key: "email.fromName" } }),
+    ]);
+
+    // Recipient / CC / BCC
+    const toAddr  = (body.to  as string | undefined)?.trim() || doc.customer.email;
+    const ccAddr  = (body.cc  as string | undefined)?.trim() || defaultCCSetting?.value  || undefined;
+    const bccAddr = (body.bcc as string | undefined)?.trim() || defaultBCCSetting?.value || undefined;
+
+    // Save CC/BCC defaults if requested (custom mode)
+    if (body.saveDefaults && mode === "custom") {
+      const ops: Promise<any>[] = [];
+      if (body.cc !== undefined) {
+        ops.push(prisma.portalSetting.upsert({
+          where:  { key: "email.defaultCC" },
+          update: { value: (body.cc as string).trim() },
+          create: { key: "email.defaultCC", value: (body.cc as string).trim() },
+        }));
+      }
+      if (body.bcc !== undefined) {
+        ops.push(prisma.portalSetting.upsert({
+          where:  { key: "email.defaultBCC" },
+          update: { value: (body.bcc as string).trim() },
+          create: { key: "email.defaultBCC", value: (body.bcc as string).trim() },
+        }));
+      }
+      await Promise.all(ops);
+    }
+
+    // Totals
+    const totalPaid  = doc.payments.reduce((s, p) => s + p.amountCents, 0);
+    const balanceDue = doc.total - totalPaid;
 
     // Bank details block
-    const bd = li.bankDetails as Record<string, unknown> | undefined;
+    const bd       = li.bankDetails as Record<string, unknown> | undefined;
     const showBank = (doc.type === "PROFORMA" || doc.type === "INVOICE") && bd?.iban;
     const bankHtml = showBank ? `
       <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;">
@@ -71,12 +156,6 @@ export async function POST(
         </td></tr>
       </table>` : "";
 
-    // Paid / balance section
-    const totalPaid    = doc.payments.reduce((s, p) => s + p.amountCents, 0);
-    const balanceDue   = doc.total - totalPaid;
-    const payOnline    = doc.market.showPayOnline && doc.market.stripePublicKey && balanceDue > 0;
-    const portalUrl    = process.env.NEXT_PUBLIC_APP_URL ?? "";
-
     // Line items HTML
     const linesHtml = doc.lines.map(l => `
       <tr style="border-bottom:1px solid #f3f4f6;">
@@ -87,9 +166,33 @@ export async function POST(
         <td style="padding:8px 12px;font-size:13px;text-align:right;font-weight:600;">${fmtAmount(l.lineTotal, currency)}</td>
       </tr>`).join("");
 
-    const subject = isResend
-      ? `Reminder: ${typeLabel} ${doc.docNum} — ${fmtAmount(balanceDue > 0 ? balanceDue : doc.total, currency)}`
-      : `${typeLabel} ${doc.docNum} from ${fromName}`;
+    // Subject
+    const subject =
+      mode === "custom" && body.customSubject
+        ? (body.customSubject as string).trim()
+        : isResend
+          ? `Reminder: ${typeLabel} ${doc.docNum} — ${fmtAmount(balanceDue > 0 ? balanceDue : doc.total, currency)}`
+          : `${typeLabel} ${doc.docNum} from ${fromName}`;
+
+    // Opening body paragraph
+    const openingPara =
+      mode === "custom" && body.customBody
+        ? (body.customBody as string).trim()
+        : isResend
+          ? `This is a friendly reminder that <strong>${typeLabel} ${doc.docNum}</strong> remains outstanding.`
+          : `Please find your <strong>${typeLabel} ${doc.docNum}</strong> below.`;
+
+    // Pay online button
+    const payOnline = doc.market.showPayOnline && doc.market.stripePublicKey && balanceDue > 0;
+    const baseUrl   = process.env.NEXT_PUBLIC_BASE_URL ?? "";
+    const payButtonHtml = (doc.type === "INVOICE" && payOnline) ? `
+      <tr><td style="padding:0 32px 20px;text-align:center;">
+        <a href="${baseUrl}/dashboard/invoices/${doc.docNum}/pay"
+          style="display:inline-block;background:#318774;color:#fff;padding:12px 32px;font-size:14px;font-weight:700;text-decoration:none;">
+          Pay Online — ${fmtAmount(balanceDue, currency)}
+        </a>
+        <p style="font-size:10px;color:#9ca3af;margin:6px 0 0;">Secure payment via Stripe · Credit / Debit card accepted</p>
+      </td></tr>` : "";
 
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -123,12 +226,19 @@ export async function POST(
       ${doc.subject ? `<p style="font-size:13px;color:#374151;margin:12px 0 0;padding:10px 14px;background:#f9fafb;border-left:3px solid #318774;">${doc.subject}</p>` : ""}
     </td></tr>
 
+    <!-- Reminder badge -->
+    ${mode === "reminder" ? `
+    <tr><td style="padding:16px 32px 0;">
+      <div style="background:#fffbeb;border:1px solid #fcd34d;padding:10px 16px;font-size:12px;color:#92400e;">
+        <strong>Payment Reminder ${(doc.reminderCount ?? 0) + 1} of 4</strong>
+        ${(doc as any).reminderLastSentAt ? ` — Last sent: ${fmtDate((doc as any).reminderLastSentAt.toString())}` : ""}
+      </div>
+    </td></tr>` : ""}
+
     <!-- Body -->
     <tr><td style="padding:20px 32px;">
       <p style="font-size:14px;color:#374151;">Dear ${doc.customer.fullName ?? doc.customer.email},</p>
-      <p style="font-size:13px;color:#374151;">
-        ${isResend ? `This is a reminder for <strong>${typeLabel} ${doc.docNum}</strong>.` : `Please find your <strong>${typeLabel} ${doc.docNum}</strong> below.`}
-      </p>
+      <p style="font-size:13px;color:#374151;line-height:1.6;">${openingPara}</p>
 
       <!-- Line items -->
       <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;margin:16px 0;">
@@ -143,36 +253,41 @@ export async function POST(
         </thead>
         <tbody>${linesHtml}</tbody>
         <tfoot>
-          <tr><td colspan="4" style="padding:6px 12px;text-align:right;font-size:12px;color:#6b7280;">Subtotal</td><td style="padding:6px 12px;text-align:right;font-size:12px;">${fmtAmount(doc.subtotal, currency)}</td></tr>
-          ${Number(doc.vatPercent) > 0 ? `<tr><td colspan="4" style="padding:6px 12px;text-align:right;font-size:12px;color:#6b7280;">VAT (${Number(doc.vatPercent)}%)</td><td style="padding:6px 12px;text-align:right;font-size:12px;">${fmtAmount(doc.vatAmount, currency)}</td></tr>` : ""}
-          <tr style="background:#f9fafb;"><td colspan="4" style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;">Total</td><td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:#318774;">${fmtAmount(doc.total, currency)}</td></tr>
-          ${totalPaid > 0 ? `<tr><td colspan="4" style="padding:6px 12px;text-align:right;font-size:12px;color:#15803d;">Paid</td><td style="padding:6px 12px;text-align:right;font-size:12px;color:#15803d;">− ${fmtAmount(totalPaid, currency)}</td></tr>` : ""}
-          ${balanceDue > 0 && totalPaid > 0 ? `<tr><td colspan="4" style="padding:8px 12px;text-align:right;font-size:13px;font-weight:700;border-top:1px solid #e5e7eb;">Balance Due</td><td style="padding:8px 12px;text-align:right;font-size:13px;font-weight:700;color:#dc2626;border-top:1px solid #e5e7eb;">${fmtAmount(balanceDue, currency)}</td></tr>` : ""}
+          <tr><td colspan="4" style="padding:6px 12px;text-align:right;font-size:12px;color:#6b7280;">Subtotal</td>
+              <td style="padding:6px 12px;text-align:right;font-size:12px;">${fmtAmount(doc.subtotal, currency)}</td></tr>
+          ${Number(doc.vatPercent) > 0
+            ? `<tr><td colspan="4" style="padding:6px 12px;text-align:right;font-size:12px;color:#6b7280;">VAT (${Number(doc.vatPercent)}%)</td>
+               <td style="padding:6px 12px;text-align:right;font-size:12px;">${fmtAmount(doc.vatAmount, currency)}</td></tr>`
+            : ""}
+          <tr style="background:#f9fafb;">
+            <td colspan="4" style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;">Total</td>
+            <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:#318774;">${fmtAmount(doc.total, currency)}</td>
+          </tr>
+          ${totalPaid > 0
+            ? `<tr><td colspan="4" style="padding:6px 12px;text-align:right;font-size:12px;color:#15803d;">Paid</td>
+               <td style="padding:6px 12px;text-align:right;font-size:12px;color:#15803d;">− ${fmtAmount(totalPaid, currency)}</td></tr>`
+            : ""}
+          ${balanceDue > 0 && totalPaid > 0
+            ? `<tr style="background:#fef9c3;">
+               <td colspan="4" style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:#92400e;">Balance Due</td>
+               <td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:#92400e;">${fmtAmount(balanceDue, currency)}</td>
+               </tr>`
+            : ""}
         </tfoot>
       </table>
 
+      ${doc.notes ? `<p style="font-size:12px;color:#6b7280;margin:8px 0 0;padding:10px 14px;background:#f9fafb;border-left:2px solid #d1d5db;">${doc.notes}</p>` : ""}
       ${bankHtml}
-
-      ${payOnline && portalUrl ? `
-      <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;">
-        <tr><td style="text-align:center;padding:16px;">
-          <a href="${portalUrl}/dashboard/invoices/${doc.docNum}" style="display:inline-block;padding:12px 28px;background:#318774;color:#fff;font-size:14px;font-weight:700;text-decoration:none;">
-            Pay Online — ${fmtAmount(balanceDue, currency)}
-          </a>
-          <p style="font-size:10px;color:#9ca3af;margin:6px 0 0;">Secure payment via Stripe</p>
-        </td></tr>
-      </table>` : ""}
-
-      ${doc.notes ? `<p style="font-size:12px;color:#6b7280;margin-top:16px;padding:10px 14px;background:#f9fafb;">${doc.notes}</p>` : ""}
-      <p style="font-size:13px;color:#374151;margin-top:16px;">Best regards,<br/><strong>${fromName}</strong></p>
     </td></tr>
+
+    ${payButtonHtml}
 
     <!-- Footer -->
-    <tr><td style="padding:16px 32px;color:#9ca3af;font-size:11px;border-top:1px solid #e5e7eb;">
-      <p style="margin:0;">${String(li.footerText ?? `${fromName} · ${li.email ?? ""} · ${li.phone ?? ""}`)}</p>
-      <p style="margin:4px 0 0;">Reference: ${doc.docNum}</p>
+    <tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;">
+      <p style="font-size:11px;color:#9ca3af;text-align:center;margin:0;">
+        ${li.footerText ?? `${fromName}${li.email ? ` · ${li.email}` : ""}`}
+      </p>
     </td></tr>
-    <tr><td style="background:#318774;height:4px;"></td></tr>
 
   </table>
   </td></tr>
@@ -180,30 +295,66 @@ export async function POST(
 </body>
 </html>`;
 
+    // Send via Resend
     const resend = new Resend(apiKey);
+
     const { error: sendError } = await resend.emails.send({
-      from:    `${fromName} <${fromAddr}>`,
-      to:      doc.customer.email,
+      from:    `${fromNameSetting?.value ?? fromName} <${fromAddr}>`,
+      to:      toAddr,
       subject,
       html,
-      ...(replyTo ? { replyTo } : {}),
+      ...(ccAddr  ? { cc:  ccAddr }  : {}),
+      ...(bccAddr ? { bcc: bccAddr } : {}),
+      ...(replyTo ? { replyTo }      : {}),
     });
 
-    if (sendError) return NextResponse.json({ error: sendError.message }, { status: 500 });
+    if (sendError) {
+      console.error("[send-email] Resend error:", sendError);
+      return NextResponse.json({ error: sendError.message }, { status: 500 });
+    }
 
-    // Update sent tracking + auto-advance status
-    const updated = await prisma.salesDocument.update({
-      where: { id },
+    // Update email tracking + clear manualSent (real email was sent)
+    const updateData: Record<string, any> = {
+      emailSentAt:    new Date(),
+      emailSentCount: { increment: 1 },
+      manualSent:     false,
+    };
+
+    if (mode === "reminder") {
+      updateData.reminderCount      = { increment: 1 };
+      updateData.reminderLastSentAt = new Date();
+    }
+
+    // Auto-advance status
+    if (doc.status === "DRAFT")  updateData.status = "ISSUED";
+    if (doc.status === "ISSUED") updateData.status = "SENT";
+
+    await prisma.salesDocument.update({ where: { id }, data: updateData });
+
+    await prisma.auditLog.create({
       data: {
-        emailSentAt:    new Date(),
-        emailSentCount: { increment: 1 },
-        ...(doc.status === "DRAFT" || doc.status === "ISSUED" ? { status: "SENT" } : {}),
+        actorUserId:  auth.user.id,
+        action:       "SALES_DOCUMENT_EMAIL_SENT",
+        entityType:   "SalesDocument",
+        entityId:     id,
+        metadataJson: JSON.stringify({
+          docNum: doc.docNum, mode,
+          to: toAddr, cc: ccAddr ?? null, bcc: bccAddr ?? null,
+          subject,
+        }),
       },
-      select: { id: true, status: true, emailSentAt: true, emailSentCount: true },
     });
 
-    return NextResponse.json({ ok: true, doc: updated });
+    return NextResponse.json({
+      ok:             true,
+      emailSentAt:    new Date().toISOString(),
+      emailSentCount: (doc.emailSentCount ?? 0) + 1,
+      manualSent:     false,
+      reminderCount:  mode === "reminder" ? (doc.reminderCount ?? 0) + 1 : undefined,
+    });
+
   } catch (e: any) {
+    console.error("[send-email] error:", e);
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }

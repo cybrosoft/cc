@@ -1,16 +1,18 @@
 // app/admin/sales/[id]/page.tsx
 "use client";
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { CLR } from "@/components/ui/admin-ui";
 import { AdminHeader } from "@/components/nav/AdminHeader";
-import { SalesStatusBadge, DocTypeBadge, fmtAmount } from "../ui/sales-ui";
+import { Icon } from "@/components/ui/Icon";
+import { SalesStatusBadge, DocTypeBadge, fmtAmount, SendEmailModal, StatusChangeModal, ConvertModal } from "../ui/sales-ui";
 import { DOC_TYPE_LABEL, fmtDate } from "@/lib/sales/document-helpers";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface DocLine {
   id: string; description: string; descriptionAr?: string | null;
+  productDetails?: string | null; detailsAr?: string | null;
   billingPeriod?: string | null; quantity: number;
   unitPrice: number; discount: number; lineTotal: number;
   product?: { key: string; name: string } | null;
@@ -36,6 +38,7 @@ interface LegalInfo {
   address?: string; // legacy fallback (single string)
   // contact — no company phone on document
   email?: string;
+  phone?: string;
   // document
   footerText?: string;
   bankDetails?: {
@@ -55,6 +58,10 @@ interface FullDoc {
   termsAndConditions?: string | null; language: string;
   issueDate: string; dueDate?: string | null; validUntil?: string | null; paidAt?: string | null;
   emailSentAt?: string | null; emailSentCount?: number | null;
+  reminderEnabled?: boolean | null; reminderCount?: number | null;
+  manualSent?: boolean | null;
+  zatcaQrCode?: string | null;
+  rfqFileUrl?:  string | null;
   customer: {
     id: string; fullName?: string | null; email: string; mobile?: string | null;
     customerNumber?: number | null; companyName?: string | null;
@@ -106,8 +113,26 @@ export default function SalesDocDetailPage() {
 
   const [doc,     setDoc]     = useState<FullDoc | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
   const [sendMsg, setSendMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // ── Send dropdown + modals ────────────────────────────────────────────────
+  const [sendDropOpen,  setSendDropOpen]  = useState(false);
+  const [sendModalMode, setSendModalMode] = useState<"reminder" | "custom" | null>(null);
+  const [sendingDirect, setSendingDirect] = useState(false);
+  const [showStatus,    setShowStatus]    = useState(false);
+  const [showConvert,   setShowConvert]   = useState(false);
+  const sendDropRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (sendDropRef.current && !sendDropRef.current.contains(e.target as Node)) {
+        setSendDropOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+  // ─────────────────────────────────────────────────────────────────────────
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -136,19 +161,44 @@ export default function SalesDocDetailPage() {
     return () => { document.head.removeChild(style); };
   }, []);
 
-  async function sendEmail() {
+  // Direct send — no modal needed
+  async function sendEmailDirect(mode: "default" | "resend") {
     if (!doc) return;
-    setSending(true); setSendMsg(null);
+    setSendDropOpen(false);
+    setSendingDirect(true); setSendMsg(null);
     try {
-      const res  = await fetch(`/api/admin/sales/${id}/send-email`, { method: "POST" });
+      const res  = await fetch(`/api/admin/sales/${id}/send-email`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setSendMsg({ ok: true, text: "Email sent successfully" });
-      await load();
+      setDoc(prev => prev ? { ...prev, emailSentAt: data.emailSentAt, emailSentCount: data.emailSentCount } : prev);
     } catch (e: any) {
       setSendMsg({ ok: false, text: e.message });
     }
-    setSending(false);
+    setSendingDirect(false);
+  }
+
+  // Mark as sent — records sent date without sending an email
+  async function markAsSent() {
+    if (!doc) return;
+    setSendDropOpen(false);
+    setSendingDirect(true); setSendMsg(null);
+    try {
+      const res  = await fetch(`/api/admin/sales/${id}/send-email`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "mark_as_sent" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setSendMsg({ ok: true, text: "Marked as sent" });
+      setDoc(prev => prev ? { ...prev, emailSentAt: data.emailSentAt, emailSentCount: data.emailSentCount, manualSent: true } : prev);
+    } catch (e: any) {
+      setSendMsg({ ok: false, text: e.message });
+    }
+    setSendingDirect(false);
   }
 
   if (loading) return (
@@ -162,13 +212,20 @@ export default function SalesDocDetailPage() {
   const cp          = doc.market.companyProfile ?? {};
   const hasSentEmail = (doc.emailSentCount ?? 0) > 0;
   const sentCount    = doc.emailSentCount ?? 0;
-  const lastSent     = doc.emailSentAt ? `Last sent ${fmtDateTime(doc.emailSentAt)}` : "";
+  const manualSent   = doc.manualSent ?? false;
+  const lastSent     = doc.emailSentAt
+    ? manualSent
+      ? `Marked as sent on ${fmtDateTime(doc.emailSentAt)}`
+      : `Last sent ${fmtDateTime(doc.emailSentAt)}`
+    : "";
   const isSaudi      = doc.market.key === "SAUDI";
   const showBank     = (doc.type === "PROFORMA" || doc.type === "INVOICE") && li.bankDetails?.iban;
   const totalPaid    = doc.payments.reduce((s, p) => s + p.amountCents, 0);
   const balanceDue   = doc.total - totalPaid;
   const typeLabel    = DOC_TYPE_LABEL[doc.type as keyof typeof DOC_TYPE_LABEL] ?? doc.type;
   const primaryColor = cp.primaryColor ?? "#318774";
+  const isInvoiceUnpaid = doc.type === "INVOICE" && ["ISSUED", "SENT", "PARTIALLY_PAID", "OVERDUE"].includes(doc.status);
+  const canSend      = !["VOID", "DRAFT"].includes(doc.status);
 
   // Derive tax rate label from legalInfo.taxLabel
   // e.g. "VAT No." → "VAT Rate", "GST No." → "GST Rate", "Tax ID" → "Tax Rate"
@@ -213,25 +270,78 @@ export default function SalesDocDetailPage() {
             {/* Push actions to right */}
             <div style={{ flex: 1 }} />
 
-            {/* Send / Resend email */}
-            <div style={{ position: "relative", flexShrink: 0 }}>
-              <button onClick={sendEmail} disabled={sending} title={lastSent || undefined}
-                style={{
-                  padding: "7px 18px", fontSize: 12, fontWeight: 600, lineHeight: 1,
-                  background: hasSentEmail ? "#fffbeb" : primaryColor,
-                  color: hasSentEmail ? "#92400e" : "#fff",
-                  border: hasSentEmail ? "1px solid #fcd34d" : `1px solid ${primaryColor}`,
-                  cursor: sending ? "not-allowed" : "pointer", fontFamily: "inherit",
-                  opacity: sending ? 0.7 : 1,
-                }}>
-                {sending ? "Sending…" : hasSentEmail ? `Resend Email${sentCount > 1 ? ` (${sentCount})` : ""}` : "Send Email"}
+            {/* Edit button — navigates to doc-type specific edit page */}
+            <button onClick={() => router.push(({
+                RFQ: "/admin/sales/rfq", QUOTATION: "/admin/sales/quotations",
+                PO: "/admin/sales/po", DELIVERY_NOTE: "/admin/sales/delivery-notes",
+                PROFORMA: "/admin/sales/proforma", INVOICE: "/admin/sales/invoices",
+                CREDIT_NOTE: "/admin/sales/returns",
+              }[doc.type] ?? "/admin/sales") + `/${id}`)}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", fontSize: 12, fontWeight: 600, lineHeight: 1, background: "#fff", color: CLR.text, border: "1px solid #d1d5db", cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
+              <Icon name="edit" size={13} color="#6b7280" />
+              Edit
+            </button>
+
+            {/* Convert button */}
+            {doc.status !== "VOID" && doc.status !== "CONVERTED" && (
+              <button onClick={() => setShowConvert(true)}
+                style={{ padding: "7px 14px", fontSize: 12, fontWeight: 600, lineHeight: 1, background: "#fffbeb", color: "#b45309", border: "1px solid #fcd34d", cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
+                Convert ↗
               </button>
-              {lastSent && (
-                <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, fontSize: 10, color: CLR.faint, whiteSpace: "nowrap", background: "#fff", border: "1px solid #e5e7eb", padding: "3px 8px", zIndex: 10 }}>
-                  {lastSent}
-                </div>
-              )}
-            </div>
+            )}
+
+            {/* Status button */}
+            <button onClick={() => setShowStatus(true)}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", fontSize: 12, fontWeight: 600, lineHeight: 1, background: "#fff", color: CLR.text, border: "1px solid #d1d5db", cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
+              <Icon name="chevron" size={13} color="#6b7280" />
+              Status
+            </button>
+
+            {/* Send dropdown */}
+            {canSend && (
+              <div ref={sendDropRef} style={{ position: "relative", flexShrink: 0 }}>
+                <button onClick={() => setSendDropOpen(v => !v)} disabled={sendingDirect} title={lastSent || undefined}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    padding: "7px 18px", fontSize: 12, fontWeight: 600, lineHeight: 1,
+                    background: hasSentEmail ? "#fffbeb" : primaryColor,
+                    color: hasSentEmail ? "#92400e" : "#fff",
+                    border: hasSentEmail ? "1px solid #fcd34d" : `1px solid ${primaryColor}`,
+                    cursor: sendingDirect ? "not-allowed" : "pointer", fontFamily: "inherit",
+                    opacity: sendingDirect ? 0.7 : 1,
+                  }}>
+                  <Icon name="mail" size={13} color={hasSentEmail ? "#92400e" : "#fff"} />
+                  {sendingDirect ? "Sending…" : "Send"}
+                  {hasSentEmail && sentCount > 1 && <span style={{ fontSize: 10, opacity: 0.7 }}>({sentCount})</span>}
+                  <span style={{ width: 1, height: 14, background: hasSentEmail ? "rgba(180,83,9,0.3)" : "rgba(255,255,255,0.3)", margin: "0 2px" }} />
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={hasSentEmail ? "#92400e" : "#fff"} strokeWidth="2.5">
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+
+                {sendDropOpen && (
+                  <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 200, background: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 4px 16px rgba(0,0,0,0.10)", minWidth: 210 }}>
+                    <DropItem icon="mail"    label="Send"         hint="Default template"           onClick={() => sendEmailDirect("default")} />
+                    {isInvoiceUnpaid && (
+                      <DropItem icon="bell" label="Send Reminder" hint={doc.reminderEnabled ? `Active · ${doc.reminderCount ?? 0}/4 sent` : "Weekly, up to 4 times"} onClick={() => { setSendDropOpen(false); setSendModalMode("reminder"); }} active={!!doc.reminderEnabled} />
+                    )}
+                    <DropItem icon="edit"   label="Send Custom"  hint="Edit subject, body, CC/BCC"  onClick={() => { setSendDropOpen(false); setSendModalMode("custom"); }} />
+                    {!hasSentEmail && (
+                      <>
+                        <div style={{ height: 1, background: "#f3f4f6" }} />
+                        <DropItem icon="check" label="Mark as Sent" hint="Record as sent without emailing" onClick={markAsSent} />
+                      </>
+                    )}
+                    {hasSentEmail && (
+                      <>
+                        <div style={{ height: 1, background: "#f3f4f6" }} />
+                        <DropItem icon="refresh" label="Resend" hint={lastSent || ""} onClick={() => sendEmailDirect("resend")} />
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Download PDF */}
             <button onClick={() => window.print()}
@@ -311,10 +421,10 @@ export default function SalesDocDetailPage() {
           </div>
 
           {/* ── Gap ── */}
-          <div style={{ height: 36 }} />
+          <div style={{ height: 24 }} />
 
           {/* ── Bill To + Details ── */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 40, marginBottom: 22 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 40, marginBottom: 18 }}>
 
             {/* Bill To — business: company name primary, person below. Personal: person name primary — max 40% width */}
             <div style={{ maxWidth: "35%", wordBreak: "break-word" }}>
@@ -383,7 +493,7 @@ export default function SalesDocDetailPage() {
 
           {/* ── Subject ── */}
           {doc.subject && (
-            <div style={{ marginBottom: 18, padding: "10px 14px", background: "#f9fafb", borderLeft: `3px solid ${primaryColor}`, fontSize: 13, color: "#374151" }}>
+            <div style={{ marginBottom: 18, fontSize: 13, color: "#374151" }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: "#6b7280", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 3 }}>Subject</div>
               {doc.subject}
             </div>
@@ -409,6 +519,7 @@ export default function SalesDocDetailPage() {
                   <td style={{ padding: "10px 10px" }}>
                     <div style={{ fontWeight: 600 }}>{l.description}</div>
                     {l.product && <div style={{ fontSize: 10, color: primaryColor, fontFamily: "monospace", marginTop: 2 }}>{l.product.key}</div>}
+                    {l.productDetails && <div style={{ fontSize: 11, color: "#6b7280", marginTop: 3, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{l.productDetails}</div>}
                   </td>
                   <td style={{ padding: "10px 10px", textAlign: "center" }}>
                     {l.billingPeriod ? (
@@ -433,22 +544,22 @@ export default function SalesDocDetailPage() {
           {/* ── Totals ── */}
           <div style={{ display: "flex", justifyContent: "flex-end", margin: "18px 0 24px" }}>
             <div style={{ minWidth: 300 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "0.5px solid #f3f4f6", fontSize: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", borderBottom: "0.5px solid #f3f4f6", fontSize: 12 }}>
                 <span style={{ color: "#6b7280" }}>Subtotal</span>
                 <span style={{ fontFamily: "monospace", fontWeight: 600 }}>{fmtAmount(doc.subtotal, doc.currency)}</span>
               </div>
               {Number(doc.vatPercent) > 0 && (
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "0.5px solid #f3f4f6", fontSize: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", borderBottom: "0.5px solid #f3f4f6", fontSize: 12 }}>
                   <span style={{ color: "#6b7280" }}>VAT ({Number(doc.vatPercent)}%)</span>
                   <span style={{ fontFamily: "monospace", fontWeight: 600 }}>{fmtAmount(doc.vatAmount, doc.currency)}</span>
                 </div>
               )}
-              <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderTop: `2px solid ${primaryColor}`, marginTop: 4, fontSize: 15, fontWeight: 700 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 10px", borderTop: `2px solid ${primaryColor}`, marginTop: 4, fontSize: 15, fontWeight: 700 }}>
                 <span>Total</span>
                 <span style={{ color: primaryColor }}>{fmtAmount(doc.total, doc.currency)}</span>
               </div>
               {totalPaid > 0 && (
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "0.5px solid #f3f4f6", fontSize: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", borderBottom: "0.5px solid #f3f4f6", fontSize: 12 }}>
                   <span style={{ color: "#15803d" }}>
                     Paid
                     {doc.payments.length > 0 && (
@@ -461,7 +572,7 @@ export default function SalesDocDetailPage() {
                 </div>
               )}
               {balanceDue > 0 && totalPaid > 0 && (
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderTop: "1px solid #e5e7eb", marginTop: 6, fontSize: 14, fontWeight: 700 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", borderTop: "1px solid #e5e7eb", marginTop: 6, fontSize: 14, fontWeight: 700 }}>
                   <span>Balance Due</span>
                   <span style={{ color: "#dc2626", fontFamily: "monospace" }}>{fmtAmount(balanceDue, doc.currency)}</span>
                 </div>
@@ -484,11 +595,65 @@ export default function SalesDocDetailPage() {
             </div>
           </div>
 
-          {/* ── Footer: Terms + Bank + ZATCA ── */}
-          <div style={{ display: "grid", gridTemplateColumns: showBank ? "1fr 1fr" : "1fr", gap: 28, borderTop: "0.5px solid #e5e7eb", paddingTop: 20, marginBottom: 20 }}>
+          {/* ── Bank Details + ZATCA QR — one box, 2-col when QR available ── */}
+          {showBank && (
+            <div style={{
+              padding: "12px 16px", background: "#f9fafb", border: "1px solid #e5e7eb",
+              marginTop: 20, marginBottom: 20,
+              display: "grid",
+              gridTemplateColumns: (isSaudi && doc.type === "INVOICE") ? "1fr auto" : "1fr",
+              gap: 24, alignItems: "start",
+            }}>
 
-            {/* Terms & Notes */}
-            <div>
+              {/* Bank Details */}
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+                  Bank Details
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "100px 1fr", gap: "3px 0" }}>
+                  {li.bankDetails?.bankName    && <><span style={{ fontSize: 10, color: "#9ca3af" }}>Bank</span><span style={{ fontSize: 11, fontFamily: "monospace" }}>{li.bankDetails.bankName}</span></>}
+                  {li.bankDetails?.accountName && <><span style={{ fontSize: 10, color: "#9ca3af" }}>Account</span><span style={{ fontSize: 11, fontFamily: "monospace" }}>{li.bankDetails.accountName}</span></>}
+                  {li.bankDetails?.iban        && <><span style={{ fontSize: 10, color: "#9ca3af" }}>IBAN</span><span style={{ fontSize: 11, fontFamily: "monospace" }}>{li.bankDetails.iban}</span></>}
+                  {li.bankDetails?.swift       && <><span style={{ fontSize: 10, color: "#9ca3af" }}>SWIFT</span><span style={{ fontSize: 11, fontFamily: "monospace" }}>{li.bankDetails.swift}</span></>}
+                </div>
+              </div>
+
+              {/* ZATCA QR — right column, same box */}
+              {isSaudi && doc.type === "INVOICE" && (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                  {/* Label — top right */}
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                    ZATCA QR
+                  </div>
+                  {/* Text left of QR, both bottom-aligned on same row */}
+                  <div style={{ display: "flex", alignItems: "flex-end", gap: 10 }}>
+                    <div style={{ fontSize: 9, color: "#9ca3af", whiteSpace: "nowrap" }}>
+                      Scan to verify with ZATCA portal
+                    </div>
+                    <div style={{ width: 80, height: 80, border: "0.5px solid #e5e7eb", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      {doc.zatcaQrCode
+                        ? <img src={`data:image/png;base64,${doc.zatcaQrCode}`} alt="ZATCA QR" style={{ width: 72, height: 72 }} />
+                        : (
+                          <svg width="60" height="60" viewBox="0 0 52 52" fill="none">
+                            <rect x="2" y="2" width="14" height="14" rx="1" fill="none" stroke="#6b7280" strokeWidth="2"/><rect x="5" y="5" width="8" height="8" fill="#6b7280"/>
+                            <rect x="36" y="2" width="14" height="14" rx="1" fill="none" stroke="#6b7280" strokeWidth="2"/><rect x="39" y="5" width="8" height="8" fill="#6b7280"/>
+                            <rect x="2" y="36" width="14" height="14" rx="1" fill="none" stroke="#6b7280" strokeWidth="2"/><rect x="5" y="39" width="8" height="8" fill="#6b7280"/>
+                            <rect x="20" y="2" width="4" height="4" fill="#6b7280"/><rect x="26" y="2" width="4" height="4" fill="#6b7280"/>
+                            <rect x="20" y="20" width="4" height="4" fill="#6b7280"/><rect x="26" y="26" width="4" height="4" fill="#6b7280"/>
+                            <rect x="20" y="32" width="4" height="4" fill="#6b7280"/><rect x="38" y="38" width="4" height="4" fill="#6b7280"/>
+                          </svg>
+                        )
+                      }
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Terms & Conditions + Notes ── */}
+          {(doc.termsAndConditions || doc.notes) && (
+            <div style={{ borderTop: showBank ? "none" : "0.5px solid #e5e7eb", paddingTop: showBank ? 0 : 20, marginBottom: 20 }}>
               {doc.termsAndConditions && (
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: "#6b7280", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>Terms &amp; Conditions</div>
@@ -502,44 +667,7 @@ export default function SalesDocDetailPage() {
                 </div>
               )}
             </div>
-
-            {/* Bank + QR */}
-            {showBank && (
-              <div>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#6b7280", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>Bank Details</div>
-                <div style={{ display: "grid", gridTemplateColumns: "90px 1fr", gap: "3px 0" }}>
-                  {li.bankDetails?.bankName    && <><span style={{ fontSize: 10, color: "#9ca3af" }}>Bank</span><span style={{ fontSize: 11, fontFamily: "monospace" }}>{li.bankDetails.bankName}</span></>}
-                  {li.bankDetails?.accountName && <><span style={{ fontSize: 10, color: "#9ca3af" }}>Account</span><span style={{ fontSize: 11, fontFamily: "monospace" }}>{li.bankDetails.accountName}</span></>}
-                  {li.bankDetails?.iban        && <><span style={{ fontSize: 10, color: "#9ca3af" }}>IBAN</span><span style={{ fontSize: 11, fontFamily: "monospace" }}>{li.bankDetails.iban}</span></>}
-                  {li.bankDetails?.swift       && <><span style={{ fontSize: 10, color: "#9ca3af" }}>SWIFT</span><span style={{ fontSize: 11, fontFamily: "monospace" }}>{li.bankDetails.swift}</span></>}
-                </div>
-
-                {/* ZATCA QR — Saudi invoices only */}
-                {isSaudi && doc.type === "INVOICE" && (
-                  <div style={{ marginTop: 14 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: "#6b7280", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>ZATCA QR Code</div>
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                      <div style={{ width: 64, height: 64, border: "0.5px solid #e5e7eb", background: "#f9fafb", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        {/* QR placeholder — will be replaced with actual ZATCA QR */}
-                        <svg width="50" height="50" viewBox="0 0 52 52" fill="none">
-                          <rect x="2" y="2" width="14" height="14" rx="1" fill="none" stroke="#6b7280" strokeWidth="2"/><rect x="5" y="5" width="8" height="8" fill="#6b7280"/>
-                          <rect x="36" y="2" width="14" height="14" rx="1" fill="none" stroke="#6b7280" strokeWidth="2"/><rect x="39" y="5" width="8" height="8" fill="#6b7280"/>
-                          <rect x="2" y="36" width="14" height="14" rx="1" fill="none" stroke="#6b7280" strokeWidth="2"/><rect x="5" y="39" width="8" height="8" fill="#6b7280"/>
-                          <rect x="20" y="2" width="4" height="4" fill="#6b7280"/><rect x="26" y="2" width="4" height="4" fill="#6b7280"/>
-                          <rect x="20" y="20" width="4" height="4" fill="#6b7280"/><rect x="26" y="26" width="4" height="4" fill="#6b7280"/>
-                          <rect x="20" y="32" width="4" height="4" fill="#6b7280"/><rect x="38" y="38" width="4" height="4" fill="#6b7280"/>
-                        </svg>
-                      </div>
-                      <div style={{ fontSize: 10, color: "#9ca3af", lineHeight: 1.6, paddingTop: 4 }}>
-                        <strong style={{ color: "#374151", fontSize: 11 }}>ZATCA QR Code</strong><br />
-                        Scan to verify with<br />ZATCA portal
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          )}
 
           {/* Internal note — no-print */}
           {doc.internalNote && (
@@ -575,6 +703,15 @@ export default function SalesDocDetailPage() {
             </div>
           )}
 
+          {doc.rfqFileUrl && (
+            <div className="no-print" style={{ marginTop: 12, padding: "10px 14px", background: "#f9fafb", border: "1px solid #e5e7eb", fontSize: 12, display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ color: "#6b7280" }}>Attachment:</span>
+              <a href={doc.rfqFileUrl} target="_blank" rel="noopener noreferrer" style={{ color: CLR.primary, fontWeight: 600, textDecoration: "none" }}>
+                View / Download ↗
+              </a>
+            </div>
+          )}
+
           {/* Doc footer */}
           <div style={{ textAlign: "center", fontSize: 10, color: "#9ca3af", borderTop: "0.5px solid #e5e7eb", paddingTop: 12, marginTop: 20 }}>
             {li.footerText ?? `${li.companyName ?? doc.market.name} · ${li.email ?? ""} · ${li.phone ?? ""}`}
@@ -583,6 +720,68 @@ export default function SalesDocDetailPage() {
           </div>
         </div>
       </main>
+
+      {/* ── Modals ── */}
+      {showStatus && (
+        <StatusChangeModal
+          docId={id} docNum={doc.docNum}
+          docType={doc.type} docStatus={doc.status}
+          onClose={() => setShowStatus(false)}
+          onChanged={newStatus => setDoc(prev => prev ? { ...prev, status: newStatus } : prev)}
+        />
+      )}
+
+      {showConvert && (
+        <ConvertModal
+          docId={id} docNum={doc.docNum} docType={doc.type}
+          onClose={() => setShowConvert(false)}
+          onConverted={redirectTo => { setShowConvert(false); router.push(redirectTo); }}
+        />
+      )}
+
+      {sendModalMode && (
+        <SendEmailModal
+          docId={id} docNum={doc.docNum}
+          docType={doc.type} docStatus={doc.status}
+          customerEmail={doc.customer.email}
+          reminderEnabled={doc.reminderEnabled ?? false}
+          reminderCount={doc.reminderCount ?? 0}
+          mode={sendModalMode}
+          onClose={() => setSendModalMode(null)}
+          onSent={result => {
+            setSendMsg({ ok: true, text: "Email sent successfully" });
+            setDoc(prev => prev ? {
+              ...prev,
+              emailSentAt:     result.emailSentAt,
+              emailSentCount:  result.emailSentCount  ?? prev.emailSentCount,
+              reminderCount:   result.reminderCount   ?? prev.reminderCount,
+              reminderEnabled: result.reminderEnabled ?? prev.reminderEnabled,
+            } : prev);
+          }}
+        />
+      )}
     </>
+  );
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function DropItem({ icon, label, hint, onClick, active }: {
+  icon: string; label: string; hint?: string;
+  onClick: () => void; active?: boolean;
+}) {
+  const [hov, setHov] = useState(false);
+  return (
+    <button onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 14px", background: hov ? "#f9fafb" : "#fff", border: "none", cursor: "pointer", fontFamily: "inherit", textAlign: "left" as const }}>
+      <Icon name={icon} size={14} color={active ? CLR.primary : "#6b7280"} />
+      <div style={{ flex: 1 }}>
+        <p style={{ fontSize: 13, fontWeight: 500, color: active ? CLR.primary : "#111827", margin: 0 }}>{label}</p>
+        {hint && <p style={{ fontSize: 11, color: "#9ca3af", margin: 0 }}>{hint}</p>}
+      </div>
+      {active && <div style={{ width: 6, height: 6, borderRadius: "50%", background: CLR.primary, flexShrink: 0 }} />}
+    </button>
   );
 }

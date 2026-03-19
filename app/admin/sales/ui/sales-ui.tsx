@@ -3,6 +3,7 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { CLR } from "@/components/ui/admin-ui";
+import { Icon } from "@/components/ui/Icon";
 import type { SalesDocumentType } from "@prisma/client";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -90,6 +91,11 @@ export function fmtAmount(cents: number, currency: string) {
   return `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+export function fmtDate(d: string | Date | null | undefined): string {
+  if (!d) return "—";
+  return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
 function todayISO() { return new Date().toISOString().split("T")[0]; }
 function calcLineTotal(u: number, q: number, d = 0) { return Math.round(u * q * (1 - d / 100)); }
 
@@ -107,43 +113,271 @@ function emptyLine(nonInventory = false): LineItem {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const STATUS_STYLE: Record<string, { bg: string; color: string; border: string }> = {
-  DRAFT:     { bg: "#f9fafb", color: "#374151", border: "#e5e7eb" },
-  ISSUED:    { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
-  SENT:      { bg: "#f5f3ff", color: "#7c3aed", border: "#ddd6fe" },
-  ACCEPTED:  { bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0" },
-  REJECTED:  { bg: "#fef2f2", color: "#dc2626", border: "#fecaca" },
-  CONVERTED: { bg: "#fffbeb", color: "#b45309", border: "#fde68a" },
-  PAID:      { bg: "#dcfce7", color: "#15803d", border: "#86efac" },
-  PARTIAL:   { bg: "#fef3c7", color: "#92400e", border: "#fcd34d" },
-  OVERDUE:   { bg: "#fef2f2", color: "#991b1b", border: "#fca5a5" },
-  VOID:      { bg: "#f3f4f6", color: "#6b7280", border: "#d1d5db" },
+  DRAFT:          { bg: "#f9fafb", color: "#374151", border: "#e5e7eb" },
+  ISSUED:         { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
+  SENT:           { bg: "#f5f3ff", color: "#7c3aed", border: "#ddd6fe" },
+  ACCEPTED:       { bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0" },
+  REJECTED:       { bg: "#fef2f2", color: "#dc2626", border: "#fecaca" },
+  CONVERTED:      { bg: "#fffbeb", color: "#b45309", border: "#fde68a" },
+  PAID:           { bg: "#dcfce7", color: "#15803d", border: "#86efac" },
+  PARTIALLY_PAID: { bg: "#fef3c7", color: "#92400e", border: "#fcd34d" },
+  PARTIAL:        { bg: "#fef3c7", color: "#92400e", border: "#fcd34d" },
+  OVERDUE:        { bg: "#fef2f2", color: "#991b1b", border: "#fca5a5" },
+  VOID:           { bg: "#f3f4f6", color: "#6b7280", border: "#d1d5db" },
+  PENDING:        { bg: "#fef9c3", color: "#854d0e", border: "#fde047" },
+  IN_REVIEW:      { bg: "#f0f9ff", color: "#0369a1", border: "#bae6fd" },
+  QUOTED:         { bg: "#f0fdf4", color: "#166534", border: "#bbf7d0" },
+  REVISED:        { bg: "#fdf4ff", color: "#7e22ce", border: "#e9d5ff" },
+  EXPIRED:        { bg: "#fff7ed", color: "#c2410c", border: "#fed7aa" },
+  CLOSED:         { bg: "#f3f4f6", color: "#374151", border: "#d1d5db" },
+  DELIVERED:      { bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0" },
+  CANCELLED:      { bg: "#fef2f2", color: "#dc2626", border: "#fecaca" },
+  WRITTEN_OFF:    { bg: "#fdf4ff", color: "#7e22ce", border: "#e9d5ff" },
+  PROCESSING:     { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
+  APPLIED:        { bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0" },
 };
 
 export function SalesStatusBadge({ status }: { status: string }) {
-  const s = STATUS_STYLE[status] ?? STATUS_STYLE.DRAFT;
+  const s = STATUS_STYLE[status] ?? { bg: "#f9fafb", color: "#374151", border: "#e5e7eb" };
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", fontSize: 11, fontWeight: 600, padding: "2px 8px", background: s.bg, color: s.color, border: `1px solid ${s.border}` }}>
-      {status}
+    <span style={{
+      fontSize: 10, fontWeight: 700, padding: "2px 8px",
+      background: s.bg, color: s.color, border: `1px solid ${s.border}`,
+      letterSpacing: "0.04em", whiteSpace: "nowrap" as const,
+    }}>
+      {status.replace(/_/g, " ")}
     </span>
   );
 }
 
-const TYPE_BADGE: Record<string, { bg: string; color: string; border: string }> = {
-  RFQ:           { bg: "#fef3c7", color: "#92400e", border: "#fcd34d" },
+const TYPE_BADGE_STYLE: Record<string, { bg: string; color: string; border: string }> = {
+  RFQ:           { bg: "#fef9c3", color: "#854d0e", border: "#fde047" },
   QUOTATION:     { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
   PO:            { bg: "#f5f3ff", color: "#7c3aed", border: "#ddd6fe" },
   DELIVERY_NOTE: { bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0" },
-  PROFORMA:      { bg: "#f9fafb", color: "#374151", border: "#d1d5db" },
+  PROFORMA:      { bg: "#f9fafb", color: "#374151", border: "#e5e7eb" },
   INVOICE:       { bg: "#dcfce7", color: "#15803d", border: "#86efac" },
   CREDIT_NOTE:   { bg: "#fef2f2", color: "#dc2626", border: "#fecaca" },
 };
 
 export function DocTypeBadge({ type }: { type: string }) {
-  const s = TYPE_BADGE[type] ?? TYPE_BADGE.PROFORMA;
+  const s = TYPE_BADGE_STYLE[type] ?? { bg: "#f9fafb", color: "#374151", border: "#e5e7eb" };
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", fontSize: 11, fontWeight: 600, padding: "2px 8px", background: s.bg, color: s.color, border: `1px solid ${s.border}` }}>
-      {type.replace(/_/g, " ")}
+    <span style={{
+      fontSize: 10, fontWeight: 700, padding: "2px 8px",
+      background: s.bg, color: s.color, border: `1px solid ${s.border}`,
+      letterSpacing: "0.04em", whiteSpace: "nowrap" as const,
+    }}>
+      {TYPE_LABEL[type] ?? type}
     </span>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TRow helper (used in CreateDocModal totals)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function TRow({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
+  return (
+    <div style={{
+      display: "flex", justifyContent: "space-between", padding: "5px 0",
+      borderTop: bold ? "2px solid #111827" : "1px solid #f3f4f6",
+      fontWeight: bold ? 700 : 400, fontSize: bold ? 15 : 13,
+    }}>
+      <span style={{ color: bold ? CLR.text : CLR.muted }}>{label}</span>
+      <span style={{ color: bold ? CLR.primary : CLR.text }}>{value}</span>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sales Document Table
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface SalesDocRow {
+  id: string; docNum: string; type: string; status: string;
+  currency: string; total: number; issueDate: string; dueDate?: string | null;
+  emailSentCount?: number | null;
+  customer: { fullName?: string | null; email: string; customerNumber?: string | null };
+  market: { key: string; name: string };
+  originDoc?: { docNum: string; type: string } | null;
+}
+
+export function SalesDocTable({ docs, loading, onOpen, onConvert, showType }: {
+  docs: SalesDocRow[]; loading: boolean; onOpen: (id: string) => void;
+  onConvert?: (id: string) => void; showType?: boolean;
+}) {
+  if (loading) return <div style={{ padding: "48px 24px", textAlign: "center", color: CLR.faint, fontSize: 13 }}>Loading…</div>;
+  if (!docs.length) return (
+    <div style={{ padding: "64px 24px", textAlign: "center", border: "1px solid #e5e7eb", background: "#fff" }}>
+      <p style={{ fontSize: 14, color: CLR.muted, fontWeight: 500 }}>No documents found</p>
+      <p style={{ fontSize: 12, color: CLR.faint, marginTop: 4 }}>Documents will appear here once created.</p>
+    </div>
+  );
+  return (
+    <div style={{ border: "1px solid #e5e7eb", background: "#fff", overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <thead>
+          <tr style={{ borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>
+            <Th>Doc #</Th>{showType && <Th>Type</Th>}<Th>Customer</Th>
+            <Th>Market</Th><Th>Status</Th><Th>Total</Th>
+            <Th>Date</Th><Th>Due</Th><Th>Origin</Th><Th />
+          </tr>
+        </thead>
+        <tbody>
+          {docs.map(d => (
+            <tr key={d.id}
+              style={{ borderBottom: "1px solid #f3f4f6", cursor: "pointer" }}
+              onClick={() => onOpen(d.id)}
+              onMouseEnter={e => (e.currentTarget.style.background = "#f9fafb")}
+              onMouseLeave={e => (e.currentTarget.style.background = "")}>
+              <Td><span style={{ fontWeight: 600, color: CLR.primary, fontFamily: "monospace" }}>{d.docNum}</span></Td>
+              {showType && <Td><DocTypeBadge type={d.type} /></Td>}
+              <Td>
+                <div style={{ fontWeight: 500 }}>{d.customer.fullName ?? d.customer.email}</div>
+                <div style={{ fontSize: 11, color: CLR.faint }}>{d.customer.customerNumber}</div>
+              </Td>
+              <Td>
+                <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 7px", background: "#f3f4f6", border: "1px solid #e5e7eb", color: CLR.muted }}>
+                  {d.market.key}
+                </span>
+              </Td>
+              <Td><SalesStatusBadge status={d.status} /></Td>
+              <Td style={{ fontWeight: 600 }}>{fmtAmount(d.total, d.currency)}</Td>
+              <Td style={{ color: CLR.muted }}>{fmtDate(d.issueDate)}</Td>
+              <Td style={{ color: CLR.faint }}>{d.dueDate ? fmtDate(d.dueDate) : "—"}</Td>
+              <Td>
+                {d.originDoc && (
+                  <span style={{ fontSize: 11, color: CLR.faint, fontFamily: "monospace" }}>
+                    {d.originDoc.docNum}
+                  </span>
+                )}
+              </Td>
+              <Td>
+                {onConvert && d.status !== "VOID" && d.status !== "CONVERTED" && (
+                  <button onClick={e => { e.stopPropagation(); onConvert(d.id); }}
+                    style={{ fontSize: 11, fontWeight: 600, padding: "4px 10px", background: CLR.primaryBg, color: CLR.primary, border: `1px solid ${CLR.primary}22`, cursor: "pointer", fontFamily: "inherit" }}>
+                    Convert
+                  </button>
+                )}
+              </Td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function Th({ children }: { children?: React.ReactNode }) {
+  return <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 600, color: CLR.muted, letterSpacing: "0.04em", textTransform: "uppercase" as const, whiteSpace: "nowrap" }}>{children}</th>;
+}
+function Td({ children, style }: { children?: React.ReactNode; style?: React.CSSProperties }) {
+  return <td style={{ padding: "11px 14px", verticalAlign: "middle", ...style }}>{children}</td>;
+}
+function ABtn({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+  return <button onClick={onClick} style={{ fontSize: 11, fontWeight: 600, padding: "4px 10px", background: CLR.primaryBg, color: CLR.primary, border: `1px solid ${CLR.primary}22`, cursor: "pointer", fontFamily: "inherit" }}>{children}</button>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Filters Bar
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function SalesFilters({ q, setQ, status, setStatus, marketKey, setMarketKey, statuses }: {
+  q: string; setQ: (v: string) => void; status: string; setStatus: (v: string) => void;
+  marketKey: string; setMarketKey: (v: string) => void; statuses: string[];
+}) {
+  const inp: React.CSSProperties = { padding: "8px 12px", fontSize: 13, border: "1px solid #d1d5db", background: "#fff", fontFamily: "inherit", outline: "none" };
+  return (
+    <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search doc # or customer…" style={{ ...inp, flex: 1, minWidth: 220 }} />
+      <select value={status} onChange={e => setStatus(e.target.value)} style={inp}>
+        <option value="">All Statuses</option>
+        {statuses.map(s => <option key={s}>{s}</option>)}
+      </select>
+      <select value={marketKey} onChange={e => setMarketKey(e.target.value)} style={inp}>
+        <option value="">All Markets</option>
+        <option value="SAUDI">Saudi Arabia (SAR)</option>
+        <option value="GLOBAL">Global (USD)</option>
+      </select>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Convert Modal — updated: onConverted receives redirectTo from API
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CONVERT_OPTIONS: Record<string, SalesDocumentType[]> = {
+  RFQ:           ["QUOTATION","PROFORMA","DELIVERY_NOTE","INVOICE"],
+  QUOTATION:     ["PROFORMA","DELIVERY_NOTE","INVOICE"],
+  PO:            ["INVOICE"],
+  DELIVERY_NOTE: ["PROFORMA","INVOICE"],
+  PROFORMA:      ["DELIVERY_NOTE","INVOICE"],
+  INVOICE:       ["CREDIT_NOTE"],
+};
+
+export function ConvertModal({ docId, docNum, docType, onClose, onConverted }: {
+  docId: string; docNum: string; docType: string;
+  onClose: () => void;
+  // redirectTo: the full path to redirect to (e.g. /admin/sales/invoices/NEW_ID?edit=1)
+  onConverted: (redirectTo: string) => void;
+}) {
+  const [target, setTarget]   = useState<SalesDocumentType | "">("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState("");
+  const options = CONVERT_OPTIONS[docType] ?? [];
+
+  async function submit() {
+    if (!target) return;
+    setLoading(true); setError("");
+    try {
+      const res  = await fetch(`/api/admin/sales/${docId}/convert`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetType: target }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      onConverted(data.redirectTo ?? `/admin/sales/${data.doc.id}?edit=1`);
+    } catch (e: any) { setError(e.message); }
+    setLoading(false);
+  }
+
+  return (
+    <Overlay onClose={onClose}>
+      <ModalBox title={`Convert ${docNum}`}>
+        <p style={{ fontSize: 13, color: CLR.muted, marginBottom: 16 }}>
+          Select target type. Source will be marked <em>Converted</em>. New document opens as a draft for review.
+        </p>
+        {options.length === 0
+          ? <p style={{ color: "#dc2626", fontSize: 13 }}>No conversion options available.</p>
+          : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {options.map(o => (
+                <label key={o} style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "10px 14px",
+                  border: `1px solid ${target === o ? CLR.primary : "#e5e7eb"}`,
+                  background: target === o ? CLR.primaryBg : "#fff",
+                  cursor: "pointer",
+                }}>
+                  <input type="radio" name="target" value={o} checked={target === o}
+                    onChange={() => setTarget(o)} style={{ accentColor: CLR.primary }} />
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{TYPE_LABEL[o]}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        {error && <p style={{ fontSize: 12, color: "#dc2626", marginTop: 10 }}>{error}</p>}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
+          <GhostBtn onClick={onClose} disabled={loading}>Cancel</GhostBtn>
+          <PrimaryBtn onClick={submit} disabled={loading || !target}>
+            {loading ? "Converting…" : "Convert"}
+          </PrimaryBtn>
+        </div>
+      </ModalBox>
+    </Overlay>
   );
 }
 
@@ -151,66 +385,47 @@ export function DocTypeBadge({ type }: { type: string }) {
 // Customer Search
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function CustomerSearch({ value, onChange }: { value: Customer | null; onChange: (c: Customer | null) => void }) {
-  const [query, setQuery]     = useState("");
+function CustomerSearch({ value, onChange }: { value: Customer | null; onChange: (c: Customer | null) => void }) {
+  const [query,   setQuery]   = useState("");
   const [results, setResults] = useState<Customer[]>([]);
+  const [open,    setOpen]    = useState(false);
   const [loading, setLoading] = useState(false);
-  const [open, setOpen]       = useState(false);
-  const wrapRef               = useRef<HTMLDivElement>(null);
-  const debRef                = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inp: React.CSSProperties = { width: "100%", padding: "9px 12px", fontSize: 13, border: "1px solid #d1d5db", fontFamily: "inherit", outline: "none" };
 
-  const search = useCallback(async (q: string) => {
+  useEffect(() => {
+    if (!query.trim() || query.length < 2) { setResults([]); return; }
     setLoading(true);
-    try {
-      const p = new URLSearchParams({ pageSize: "40" });
-      if (q) p.set("search", q);
-      const d = await fetch(`/api/admin/users?${p}`).then(r => r.json());
-      setResults(d.data ?? []);
-    } catch { /**/ }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    if (debRef.current) clearTimeout(debRef.current);
-    debRef.current = setTimeout(() => search(query), 250);
-    return () => { if (debRef.current) clearTimeout(debRef.current); };
-  }, [query, open, search]);
-
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
-
-  const inp: React.CSSProperties = {
-    width: "100%", padding: "9px 12px", fontSize: 13,
-    border: "1px solid #d1d5db", fontFamily: "inherit", outline: "none",
-  };
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/admin/users?q=${encodeURIComponent(query)}&role=CUSTOMER&limit=10`);
+        const d   = await res.json();
+        setResults(d.users ?? d.data ?? []);
+      } catch { setResults([]); }
+      setLoading(false);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query]);
 
   return (
-    <div ref={wrapRef} style={{ position: "relative" }}>
+    <div style={{ position: "relative" }}>
       {value ? (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", border: `1px solid ${CLR.primary}`, background: CLR.primaryBg, fontSize: 13 }}>
           <div>
             <span style={{ fontWeight: 600 }}>{value.fullName ?? value.email}</span>
-            <span style={{ color: CLR.muted, marginLeft: 8, fontSize: 11 }}>{value.customerNumber}</span>
+            <span style={{ color: CLR.muted, marginLeft: 8, fontSize: 11 }}>#{value.customerNumber}</span>
             <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, padding: "1px 7px", background: CLR.primary, color: "#fff" }}>
               {value.market.key} · {value.market.defaultCurrency}
             </span>
           </div>
-          <button onClick={() => { onChange(null); setQuery(""); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, color: CLR.muted, padding: "0 4px" }}>✕</button>
+          <button onClick={() => { onChange(null); setQuery(""); }}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, color: CLR.muted, padding: "0 4px" }}>✕</button>
         </div>
       ) : (
-        <input
-          value={query}
+        <input value={query}
           onChange={e => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           placeholder="Search by name, email or customer #…"
-          style={inp}
-        />
+          style={inp} />
       )}
       {open && !value && (
         <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 400, background: "#fff", border: "1px solid #d1d5db", borderTop: "none", maxHeight: 280, overflowY: "auto", boxShadow: "0 6px 20px rgba(0,0,0,0.12)" }}>
@@ -231,16 +446,14 @@ export function CustomerSearch({ value, onChange }: { value: Customer | null; on
                       background: c.market.key === "SAUDI" ? "#dcfce7" : "#eff6ff",
                       color: c.market.key === "SAUDI" ? "#15803d" : "#1d4ed8",
                       border: `1px solid ${c.market.key === "SAUDI" ? "#86efac" : "#bfdbfe"}`,
-                    }}>
-                      {c.market.key} · {c.market.defaultCurrency}
-                    </span>
+                    }}>{c.market.key}</span>
                   </div>
-                  <div style={{ fontSize: 11, color: CLR.faint, marginTop: 1 }}>
-                    {c.email}
-                    {c.customerNumber && <span style={{ marginLeft: 8, fontFamily: "monospace" }}>{c.customerNumber}</span>}
+                  <div style={{ fontSize: 11, color: CLR.faint, marginTop: 2 }}>
+                    {c.email} {c.customerNumber ? `· #${c.customerNumber}` : ""}
                   </div>
                 </div>
-              ))}
+              ))
+          }
         </div>
       )}
     </div>
@@ -248,8 +461,136 @@ export function CustomerSearch({ value, onChange }: { value: Customer | null; on
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Shared Product Picker Popup
+// Product ID / Description cells for line editor
 // ─────────────────────────────────────────────────────────────────────────────
+
+function ProductIDCell({ value, products, onSelect, onChange }: {
+  value: string; products: EligibleProduct[];
+  onSelect: (p: EligibleProduct) => void; onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const filtered = value.trim()
+    ? products.filter(p => p.key.toLowerCase().includes(value.toLowerCase()) || p.name.toLowerCase().includes(value.toLowerCase()))
+    : products.slice(0, 8);
+
+  return (
+    <div style={{ position: "relative" }}>
+      <input value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Key…"
+        style={{ width: "100%", padding: "6px 7px", fontSize: 11, fontFamily: "monospace", border: "1px solid #d1d5db", background: "#fff", outline: "none", boxSizing: "border-box" as const }} />
+      {open && filtered.length > 0 && (
+        <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 500, background: "#fff", border: "1px solid #d1d5db", minWidth: 280, maxHeight: 220, overflowY: "auto", boxShadow: "0 4px 16px rgba(0,0,0,0.1)" }}>
+          {filtered.map(p => (
+            <div key={p.id} onMouseDown={() => { onSelect(p); setOpen(false); }}
+              style={{ padding: "7px 10px", cursor: "pointer", fontSize: 12 }}
+              onMouseEnter={e => (e.currentTarget.style.background = "#f9fafb")}
+              onMouseLeave={e => (e.currentTarget.style.background = "")}>
+              <span style={{ fontFamily: "monospace", color: CLR.primary, fontWeight: 700, marginRight: 8 }}>{p.key}</span>
+              {p.name}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DescriptionCell({ value, products, onSelect, onChange }: {
+  value: string; products: EligibleProduct[];
+  onSelect: (p: EligibleProduct) => void; onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const filtered = value.trim().length > 1
+    ? products.filter(p => p.name.toLowerCase().includes(value.toLowerCase()) || p.key.toLowerCase().includes(value.toLowerCase()))
+    : [];
+
+  return (
+    <div style={{ position: "relative" }}>
+      <input value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(value.trim().length > 1)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Description…"
+        style={{ width: "100%", padding: "6px 8px", fontSize: 12, border: "1px solid #d1d5db", fontFamily: "inherit", outline: "none", boxSizing: "border-box" as const }} />
+      {open && filtered.length > 0 && (
+        <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 500, background: "#fff", border: "1px solid #d1d5db", minWidth: 280, maxHeight: 200, overflowY: "auto", boxShadow: "0 4px 16px rgba(0,0,0,0.1)" }}>
+          {filtered.map(p => (
+            <div key={p.id} onMouseDown={() => { onSelect(p); setOpen(false); }}
+              style={{ padding: "7px 10px", cursor: "pointer", fontSize: 12 }}
+              onMouseEnter={e => (e.currentTarget.style.background = "#f9fafb")}
+              onMouseLeave={e => (e.currentTarget.style.background = "")}>
+              <span style={{ fontFamily: "monospace", color: CLR.primary, fontWeight: 700, marginRight: 8 }}>{p.key}</span>
+              {p.name}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Catalog Picker Modal
+// ─────────────────────────────────────────────────────────────────────────────
+
+function CatalogPickerModal({ allProducts, eligibleProducts, currency, onSelect, onClose }: {
+  allProducts: EligibleProduct[]; eligibleProducts: EligibleProduct[];
+  currency: string; onSelect: (p: EligibleProduct) => void; onClose: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const eligibleIds = new Set(eligibleProducts.map(p => p.id));
+  const catalogOnly = allProducts.filter(p => !eligibleIds.has(p.id));
+  const filtered    = q.trim()
+    ? catalogOnly.filter(p => p.name.toLowerCase().includes(q.toLowerCase()) || p.key.toLowerCase().includes(q.toLowerCase()))
+    : catalogOnly;
+
+  return (
+    <Overlay onClose={onClose}>
+      <ModalBox title="Add from Full Catalog">
+        <div style={{ marginBottom: 12 }}>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search products…"
+            style={{ width: "100%", padding: "8px 12px", fontSize: 13, border: "1px solid #d1d5db", fontFamily: "inherit", outline: "none", boxSizing: "border-box" as const }} />
+        </div>
+        {filtered.length === 0 ? (
+          <div style={{ padding: "24px", textAlign: "center", color: CLR.faint, fontSize: 13 }}>
+            {catalogOnly.length === 0 ? "All catalog products are already in the eligible list." : "No products match your search."}
+          </div>
+        ) : (
+          <div style={{ maxHeight: 360, overflowY: "auto", border: "1px solid #e5e7eb" }}>
+            {filtered.map(p => (
+              <div key={p.id} onClick={() => onSelect(p)}
+                style={{ padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}
+                onMouseEnter={e => (e.currentTarget.style.background = "#f9fafb")}
+                onMouseLeave={e => (e.currentTarget.style.background = "")}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                    <span style={{ fontFamily: "monospace", fontSize: 11, color: CLR.primary, fontWeight: 700 }}>{p.key}</span>
+                    <span style={{ fontSize: 10, padding: "1px 5px", background: "#f3f4f6", color: CLR.muted, border: "1px solid #e5e7eb" }}>{p.type}</span>
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>{p.name}</div>
+                  {p.nameAr && <div style={{ fontSize: 11, color: CLR.muted, direction: "rtl", textAlign: "right" as const }}>{p.nameAr}</div>}
+                  <div style={{ fontSize: 10, color: "#b45309", marginTop: 2 }}>No pricing for this customer — manual price required</div>
+                </div>
+                <button style={{ fontSize: 11, fontWeight: 600, padding: "4px 10px", background: "#f5f3ff", color: "#7c3aed", border: "1px solid #ddd6fe", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" as const }}>
+                  + Add
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <GhostBtn onClick={onClose} disabled={false}>Close</GhostBtn>
+        </div>
+      </ModalBox>
+    </Overlay>
+  );
+}
+
+
+// ── Shared Product Picker Popup ──────────────────────────────────────────────
 
 function ProductPicker({ products, onSelect, onClose }: {
   products: EligibleProduct[];
@@ -311,6 +652,57 @@ function ProductPicker({ products, onSelect, onClose }: {
           ))}
       </div>
     </div>
+  );
+}
+
+// ── Period cell ─────────────────────────────────────────────────────────────
+
+function PeriodCell({ value, prod, currency, readOnly, onChange }: {
+  value: string; prod?: EligibleProduct;
+  currency: string; readOnly?: boolean;
+  onChange: (p: string) => void;
+}) {
+  useEffect(() => {
+    if (value) return;
+    const firstPriced = PERIOD_ORDER.find(p => prod?.prices.find(pr => pr.billingPeriod === p));
+    const firstPeriod = firstPriced ?? prod?.billingPeriods?.[0] ?? "";
+    if (firstPeriod) onChange(firstPeriod);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prod?.id]);
+
+  const selectedPriceRow = prod?.prices.find(pr => pr.billingPeriod === value);
+
+  if (readOnly) {
+    return (
+      <span style={{ fontSize: 11, color: value ? CLR.muted : CLR.faint }}>
+        {value ? (PERIOD_LABEL[value] ?? value) : "N/A"}
+      </span>
+    );
+  }
+
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      style={{
+        width: "100%", padding: "6px 5px", fontSize: 11,
+        border: `1px solid ${selectedPriceRow ? "#86efac" : "#d1d5db"}`,
+        fontFamily: "inherit",
+        background: selectedPriceRow ? "#f0fdf4" : "#fff",
+        color: selectedPriceRow ? "#15803d" : CLR.text,
+        fontWeight: selectedPriceRow ? 600 : 400,
+      }}
+    >
+      <option value="">N/A</option>
+      {PERIOD_ORDER.map(p => {
+        const pr = prod?.prices.find(pr2 => pr2.billingPeriod === p);
+        return (
+          <option key={p} value={p} style={{ color: pr ? "#15803d" : "#9ca3af", fontWeight: pr ? 600 : 400 }}>
+            {pr ? "✓ " : ""}{PERIOD_LABEL[p]}{pr ? ` — ${fmtAmount(pr.priceCents, currency)}` : "  (no price)"}
+          </option>
+        );
+      })}
+    </select>
   );
 }
 
@@ -620,378 +1012,8 @@ export function LineItemsEditor({
   );
 }
 
-// ── Product ID cell ────────────────────────────────────────────────────────
-
-function ProductIDCell({ value, products, onSelect, onChange }: {
-  value: string; products: EligibleProduct[];
-  onSelect: (p: EligibleProduct) => void; onChange: (v: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const wrap = useRef<HTMLDivElement>(null);
-  const filtered = products.filter(p =>
-    !value || p.key.toLowerCase().includes(value.toLowerCase())
-  );
-
-  return (
-    <div ref={wrap} style={{ position: "relative" }}>
-      <input
-        value={value}
-        onChange={e => { onChange(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)}
-        placeholder="Product ID…"
-        style={{
-          width: "100%", padding: "6px 7px", fontSize: 11, fontFamily: "monospace",
-          border: `1px solid ${value ? CLR.primary : "#d1d5db"}`,
-          background: value ? CLR.primaryBg : "#fff",
-          color: CLR.primary, outline: "none", boxSizing: "border-box" as const,
-        }}
-      />
-      {open && (
-        <ProductPicker
-          products={filtered}
-          onSelect={p => { onSelect(p); setOpen(false); }}
-          onClose={() => setOpen(false)}
-        />
-      )}
-    </div>
-  );
-}
-
-// ── Description cell ───────────────────────────────────────────────────────
-
-function DescriptionCell({ value, products, onSelect, onChange }: {
-  value: string; products: EligibleProduct[];
-  onSelect: (p: EligibleProduct) => void; onChange: (v: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const wrap = useRef<HTMLDivElement>(null);
-  const filtered = value.length > 1
-    ? products.filter(p =>
-        p.name.toLowerCase().includes(value.toLowerCase())
-        || (p.nameAr ?? "").includes(value)
-      )
-    : [];
-
-  return (
-    <div ref={wrap} style={{ position: "relative" }}>
-      <input
-        value={value}
-        onChange={e => { onChange(e.target.value); setOpen(true); }}
-        onFocus={() => { if (value.length > 1) setOpen(true); }}
-        placeholder="Description or search product name…"
-        style={{ width: "100%", padding: "6px 8px", fontSize: 12, border: "1px solid #d1d5db", fontFamily: "inherit", outline: "none", boxSizing: "border-box" as const }}
-      />
-      {open && filtered.length > 0 && (
-        <ProductPicker
-          products={filtered}
-          onSelect={p => { onSelect(p); setOpen(false); }}
-          onClose={() => setOpen(false)}
-        />
-      )}
-    </div>
-  );
-}
-
-// ── Period cell ─────────────────────────────────────────────────────────────
-
-function PeriodCell({ value, prod, currency, readOnly, onChange }: {
-  value: string; prod?: EligibleProduct;
-  currency: string; readOnly?: boolean;
-  onChange: (p: string) => void;
-}) {
-  useEffect(() => {
-    if (value) return;
-    const firstPriced = PERIOD_ORDER.find(p => prod?.prices.find(pr => pr.billingPeriod === p));
-    const firstPeriod = firstPriced ?? prod?.billingPeriods?.[0] ?? "";
-    if (firstPeriod) onChange(firstPeriod);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prod?.id]);
-
-  const selectedPriceRow = prod?.prices.find(pr => pr.billingPeriod === value);
-
-  if (readOnly) {
-    return (
-      <span style={{ fontSize: 11, color: value ? CLR.muted : CLR.faint }}>
-        {value ? (PERIOD_LABEL[value] ?? value) : "N/A"}
-      </span>
-    );
-  }
-
-  return (
-    <select
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      style={{
-        width: "100%", padding: "6px 5px", fontSize: 11,
-        border: `1px solid ${selectedPriceRow ? "#86efac" : "#d1d5db"}`,
-        fontFamily: "inherit",
-        background: selectedPriceRow ? "#f0fdf4" : "#fff",
-        color: selectedPriceRow ? "#15803d" : CLR.text,
-        fontWeight: selectedPriceRow ? 600 : 400,
-      }}
-    >
-      <option value="">N/A</option>
-      {PERIOD_ORDER.map(p => {
-        const pr = prod?.prices.find(pr2 => pr2.billingPeriod === p);
-        return (
-          <option key={p} value={p} style={{ color: pr ? "#15803d" : "#9ca3af", fontWeight: pr ? 600 : 400 }}>
-            {pr ? "✓ " : ""}{PERIOD_LABEL[p]}{pr ? ` — ${fmtAmount(pr.priceCents, currency)}` : "  (no price)"}
-          </option>
-        );
-      })}
-    </select>
-  );
-}
-
-// ── Catalog Picker Modal ───────────────────────────────────────────────────
-
-function CatalogPickerModal({ allProducts, eligibleProducts, currency, onSelect, onClose }: {
-  allProducts: EligibleProduct[]; eligibleProducts: EligibleProduct[];
-  currency: string; onSelect: (p: EligibleProduct) => void; onClose: () => void;
-}) {
-  const [q, setQ] = useState("");
-  const eligibleIds = new Set(eligibleProducts.map(p => p.id));
-  const catalogOnly = allProducts.filter(p => !eligibleIds.has(p.id));
-  const filtered = catalogOnly.filter(p =>
-    !q
-    || p.key.toLowerCase().includes(q.toLowerCase())
-    || p.name.toLowerCase().includes(q.toLowerCase())
-    || (p.nameAr ?? "").includes(q)
-  );
-
-  return (
-    <Overlay onClose={onClose}>
-      <ModalBox title="Add from Full Catalog">
-        <p style={{ fontSize: 12, color: CLR.muted, marginBottom: 12 }}>
-          Showing {catalogOnly.length} products not in this customer's eligible list.
-          These products have no pricing for the customer's market/group — you can set price manually after adding.
-        </p>
-        <input autoFocus value={q} onChange={e => setQ(e.target.value)}
-          placeholder="Search by product ID or name…"
-          style={{ width: "100%", padding: "9px 12px", fontSize: 13, border: "1px solid #d1d5db", fontFamily: "inherit", outline: "none", marginBottom: 12, boxSizing: "border-box" as const }}
-        />
-        {filtered.length === 0 ? (
-          <div style={{ padding: "24px", textAlign: "center", color: CLR.faint, fontSize: 13 }}>
-            {catalogOnly.length === 0 ? "All catalog products are already in the eligible list." : "No products match your search."}
-          </div>
-        ) : (
-          <div style={{ maxHeight: 360, overflowY: "auto", border: "1px solid #e5e7eb" }}>
-            {filtered.map(p => (
-              <div key={p.id} onClick={() => onSelect(p)}
-                style={{ padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}
-                onMouseEnter={e => (e.currentTarget.style.background = "#f9fafb")}
-                onMouseLeave={e => (e.currentTarget.style.background = "")}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                    <span style={{ fontFamily: "monospace", fontSize: 11, color: CLR.primary, fontWeight: 700 }}>{p.key}</span>
-                    <span style={{ fontSize: 10, padding: "1px 5px", background: "#f3f4f6", color: CLR.muted, border: "1px solid #e5e7eb" }}>{p.type}</span>
-                  </div>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>{p.name}</div>
-                  {p.nameAr && <div style={{ fontSize: 11, color: CLR.muted, direction: "rtl", textAlign: "right" as const }}>{p.nameAr}</div>}
-                  <div style={{ fontSize: 10, color: "#b45309", marginTop: 2 }}>No pricing for this customer — manual price required</div>
-                </div>
-                <button style={{ fontSize: 11, fontWeight: 600, padding: "4px 10px", background: "#f5f3ff", color: "#7c3aed", border: "1px solid #ddd6fe", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" as const }}>
-                  + Add
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
-          <GhostBtn onClick={onClose} disabled={false}>Close</GhostBtn>
-        </div>
-      </ModalBox>
-    </Overlay>
-  );
-}
-
-function TRow({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
-  return (
-    <div style={{
-      display: "flex", justifyContent: "space-between", padding: "5px 0",
-      borderTop: bold ? "2px solid #111827" : "1px solid #f3f4f6",
-      fontWeight: bold ? 700 : 400, fontSize: bold ? 15 : 13,
-    }}>
-      <span style={{ color: bold ? CLR.text : CLR.muted }}>{label}</span>
-      <span style={{ color: bold ? CLR.primary : CLR.text }}>{value}</span>
-    </div>
-  );
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Sales Document Table
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface SalesDocRow {
-  id: string; docNum: string; type: string; status: string;
-  currency: string; total: number; issueDate: string; dueDate?: string | null;
-  customer: { fullName?: string | null; email: string; customerNumber?: string | null };
-  market: { key: string; name: string };
-  originDoc?: { docNum: string; type: string } | null;
-}
-
-export function SalesDocTable({ docs, loading, onOpen, onConvert, showType }: {
-  docs: SalesDocRow[]; loading: boolean; onOpen: (id: string) => void;
-  onConvert?: (id: string) => void; showType?: boolean;
-}) {
-  if (loading) return <div style={{ padding: "48px 24px", textAlign: "center", color: CLR.faint, fontSize: 13 }}>Loading…</div>;
-  if (!docs.length) return (
-    <div style={{ padding: "64px 24px", textAlign: "center", border: "1px solid #e5e7eb", background: "#fff" }}>
-      <p style={{ fontSize: 14, color: CLR.muted, fontWeight: 500 }}>No documents found</p>
-      <p style={{ fontSize: 12, color: CLR.faint, marginTop: 4 }}>Documents will appear here once created.</p>
-    </div>
-  );
-  return (
-    <div style={{ border: "1px solid #e5e7eb", background: "#fff", overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-        <thead>
-          <tr style={{ borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>
-            <Th>Doc #</Th>{showType && <Th>Type</Th>}<Th>Customer</Th>
-            <Th>Market</Th><Th>Status</Th><Th>Total</Th>
-            <Th>Date</Th><Th>Due</Th><Th>Origin</Th><Th />
-          </tr>
-        </thead>
-        <tbody>
-          {docs.map(d => (
-            <tr key={d.id}
-              style={{ borderBottom: "1px solid #f3f4f6", cursor: "pointer" }}
-              onClick={() => onOpen(d.id)}
-              onMouseEnter={e => (e.currentTarget.style.background = "#f9fafb")}
-              onMouseLeave={e => (e.currentTarget.style.background = "")}>
-              <Td><span style={{ fontWeight: 600, color: CLR.primary, fontFamily: "monospace" }}>{d.docNum}</span></Td>
-              {showType && <Td><DocTypeBadge type={d.type} /></Td>}
-              <Td>
-                <div style={{ fontWeight: 500 }}>{d.customer.fullName ?? d.customer.email}</div>
-                <div style={{ fontSize: 11, color: CLR.faint }}>{d.customer.customerNumber}</div>
-              </Td>
-              <Td><span style={{ fontSize: 11, fontWeight: 600, padding: "2px 7px", background: "#f3f4f6", border: "1px solid #e5e7eb", color: CLR.muted }}>{d.market.key}</span></Td>
-              <Td><SalesStatusBadge status={d.status} /></Td>
-              <Td style={{ fontWeight: 600 }}>{fmtAmount(d.total, d.currency)}</Td>
-              <Td style={{ color: CLR.muted }}>{fmtDate(d.issueDate)}</Td>
-              <Td style={{ color: d.dueDate ? CLR.muted : CLR.faint }}>{d.dueDate ? fmtDate(d.dueDate) : "—"}</Td>
-              <Td>
-                {d.originDoc
-                  ? <span style={{ fontSize: 11, color: CLR.primary, fontFamily: "monospace" }}>{d.originDoc.docNum}</span>
-                  : <span style={{ color: CLR.faint }}>—</span>}
-              </Td>
-              <Td>
-                <div style={{ display: "flex", gap: 6 }} onClick={e => e.stopPropagation()}>
-                  <ABtn onClick={() => onOpen(d.id)}>Open</ABtn>
-                  {onConvert && d.status !== "VOID" && <ABtn onClick={() => onConvert(d.id)}>Convert</ABtn>}
-                </div>
-              </Td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function Th({ children }: { children?: React.ReactNode }) {
-  return <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 600, color: CLR.muted, letterSpacing: "0.04em", textTransform: "uppercase" as const, whiteSpace: "nowrap" }}>{children}</th>;
-}
-function Td({ children, style }: { children?: React.ReactNode; style?: React.CSSProperties }) {
-  return <td style={{ padding: "11px 14px", verticalAlign: "middle", ...style }}>{children}</td>;
-}
-function ABtn({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
-  return <button onClick={onClick} style={{ fontSize: 11, fontWeight: 600, padding: "4px 10px", background: CLR.primaryBg, color: CLR.primary, border: `1px solid ${CLR.primary}22`, cursor: "pointer", fontFamily: "inherit" }}>{children}</button>;
-}
-function fmtDate(d: string) {
-  return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Filters Bar — FIX 2: market keys updated to SAUDI / GLOBAL
-// ─────────────────────────────────────────────────────────────────────────────
-
-export function SalesFilters({ q, setQ, status, setStatus, marketKey, setMarketKey, statuses }: {
-  q: string; setQ: (v: string) => void; status: string; setStatus: (v: string) => void;
-  marketKey: string; setMarketKey: (v: string) => void; statuses: string[];
-}) {
-  const inp: React.CSSProperties = { padding: "8px 12px", fontSize: 13, border: "1px solid #d1d5db", background: "#fff", fontFamily: "inherit", outline: "none" };
-  return (
-    <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search doc # or customer…" style={{ ...inp, flex: 1, minWidth: 220 }} />
-      <select value={status} onChange={e => setStatus(e.target.value)} style={inp}>
-        <option value="">All Statuses</option>
-        {statuses.map(s => <option key={s}>{s}</option>)}
-      </select>
-      <select value={marketKey} onChange={e => setMarketKey(e.target.value)} style={inp}>
-        <option value="">All Markets</option>
-        <option value="SAUDI">Saudi Arabia (SAR)</option>
-        <option value="GLOBAL">Global (USD)</option>
-      </select>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Convert Modal
-// ─────────────────────────────────────────────────────────────────────────────
-
-const CONVERT_OPTIONS: Record<string, SalesDocumentType[]> = {
-  RFQ:           ["QUOTATION","PROFORMA","DELIVERY_NOTE","INVOICE"],
-  QUOTATION:     ["PROFORMA","DELIVERY_NOTE","INVOICE"],
-  PO:            ["INVOICE"],
-  DELIVERY_NOTE: ["PROFORMA","INVOICE"],
-  PROFORMA:      ["DELIVERY_NOTE","INVOICE"],
-  INVOICE:       ["CREDIT_NOTE"],
-};
-
-export function ConvertModal({ docId, docNum, docType, onClose, onConverted }: {
-  docId: string; docNum: string; docType: string;
-  onClose: () => void; onConverted: (newDocId: string) => void;
-}) {
-  const [target, setTarget]   = useState<SalesDocumentType | "">("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState("");
-  const options = CONVERT_OPTIONS[docType] ?? [];
-
-  async function submit() {
-    if (!target) return;
-    setLoading(true); setError("");
-    try {
-      const res  = await fetch(`/api/admin/sales/${docId}/convert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ targetType: target }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      onConverted(data.doc.id);
-    } catch (e: any) { setError(e.message); }
-    setLoading(false);
-  }
-
-  return (
-    <Overlay onClose={onClose}>
-      <ModalBox title={`Convert ${docNum}`}>
-        <p style={{ fontSize: 13, color: CLR.muted, marginBottom: 16 }}>
-          Select target type. Source will be marked <em>Converted</em>.
-        </p>
-        {options.length === 0
-          ? <p style={{ color: "#dc2626", fontSize: 13 }}>No conversion options.</p>
-          : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {options.map(o => (
-                <label key={o} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", border: `1px solid ${target === o ? CLR.primary : "#e5e7eb"}`, background: target === o ? CLR.primaryBg : "#fff", cursor: "pointer" }}>
-                  <input type="radio" name="target" value={o} checked={target === o} onChange={() => setTarget(o)} style={{ accentColor: CLR.primary }} />
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>{TYPE_LABEL[o]}</span>
-                </label>
-              ))}
-            </div>
-          )}
-        {error && <p style={{ fontSize: 12, color: "#dc2626", marginTop: 10 }}>{error}</p>}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
-          <GhostBtn onClick={onClose} disabled={loading}>Cancel</GhostBtn>
-          <PrimaryBtn onClick={submit} disabled={loading || !target}>
-            {loading ? "Converting…" : "Convert"}
-          </PrimaryBtn>
-        </div>
-      </ModalBox>
-    </Overlay>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Create Document Modal — FIX 1 + FIX 3
+// Create Document Modal
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function CreateDocModal({ docType, onClose, onCreated }: {
@@ -1005,8 +1027,6 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
 
   const currency   = customer?.market.defaultCurrency ?? "USD";
   const marketId   = customer?.market.id ?? "";
-
-  // FIX 1: Read VAT from market.vatPercent — not hardcoded key check
   const vatPercent = customer ? Number(customer.market.vatPercent ?? 0) : 0;
 
   const [subject, setSubject]       = useState("");
@@ -1014,16 +1034,15 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
   const [dueDate, setDueDate]       = useState("");
   const [validUntil, setValidUntil] = useState("");
   const [refNum, setRefNum]         = useState("");
-  const [lines, setLines]         = useState<LineItem[]>([]);
-  const [notes, setNotes]         = useState("");
-  const [intNote, setIntNote]     = useState("");
-  const [terms, setTerms]         = useState("");
-  const [file, setFile]           = useState<File | null>(null);
-  const fileRef                   = useRef<HTMLInputElement>(null);
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState("");
+  const [lines, setLines]           = useState<LineItem[]>([]);
+  const [notes, setNotes]           = useState("");
+  const [intNote, setIntNote]       = useState("");
+  const [terms, setTerms]           = useState("");
+  const [file, setFile]             = useState<File | null>(null);
+  const fileRef                     = useRef<HTMLInputElement>(null);
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState("");
 
-  // Eligible products for selected customer
   useEffect(() => {
     if (!customer) { setEligible([]); return; }
     setLoadingProds(true);
@@ -1031,7 +1050,6 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
       .then(r => r.json())
       .then(d => {
         if (d.ok) {
-          // FIX 3: also spread d.products in case API returns that key
           setEligible([
             ...(d.plans    ?? []),
             ...(d.addons   ?? []),
@@ -1044,7 +1062,6 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
       .finally(() => setLoadingProds(false));
   }, [customer]);
 
-  // Full catalog with standard group pricing
   useEffect(() => {
     Promise.all([
       fetch("/api/admin/catalog/products").then(r => r.json()).catch(() => ({ data: [] })),
@@ -1054,7 +1071,6 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
       const groups: any[] = metaResp.data?.groups ?? [];
       const stdGroup   = groups.find((g: any) => g.key === "standard") ?? groups[0];
       const stdGroupId = stdGroup?.id ?? "";
-
       const pricingRows: any[] = pricingResp.data ?? [];
       const stdMap = new Map<string, number>();
       for (const row of pricingRows) {
@@ -1062,7 +1078,6 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
           stdMap.set(`${row.productId}:${row.billingPeriod}`, row.priceCents);
         }
       }
-
       setAllProducts((catalog.data ?? []).map((p: any) => {
         const periods: string[] = p.billingPeriods ?? [];
         const prices = periods
@@ -1084,7 +1099,6 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
 
   useEffect(() => { setLines([]); }, [customer]);
 
-  // Auto-compute validUntil for QUOTATION (30 days from issueDate) unless already set
   useEffect(() => {
     if (docType !== "QUOTATION") return;
     if (validUntil) return;
@@ -1107,8 +1121,20 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
     if (lines.length === 0) { setError("Add at least one line item."); return; }
     setLoading(true); setError("");
     try {
+      let rfqFileUrl: string | undefined;
+      if (file) {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("docType", docType);
+        const uploadRes  = await fetch("/api/admin/sales/upload", { method: "POST", body: fd });
+        const uploadData = await uploadRes.json();
+        if (!uploadRes.ok) throw new Error(uploadData.error ?? "Upload failed");
+        rfqFileUrl = uploadData.url;
+      }
+
       const body: Record<string, unknown> = {
         customerId: customer.id, marketId,
+        rfqFileUrl: rfqFileUrl ?? null,
         subject: subject || null, referenceNumber: refNum || null,
         notes: notes || null, internalNote: intNote || null,
         termsAndConditions: terms || null,
@@ -1303,7 +1329,8 @@ export function ModalBox({ title, children, wide }: { title: string; children: R
 
 export function PrimaryBtn({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
   return (
-    <button onClick={onClick} disabled={disabled} style={{ padding: "9px 20px", fontSize: 13, fontWeight: 600, background: disabled ? "#9ca3af" : CLR.primary, color: "#fff", border: "none", cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
+    <button onClick={onClick} disabled={disabled}
+      style={{ padding: "9px 20px", fontSize: 13, fontWeight: 600, background: disabled ? "#9ca3af" : CLR.primary, color: "#fff", border: "none", cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
       {children}
     </button>
   );
@@ -1311,8 +1338,362 @@ export function PrimaryBtn({ children, onClick, disabled }: { children: React.Re
 
 export function GhostBtn({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
   return (
-    <button onClick={onClick} disabled={disabled} style={{ padding: "9px 20px", fontSize: 13, fontWeight: 600, background: "#fff", color: CLR.text, border: "1px solid #d1d5db", cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
+    <button onClick={onClick} disabled={disabled}
+      style={{ padding: "9px 20px", fontSize: 13, fontWeight: 600, background: "#fff", color: CLR.text, border: "1px solid #d1d5db", cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
       {children}
     </button>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SendEmailModal
+// Handles "Send Reminder" and "Send Custom" dropdown options.
+// "Send" and "Resend" fire directly without a modal.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface SendEmailModalProps {
+  docId:           string;
+  docNum:          string;
+  docType:         string;
+  docStatus:       string;
+  customerEmail:   string;
+  reminderEnabled: boolean;
+  reminderCount:   number;
+  defaultCC?:      string;
+  defaultBCC?:     string;
+  mode:            "reminder" | "custom";
+  onClose:         () => void;
+  onSent: (result: {
+    emailSentAt: string;
+    emailSentCount: number;
+    reminderCount?: number;
+    reminderEnabled?: boolean;
+  }) => void;
+}
+
+export function SendEmailModal({
+  docId, docNum, docType, docStatus,
+  customerEmail, reminderEnabled, reminderCount,
+  defaultCC, defaultBCC, mode,
+  onClose, onSent,
+}: SendEmailModalProps) {
+  const [to,            setTo]            = useState(customerEmail);
+  const [cc,            setCc]            = useState(defaultCC  ?? "");
+  const [bcc,           setBcc]           = useState(defaultBCC ?? "");
+  const [customSubject, setCustomSubject] = useState(`${TYPE_LABEL[docType] ?? docType} ${docNum}`);
+  const [customBody,    setCustomBody]    = useState("");
+  const [saveDefaults,  setSaveDefaults]  = useState(false);
+  const [loading,       setLoading]       = useState(false);
+  const [enabling,      setEnabling]      = useState(false);
+  const [error,         setError]         = useState("");
+
+  const canRemind  = docType === "INVOICE" && ["ISSUED","SENT","PARTIALLY_PAID","OVERDUE"].includes(docStatus);
+  const maxReached = reminderCount >= 4;
+
+  const inp: React.CSSProperties = {
+    width: "100%", padding: "8px 10px", fontSize: 13,
+    border: "1px solid #e5e7eb", outline: "none",
+    fontFamily: "inherit", color: "#111827", background: "#fff",
+    boxSizing: "border-box" as const,
+  };
+  const lbl: React.CSSProperties = {
+    display: "block", fontSize: 11, fontWeight: 600,
+    color: "#6b7280", textTransform: "uppercase" as const,
+    letterSpacing: "0.04em", marginBottom: 5,
+  };
+
+  async function toggleReminder(enable: boolean) {
+    setEnabling(true); setError("");
+    try {
+      const res  = await fetch(`/api/admin/sales/${docId}/reminder`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: enable }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      onSent({ emailSentAt: new Date().toISOString(), emailSentCount: 0, reminderEnabled: enable, reminderCount: enable ? 0 : reminderCount });
+      onClose();
+    } catch (e: any) { setError(e.message); }
+    setEnabling(false);
+  }
+
+  async function sendNow() {
+    setLoading(true); setError("");
+    try {
+      const body: Record<string, any> = { mode };
+      if (mode === "custom") {
+        body.customSubject = customSubject;
+        body.customBody    = customBody;
+        body.to            = to;
+        if (cc)  body.cc  = cc;
+        if (bcc) body.bcc = bcc;
+        body.saveDefaults = saveDefaults;
+      }
+      const res  = await fetch(`/api/admin/sales/${docId}/send-email`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      onSent({ emailSentAt: data.emailSentAt, emailSentCount: data.emailSentCount, reminderCount: data.reminderCount });
+      onClose();
+    } catch (e: any) { setError(e.message); }
+    setLoading(false);
+  }
+
+  return (
+    <Overlay onClose={onClose}>
+      <ModalBox title={mode === "reminder" ? `Send Reminder — ${docNum}` : `Custom Send — ${docNum}`}>
+
+        {/* ── REMINDER MODE ── */}
+        {mode === "reminder" && (
+          <div>
+            {!canRemind && (
+              <div style={{ padding: "10px 14px", background: "#fef2f2", border: "1px solid #fecaca", fontSize: 13, color: "#dc2626", marginBottom: 16 }}>
+                Reminders are only available for unpaid invoices (Issued, Sent, Partially Paid, Overdue).
+              </div>
+            )}
+            {canRemind && maxReached && (
+              <div style={{ padding: "10px 14px", background: "#fef9c3", border: "1px solid #fcd34d", fontSize: 13, color: "#92400e", marginBottom: 16 }}>
+                Maximum 4 reminders have been sent for this invoice.
+              </div>
+            )}
+            {canRemind && !maxReached && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", padding: "14px 16px", marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>Weekly Auto-Reminder</span>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: "2px 8px",
+                      background: reminderEnabled ? "#dcfce7" : "#f3f4f6",
+                      color: reminderEnabled ? "#15803d" : "#6b7280",
+                      border: `1px solid ${reminderEnabled ? "#86efac" : "#d1d5db"}`,
+                    }}>
+                      {reminderEnabled ? "ACTIVE" : "OFF"}
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 10px", lineHeight: 1.6 }}>
+                    {reminderEnabled
+                      ? `Reminder ${reminderCount} of 4 sent. Next will be sent automatically in ~7 days.`
+                      : "Enable to automatically send weekly reminders. Up to 4 total."}
+                  </p>
+                  {/* Progress bars */}
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    {[1,2,3,4].map(n => (
+                      <div key={n} style={{ width: 28, height: 6, background: n <= reminderCount ? CLR.primary : "#e5e7eb" }} />
+                    ))}
+                    <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 4 }}>{reminderCount}/4</span>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {!reminderEnabled ? (
+                    <button onClick={() => toggleReminder(true)} disabled={enabling}
+                      style={{ flex: 1, padding: "9px 16px", fontSize: 13, fontWeight: 600, background: CLR.primary, color: "#fff", border: "none", cursor: enabling ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
+                      {enabling ? "Enabling…" : "Enable Weekly Reminders"}
+                    </button>
+                  ) : (
+                    <button onClick={() => toggleReminder(false)} disabled={enabling}
+                      style={{ flex: 1, padding: "9px 16px", fontSize: 13, fontWeight: 600, background: "#fff", color: "#dc2626", border: "1px solid #fecaca", cursor: enabling ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
+                      {enabling ? "Stopping…" : "Stop Reminders"}
+                    </button>
+                  )}
+                  <button onClick={sendNow} disabled={loading}
+                    style={{ flex: 1, padding: "9px 16px", fontSize: 13, fontWeight: 600, background: "#fffbeb", color: "#b45309", border: "1px solid #fcd34d", cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
+                    {loading ? "Sending…" : "Send Now"}
+                  </button>
+                </div>
+              </div>
+            )}
+            {error && <p style={{ fontSize: 12, color: "#dc2626", marginTop: 8 }}>{error}</p>}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+              <GhostBtn onClick={onClose} disabled={loading || enabling}>Close</GhostBtn>
+            </div>
+          </div>
+        )}
+
+        {/* ── CUSTOM MODE ── */}
+        {mode === "custom" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div>
+              <label style={lbl}>To</label>
+              <input style={inp} value={to} onChange={e => setTo(e.target.value)} placeholder="customer@example.com" />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div>
+                <label style={lbl}>CC</label>
+                <input style={inp} value={cc} onChange={e => setCc(e.target.value)} placeholder="cc@example.com" />
+              </div>
+              <div>
+                <label style={lbl}>BCC</label>
+                <input style={inp} value={bcc} onChange={e => setBcc(e.target.value)} placeholder="bcc@example.com" />
+              </div>
+            </div>
+            <div>
+              <label style={lbl}>Subject</label>
+              <input style={inp} value={customSubject} onChange={e => setCustomSubject(e.target.value)} />
+            </div>
+            <div>
+              <label style={lbl}>Message</label>
+              <textarea style={{ ...inp, height: 100, resize: "vertical" }}
+                value={customBody} onChange={e => setCustomBody(e.target.value)}
+                placeholder="Optional message — appears before line items table." />
+            </div>
+            {(cc || bcc) && (
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#374151", cursor: "pointer" }}>
+                <input type="checkbox" checked={saveDefaults} onChange={e => setSaveDefaults(e.target.checked)} style={{ accentColor: CLR.primary }} />
+                Save CC/BCC as default for future sends
+              </label>
+            )}
+            {error && <p style={{ fontSize: 12, color: "#dc2626" }}>{error}</p>}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <GhostBtn onClick={onClose} disabled={loading}>Cancel</GhostBtn>
+              <PrimaryBtn onClick={sendNow} disabled={loading || !to}>
+                {loading ? "Sending…" : "Send"}
+              </PrimaryBtn>
+            </div>
+          </div>
+        )}
+
+      </ModalBox>
+    </Overlay>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// StatusChangeModal
+// ─────────────────────────────────────────────────────────────────────────────
+
+const STATUS_TRANSITIONS_ALL: Record<string, string[]> = {
+  DRAFT:          ["ISSUED", "VOID"],
+  PENDING:        ["IN_REVIEW", "QUOTED", "CLOSED", "VOID"],
+  IN_REVIEW:      ["QUOTED", "CLOSED", "VOID"],
+  QUOTED:         ["CONVERTED", "CLOSED", "VOID"],
+  ISSUED:         ["SENT", "ACCEPTED", "REJECTED", "VOID"],
+  SENT:           ["ACCEPTED", "REJECTED", "REVISED", "VOID"],
+  REVISED:        ["ACCEPTED", "REJECTED", "VOID"],
+  ACCEPTED:       ["CONVERTED", "VOID"],
+  REJECTED:       ["VOID"],
+  PARTIALLY_PAID: ["PAID", "OVERDUE", "VOID"],
+  OVERDUE:        ["PAID", "WRITTEN_OFF", "VOID"],
+  DELIVERED:      ["CONVERTED", "VOID"],
+  EXPIRED:        ["VOID"],
+  PROCESSING:     ["CONVERTED", "VOID"],
+  CONVERTED: [], PAID: [], WRITTEN_OFF: [], APPLIED: [], CLOSED: [], VOID: [], CANCELLED: [],
+};
+
+const STATUS_CLR: Record<string, { bg: string; color: string; border: string }> = {
+  ISSUED:      { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
+  SENT:        { bg: "#f5f3ff", color: "#7c3aed", border: "#ddd6fe" },
+  ACCEPTED:    { bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0" },
+  REJECTED:    { bg: "#fef2f2", color: "#dc2626", border: "#fecaca" },
+  CONVERTED:   { bg: "#fffbeb", color: "#b45309", border: "#fde68a" },
+  PAID:        { bg: "#dcfce7", color: "#15803d", border: "#86efac" },
+  OVERDUE:     { bg: "#fef2f2", color: "#991b1b", border: "#fca5a5" },
+  VOID:        { bg: "#f3f4f6", color: "#6b7280", border: "#d1d5db" },
+  WRITTEN_OFF: { bg: "#fdf4ff", color: "#7e22ce", border: "#e9d5ff" },
+  IN_REVIEW:   { bg: "#f0f9ff", color: "#0369a1", border: "#bae6fd" },
+  QUOTED:      { bg: "#f0fdf4", color: "#166534", border: "#bbf7d0" },
+  CLOSED:      { bg: "#f3f4f6", color: "#374151", border: "#d1d5db" },
+  REVISED:     { bg: "#fdf4ff", color: "#7e22ce", border: "#e9d5ff" },
+  DEFAULT:     { bg: "#f9fafb", color: "#374151", border: "#e5e7eb" },
+};
+
+export interface StatusChangeModalProps {
+  docId:     string;
+  docNum:    string;
+  docType:   string;
+  docStatus: string;
+  onClose:   () => void;
+  onChanged: (newStatus: string) => void;
+}
+
+export function StatusChangeModal({ docId, docNum, docType, docStatus, onClose, onChanged }: StatusChangeModalProps) {
+  const [selected, setSelected] = useState("");
+  const [note,     setNote]     = useState("");
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState("");
+
+  const options = STATUS_TRANSITIONS_ALL[docStatus] ?? [];
+
+  const inp: React.CSSProperties = {
+    width: "100%", padding: "8px 10px", fontSize: 13,
+    border: "1px solid #e5e7eb", outline: "none",
+    fontFamily: "inherit", color: "#111827", background: "#fff",
+    boxSizing: "border-box" as const,
+  };
+
+  async function apply() {
+    if (!selected) return;
+    setLoading(true); setError("");
+    try {
+      const res  = await fetch(`/api/admin/sales/${docId}/status`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: selected, note }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      onChanged(selected);
+      onClose();
+    } catch (e: any) { setError(e.message); }
+    setLoading(false);
+  }
+
+  return (
+    <Overlay onClose={onClose}>
+      <ModalBox title={`Change Status — ${docNum}`}>
+        <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 16 }}>
+          Current: <strong style={{ color: "#111827" }}>{docStatus.replace(/_/g, " ")}</strong>
+        </p>
+        {options.length === 0 ? (
+          <p style={{ fontSize: 13, color: "#6b7280" }}>No status changes available for {docStatus}.</p>
+        ) : (
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
+              {options.map(s => {
+                const c = STATUS_CLR[s] ?? STATUS_CLR.DEFAULT;
+                const active = selected === s;
+                return (
+                  <button key={s} onClick={() => setSelected(s)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      padding: "10px 14px", cursor: "pointer", fontFamily: "inherit",
+                      background: active ? c.bg : "#fff",
+                      border: `1px solid ${active ? c.border : "#e5e7eb"}`,
+                      textAlign: "left" as const,
+                    }}>
+                    <div style={{
+                      width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
+                      border: `2px solid ${active ? c.color : "#d1d5db"}`,
+                      background: active ? c.color : "transparent",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      {active && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#fff" }} />}
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: active ? 600 : 400, color: active ? c.color : "#374151" }}>
+                      {s.replace(/_/g, " ")}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#6b7280", textTransform: "uppercase" as const, letterSpacing: "0.04em", marginBottom: 5 }}>
+                Note (optional — saved to audit log)
+              </label>
+              <textarea style={{ ...inp, height: 72, resize: "vertical" }}
+                value={note} onChange={e => setNote(e.target.value)}
+                placeholder="Reason for status change…" />
+            </div>
+          </>
+        )}
+        {error && <p style={{ fontSize: 12, color: "#dc2626", marginBottom: 10 }}>{error}</p>}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <GhostBtn onClick={onClose} disabled={loading}>Cancel</GhostBtn>
+          <PrimaryBtn onClick={apply} disabled={loading || !selected}>
+            {loading ? "Saving…" : "Change Status"}
+          </PrimaryBtn>
+        </div>
+      </ModalBox>
+    </Overlay>
   );
 }

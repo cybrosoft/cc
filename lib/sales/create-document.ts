@@ -1,6 +1,6 @@
 // lib/sales/create-document.ts
 // Core document creation logic — called by all 7 document type API routes.
-// Runs inside prisma.$transaction to keep number allocation atomic.
+// Market data fetched outside transaction to avoid timeout.
 
 import { prisma } from "@/lib/prisma";
 import { SalesDocumentType, SalesDocumentStatus } from "@prisma/client";
@@ -24,7 +24,7 @@ export interface CreateDocumentInput {
   // Dates
   issueDate?:  string | Date;
   dueDate?:    string | Date | null;
-  validUntil?: string | Date | null; // quotation expiry — if null, computed from market settings
+  validUntil?: string | Date | null;
 
   // Origin doc (for conversions)
   originDocId?: string | null;
@@ -35,67 +35,66 @@ export interface CreateDocumentInput {
 
   // Lines
   lines: Array<{
-    productId?:     string | null;
-    description:    string;
-    descriptionAr?: string | null;
-    billingPeriod?: string | null;
+    productId?:      string | null;
+    description:     string;
+    descriptionAr?:  string | null;
+    billingPeriod?:  string | null;
     productDetails?: string | null;
-    detailsAr?:     string | null;
-    quantity:       number;
-    unitPrice:      number;  // cents
-    discount:       number;  // 0–100 percent
+    detailsAr?:      string | null;
+    quantity:        number;
+    unitPrice:       number;  // cents
+    discount:        number;  // 0–100 percent
   }>;
 }
 
 export async function createDocument(input: CreateDocumentInput) {
-  return prisma.$transaction(async tx => {
-    // Get market for currency + VAT
-    const market = await tx.market.findUniqueOrThrow({
-      where:  { id: input.marketId },
-      select: { defaultCurrency: true, vatPercent: true, legalInfo: true },
-    });
+  // ── Fetch market OUTSIDE transaction to avoid timeout ─────────────────────
+  const market = await prisma.market.findUniqueOrThrow({
+    where:  { id: input.marketId },
+    select: { defaultCurrency: true, vatPercent: true, legalInfo: true },
+  });
 
-    const currency   = market.defaultCurrency;
-    const vatPercent = Number(market.vatPercent ?? 0);
+  const currency   = market.defaultCurrency;
+  const vatPercent = Number(market.vatPercent ?? 0);
 
-    // Allocate document number
+  // Compute totals outside transaction
+  const { subtotal, vatAmount, total } = calcTotals(
+    input.lines.map(l => ({
+      unitPrice: l.unitPrice,
+      quantity:  l.quantity,
+      discount:  l.discount,
+    })),
+    vatPercent,
+  );
+
+  // Determine validUntil for quotations
+  let validUntil: Date | null = null;
+  if (input.type === "QUOTATION") {
+    if (input.validUntil) {
+      validUntil = new Date(input.validUntil);
+    } else {
+      const li   = market.legalInfo as Record<string, unknown> | null;
+      const days = Number(li?.quotationValidityDays ?? 30);
+      validUntil = addDays(new Date(input.issueDate ?? new Date()), days);
+    }
+  }
+
+  // Determine initial status
+  let status: SalesDocumentStatus = "DRAFT";
+  if (input.type === "RFQ") status = "PENDING";
+
+  // Get default T&C from market legalInfo if not provided
+  let terms = input.termsAndConditions ?? null;
+  if (!terms && input.type !== "RFQ") {
+    const li = market.legalInfo as Record<string, unknown> | null;
+    terms = String(li?.defaultPaymentTerms ?? "") || null;
+  }
+
+  // ── Only DB writes inside transaction, with generous timeout ─────────────
+  const doc = await prisma.$transaction(async tx => {
     const docNum = await allocateDocNumber(tx, input.marketId, input.type);
 
-    // Compute totals
-    const { subtotal, vatAmount, total } = calcTotals(
-      input.lines.map(l => ({
-        unitPrice: l.unitPrice,
-        quantity:  l.quantity,
-        discount:  l.discount,
-      })),
-      vatPercent,
-    );
-
-    // Determine validUntil for quotations
-    let validUntil: Date | null = null;
-    if (input.type === "QUOTATION") {
-      if (input.validUntil) {
-        validUntil = new Date(input.validUntil);
-      } else {
-        // Read from market legalInfo.quotationValidityDays, default 30
-        const li = market.legalInfo as Record<string, unknown> | null;
-        const days = Number(li?.quotationValidityDays ?? 30);
-        validUntil = addDays(new Date(input.issueDate ?? new Date()), days);
-      }
-    }
-
-    // Determine initial status
-    let status: SalesDocumentStatus = "DRAFT";
-    if (input.type === "RFQ") status = "PENDING";
-
-    // Get default T&C from market legalInfo if not provided
-    let terms = input.termsAndConditions ?? null;
-    if (!terms && input.type !== "RFQ") {
-      const li = market.legalInfo as Record<string, unknown> | null;
-      terms = String(li?.defaultPaymentTerms ?? "") || null;
-    }
-
-    const doc = await tx.salesDocument.create({
+    const created = await tx.salesDocument.create({
       data: {
         docNum,
         type:     input.type,
@@ -130,7 +129,7 @@ export async function createDocument(input: CreateDocumentInput) {
             description:   l.description,
             descriptionAr: l.descriptionAr ?? null,
             billingPeriod: l.billingPeriod ?? null,
-            productDetails:l.productDetails?? null,
+            productDetails:l.productDetails ?? null,
             detailsAr:     l.detailsAr     ?? null,
             quantity:      l.quantity,
             unitPrice:     l.unitPrice,
@@ -147,17 +146,19 @@ export async function createDocument(input: CreateDocumentInput) {
       },
     });
 
-    // Audit log
-    await tx.auditLog.create({
-      data: {
-        actorUserId:  input.createdByAdminId,
-        action:       "SALES_DOCUMENT_CREATED",
-        entityType:   "SalesDocument",
-        entityId:     doc.id,
-        metadataJson: JSON.stringify({ docNum, type: input.type, total }),
-      },
-    });
+    return created;
+  }, { timeout: 30000 });
 
-    return doc;
+  // ── Audit log outside transaction ─────────────────────────────────────────
+  await prisma.auditLog.create({
+    data: {
+      actorUserId:  input.createdByAdminId,
+      action:       "SALES_DOCUMENT_CREATED",
+      entityType:   "SalesDocument",
+      entityId:     doc.id,
+      metadataJson: JSON.stringify({ docNum: doc.docNum, type: input.type, total }),
+    },
   });
+
+  return doc;
 }

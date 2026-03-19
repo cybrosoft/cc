@@ -228,11 +228,11 @@ export default function SalesListPage({ docType }: Props) {
           docNum={convertDoc.docNum}
           docType={convertDoc.type}
           onClose={() => { setConvertId(null); setConvertDoc(null); }}
-          onConverted={newId => {
-            setConvertId(null); setConvertDoc(null);
-            fetchDocs();
-            router.push(`/admin/sales/${newId}`);
-          }}
+          onConverted={redirectTo => {
+          setConvertId(null); setConvertDoc(null);
+          fetchDocs();
+          router.push(redirectTo);
+        }}
         />
       )}
     </PageShell>
