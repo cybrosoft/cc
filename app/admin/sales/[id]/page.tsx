@@ -706,9 +706,15 @@ export default function SalesDocDetailPage() {
           {doc.rfqFileUrl && (
             <div className="no-print" style={{ marginTop: 12, padding: "10px 14px", background: "#f9fafb", border: "1px solid #e5e7eb", fontSize: 12, display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ color: "#6b7280" }}>Attachment:</span>
-              <a href={doc.rfqFileUrl} target="_blank" rel="noopener noreferrer" style={{ color: CLR.primary, fontWeight: 600, textDecoration: "none" }}>
+              <button
+                onClick={async () => {
+                  const res  = await fetch(`/api/admin/sales/attachment?key=${encodeURIComponent(doc.rfqFileUrl!)}`);
+                  const data = await res.json();
+                  if (data.url) window.open(data.url, "_blank");
+                }}
+                style={{ background: "none", border: "none", cursor: "pointer", color: CLR.primary, fontWeight: 600, fontSize: 12, padding: 0, fontFamily: "inherit" }}>
                 View / Download ↗
-              </a>
+              </button>
             </div>
           )}
 

@@ -2,7 +2,7 @@
 export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/require-admin";
-import { s3 } from "@/lib/storage/s3";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { randomUUID } from "crypto";
 
 const s3 = new S3Client({
@@ -62,10 +62,8 @@ export async function POST(req: NextRequest) {
       ContentType: file.type,
     }));
 
-    const endpoint = process.env.SUPABASE_S3_ENDPOINT?.replace(/\/$/, "") ?? "";
-    const url = `${endpoint}/${BUCKET}/${key}`;
-
-    return NextResponse.json({ ok: true, url, key });
+    // Return the key — signed URL generated on demand via /api/admin/sales/attachment
+    return NextResponse.json({ ok: true, url: key, key });
   } catch (e: any) {
     console.error("[sales/upload] error:", e);
     return NextResponse.json({ error: e.message }, { status: 500 });

@@ -397,9 +397,9 @@ function CustomerSearch({ value, onChange }: { value: Customer | null; onChange:
     setLoading(true);
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/admin/users?q=${encodeURIComponent(query)}&role=CUSTOMER&limit=10`);
+        const res = await fetch(`/api/admin/users?search=${encodeURIComponent(query)}&role=CUSTOMER&pageSize=10`);
         const d   = await res.json();
-        setResults(d.users ?? d.data ?? []);
+        setResults(d.data ?? []);
       } catch { setResults([]); }
       setLoading(false);
     }, 300);
@@ -792,10 +792,12 @@ export function LineItemsEditor({
   const total     = subtotal + vatAmount;
 
   const numInp: React.CSSProperties = {
-    width: "100%", padding: "6px 7px", fontSize: 12,
-    border: "1px solid #d1d5db", fontFamily: "inherit",
-    textAlign: "right" as const, background: readOnly ? "#f9fafb" : "#fff",
-  };
+      width: "100%", padding: "6px 7px", fontSize: 12,
+      border: "1px solid #d1d5db", fontFamily: "inherit",
+      textAlign: "right" as const, background: readOnly ? "#f9fafb" : "#fff",
+      MozAppearance: "textfield" as any,
+      appearance: "textfield" as any,
+    };
   const txtInp: React.CSSProperties = {
     width: "100%", padding: "6px 8px", fontSize: 12,
     border: "1px solid #d1d5db", fontFamily: "inherit",
@@ -909,8 +911,8 @@ export function LineItemsEditor({
                 {/* Unit price */}
                 <div style={{ padding: "5px 3px" }}>
                   <input type="number" min={0} step={0.01}
-                    value={(line.unitPrice / 100).toFixed(2)}
-                    onChange={e => patchLine(i, { unitPrice: Math.round(Number(e.target.value) * 100) })}
+                    value={line.unitPrice === 0 ? "" : line.unitPrice / 100}
+                    onChange={e => patchLine(i, { unitPrice: Math.round(Number(e.target.value || "0") * 100) })}
                     disabled={readOnly} style={numInp} />
                 </div>
 
@@ -1063,6 +1065,7 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
   }, [customer]);
 
   useEffect(() => {
+    if (!marketId) return;
     Promise.all([
       fetch("/api/admin/catalog/products").then(r => r.json()).catch(() => ({ data: [] })),
       fetch("/api/admin/catalog/pricing").then(r => r.json()).catch(() => ({ data: [] })),
@@ -1074,17 +1077,21 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
       const pricingRows: any[] = pricingResp.data ?? [];
       const stdMap = new Map<string, number>();
       for (const row of pricingRows) {
-        if (row.customerGroupId === stdGroupId) {
+        if (row.customerGroupId === stdGroupId && row.marketId === marketId) {
           stdMap.set(`${row.productId}:${row.billingPeriod}`, row.priceCents);
         }
       }
-      setAllProducts((catalog.data ?? []).map((p: any) => {
-        const periods: string[] = p.billingPeriods ?? [];
+      setAllProducts((catalog.data ?? []).filter((p: any) => p.isActive).map((p: any) => {
+        const periodsFromProduct: string[] = p.billingPeriods ?? [];
+        const periodsFromPricing = pricingRows
+          .filter((r: any) => r.productId === p.id && r.customerGroupId === stdGroupId && r.marketId === marketId)
+          .map((r: any) => r.billingPeriod);
+        const periods: string[] = periodsFromProduct.length > 0 ? periodsFromProduct : periodsFromPricing;
         const prices = periods
           .map((period: string) => {
             const cents = stdMap.get(`${p.id}:${period}`);
             if (cents === undefined) return null;
-            return { billingPeriod: period, priceCents: cents, currency: "SAR", isOverride: false };
+            return { billingPeriod: period, priceCents: cents, currency, isOverride: false };
           })
           .filter(Boolean) as EligibleProduct["prices"];
         return {
@@ -1095,9 +1102,22 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
         };
       }));
     });
-  }, []);
+  }, [marketId]);
 
-  useEffect(() => { setLines([]); }, [customer]);
+  useEffect(() => { setLines([]); }, [customer?.id]);
+
+  useEffect(() => {
+    if (!customer) return;
+    setTerms("");
+    fetch("/api/admin/settings/markets")
+      .then(r => r.json())
+      .then(d => {
+        const m = (d.markets ?? []).find((m: any) => m.id === customer.market.id);
+        const t = (m?.legalInfo as any)?.defaultPaymentTerms ?? "";
+        if (t) setTerms(t);
+      })
+      .catch(() => {});
+  }, [customer?.id]);
 
   useEffect(() => {
     if (docType !== "QUOTATION") return;
@@ -1686,7 +1706,7 @@ export function StatusChangeModal({ docId, docNum, docType, docStatus, onClose, 
             </div>
           </>
         )}
-        {error && <p style={{ fontSize: 12, color: "#dc2626", marginBottom: 10 }}>{error}</p>}
+        {error && <p style={{ fontSize: 12, color: "#1b1b1b", marginBottom: 10 }}>{error}</p>}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <GhostBtn onClick={onClose} disabled={loading}>Cancel</GhostBtn>
           <PrimaryBtn onClick={apply} disabled={loading || !selected}>

@@ -109,3 +109,9 @@ body {
   /* Direct pages (Dashboard, Sales, System) — spacer handles offset, small buffer */
   .cy-main-flush { padding-top: 80px !important; }
 }
+
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
