@@ -464,9 +464,10 @@ function CustomerSearch({ value, onChange }: { value: Customer | null; onChange:
 // Product ID / Description cells for line editor
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ProductIDCell({ value, products, onSelect, onChange }: {
+function ProductIDCell({ value, products, onSelect, onChange, inputStyle }: {
   value: string; products: EligibleProduct[];
   onSelect: (p: EligibleProduct) => void; onChange: (v: string) => void;
+  inputStyle?: React.CSSProperties;
 }) {
   const [open, setOpen] = useState(false);
   const filtered = value.trim()
@@ -480,7 +481,7 @@ function ProductIDCell({ value, products, onSelect, onChange }: {
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder="Key…"
-        style={{ width: "100%", padding: "6px 7px", fontSize: 11, fontFamily: "monospace", border: "1px solid #d1d5db", background: "#fff", outline: "none", boxSizing: "border-box" as const }} />
+        style={{ width: "100%", padding: "6px 7px", fontSize: 11, fontFamily: "monospace", border: "1px solid #d1d5db", background: "#fff", outline: "none", boxSizing: "border-box" as const, ...(inputStyle ?? {}) }} />
       {open && filtered.length > 0 && (
         <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 500, background: "#fff", border: "1px solid #d1d5db", minWidth: 280, maxHeight: 220, overflowY: "auto", boxShadow: "0 4px 16px rgba(0,0,0,0.1)" }}>
           {filtered.map(p => (
@@ -498,9 +499,10 @@ function ProductIDCell({ value, products, onSelect, onChange }: {
   );
 }
 
-function DescriptionCell({ value, products, onSelect, onChange }: {
+function DescriptionCell({ value, products, onSelect, onChange, inputStyle }: {
   value: string; products: EligibleProduct[];
   onSelect: (p: EligibleProduct) => void; onChange: (v: string) => void;
+  inputStyle?: React.CSSProperties;
 }) {
   const [open, setOpen] = useState(false);
   const filtered = value.trim().length > 1
@@ -514,7 +516,7 @@ function DescriptionCell({ value, products, onSelect, onChange }: {
         onFocus={() => setOpen(value.trim().length > 1)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder="Description…"
-        style={{ width: "100%", padding: "6px 8px", fontSize: 12, border: "1px solid #d1d5db", fontFamily: "inherit", outline: "none", boxSizing: "border-box" as const }} />
+        style={{ width: "100%", padding: "6px 8px", fontSize: 12, border: "1px solid #d1d5db", fontFamily: "inherit", outline: "none", boxSizing: "border-box" as const, ...(inputStyle ?? {}) }} />
       {open && filtered.length > 0 && (
         <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 500, background: "#fff", border: "1px solid #d1d5db", minWidth: 280, maxHeight: 200, overflowY: "auto", boxShadow: "0 4px 16px rgba(0,0,0,0.1)" }}>
           {filtered.map(p => (
@@ -657,10 +659,11 @@ function ProductPicker({ products, onSelect, onClose }: {
 
 // ── Period cell ─────────────────────────────────────────────────────────────
 
-function PeriodCell({ value, prod, currency, readOnly, onChange }: {
+function PeriodCell({ value, prod, currency, readOnly, onChange, selectStyle }: {
   value: string; prod?: EligibleProduct;
   currency: string; readOnly?: boolean;
   onChange: (p: string) => void;
+  selectStyle?: React.CSSProperties;
 }) {
   useEffect(() => {
     if (value) return;
@@ -691,6 +694,7 @@ function PeriodCell({ value, prod, currency, readOnly, onChange }: {
         background: selectedPriceRow ? "#f0fdf4" : "#fff",
         color: selectedPriceRow ? "#15803d" : CLR.text,
         fontWeight: selectedPriceRow ? 600 : 400,
+        ...(selectStyle ?? {}),
       }}
     >
       <option value="">N/A</option>
@@ -729,6 +733,14 @@ export function LineItemsEditor({
   }
 
   const [showCatalogPicker, setShowCatalogPicker] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    function check() { setIsMobile(window.innerWidth < 768); }
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   function addAllEligible() {
     const newLines: LineItem[] = eligibleProducts.map(p => {
@@ -791,25 +803,36 @@ export function LineItemsEditor({
   const vatAmount = Math.round((subtotal * vatPercent) / 100);
   const total     = subtotal + vatAmount;
 
+  const mobileInp: React.CSSProperties = {
+    width: "100%", padding: "9px 12px", fontSize: 13,
+    border: "1px solid #d1d5db", fontFamily: "inherit",
+    textAlign: "right" as const, background: readOnly ? "#f9fafb" : "#fff",
+    MozAppearance: "textfield" as any,
+    appearance: "textfield" as any,
+  };
   const numInp: React.CSSProperties = {
-      width: "100%", padding: "6px 7px", fontSize: 12,
-      border: "1px solid #d1d5db", fontFamily: "inherit",
-      textAlign: "right" as const, background: readOnly ? "#f9fafb" : "#fff",
-      MozAppearance: "textfield" as any,
-      appearance: "textfield" as any,
-    };
+    width: "100%", padding: "6px 7px", fontSize: 12,
+    border: "1px solid #d1d5db", fontFamily: "inherit",
+    textAlign: "right" as const, background: readOnly ? "#f9fafb" : "#fff",
+    MozAppearance: "textfield" as any,
+    appearance: "textfield" as any,
+  };
   const txtInp: React.CSSProperties = {
     width: "100%", padding: "6px 8px", fontSize: 12,
     border: "1px solid #d1d5db", fontFamily: "inherit",
     background: readOnly ? "#f9fafb" : "#fff",
   };
 
-  const grid = "88px 1fr 22px 110px 58px 100px 58px 100px 24px";
+  // Desktop: Product ID | Description | toggle | Period | Qty | Unit Price | Disc% | Total | Remove
+  // Mobile:  Product ID | Description | toggle | Period | Qty | Unit Price | Total | Remove
+  const grid = isMobile
+    ? "70px 1fr 22px 90px 46px 80px 72px 24px"
+    : "88px 1fr 22px 110px 58px 100px 58px 100px 24px";
 
   return (
     <div>
       {/* Header */}
-      <div style={{
+      {!isMobile && <div style={{
         display: "grid", gridTemplateColumns: grid, gap: "0 2px",
         padding: "7px 8px", background: "#f9fafb",
         border: "1px solid #e5e7eb", borderBottom: "none",
@@ -825,10 +848,10 @@ export function LineItemsEditor({
         <span style={{ textAlign: "right" as const }}>DISC %</span>
         <span style={{ textAlign: "right" as const }}>TOTAL</span>
         <span />
-      </div>
+      </div>}
 
       {/* Lines */}
-      <div style={{ border: "1px solid #e5e7eb" }}>
+      <div style={{ border: isMobile ? "none" : "1px solid #e5e7eb" }}>
         {lines.length === 0 && (
           <div style={{ padding: "18px", fontSize: 12, color: CLR.faint, textAlign: "center" }}>
             No items — use the buttons below to add products or custom items.
@@ -840,6 +863,109 @@ export function LineItemsEditor({
           const lookupPool = [...eligibleProducts, ...allProducts];
           const prod = lookupPool.find(p => p.id === line.productId);
 
+          if (isMobile) {
+            // ── Mobile card layout ───────────────────────────────────────
+            return (
+              <React.Fragment key={i}>
+                <div style={{
+                  borderBottom: "2px solid #a9a9a9", borderRadius: 0,
+                  background: line.showDetails ? "#fffef9" : "#fff",
+                  marginBottom: 25, paddingBottom: 25,
+                }}>
+                  {/* Row 1: Product ID + Remove */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                    <div style={{ flex: 1, marginRight: 8 }}>
+                      {line.isNonInventory
+                        ? <input value={line.productKey} onChange={e => patchLine(i, { productKey: e.target.value })}
+                            placeholder="Product ID…" style={{ width: "100%", padding: "9px 12px", fontSize: 13, fontFamily: "monospace", border: "1px solid #d1d5db", background: "#fff", outline: "none", boxSizing: "border-box" as const }} />
+                        : readOnly
+                          ? <span style={{ fontSize: 11, fontFamily: "monospace", color: CLR.primary, fontWeight: 700 }}>{line.productKey || "—"}</span>
+                          : <ProductIDCell value={line.productKey} products={searchPool} onSelect={p => onProductSelect(i, p)} onChange={v => patchLine(i, { productKey: v })} inputStyle={{ padding: "9px 12px", fontSize: 13 }} />
+                      }
+                    </div>
+                    {!readOnly && (
+                      <button onClick={() => removeLine(i)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "#dc2626", lineHeight: 1, padding: "0 4px" }}>✕</button>
+                    )}
+                  </div>
+
+                  {/* Row 2: Description */}
+                  <div style={{ marginBottom: 6 }}>
+                    {line.isNonInventory
+                      ? <input value={line.description} onChange={e => patchLine(i, { description: e.target.value })}
+                          placeholder="Description…" style={{ width: "100%", padding: "9px 12px", fontSize: 13, border: "1px solid #d1d5db", fontFamily: "inherit", outline: "none", boxSizing: "border-box" as const }} />
+                      : readOnly
+                        ? <span style={{ fontSize: 12 }}>{line.description || "—"}</span>
+                        : <DescriptionCell value={line.description} products={searchPool} onSelect={p => onProductSelect(i, p)} onChange={v => patchLine(i, { description: v })} inputStyle={{ padding: "9px 12px", fontSize: 13 }} />
+                    }
+                  </div>
+
+                  {/* Row 3: Period */}
+                  <div style={{ marginBottom: 6 }}>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: CLR.muted, textTransform: "uppercase" as const, letterSpacing: "0.04em", display: "block", marginBottom: 3 }}>Period</span>
+                    <PeriodCell value={line.billingPeriod} prod={prod} currency={currency} readOnly={readOnly} onChange={period => onPeriodChange(i, period)} selectStyle={{ padding: "9px 12px", fontSize: 13 }} />
+                  </div>
+
+                  {/* Row 4: Qty + Unit Price + Total */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 6 }}>
+                    <div>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: CLR.muted, textTransform: "uppercase" as const, letterSpacing: "0.04em", display: "block", marginBottom: 3 }}>Qty</span>
+                      <input type="number" min={1} value={line.quantity}
+                        onChange={e => patchLine(i, { quantity: Math.max(1, Number(e.target.value)) })}
+                        disabled={readOnly} style={{ ...mobileInp, textAlign: "left" as const }} />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: CLR.muted, textTransform: "uppercase" as const, letterSpacing: "0.04em", display: "block", marginBottom: 3 }}>Unit Price</span>
+                      <input type="number" min={0} step={0.01}
+                        value={line.unitPrice === 0 ? "" : line.unitPrice / 100}
+                        onChange={e => patchLine(i, { unitPrice: Math.round(Number(e.target.value || "0") * 100) })}
+                        disabled={readOnly} style={mobileInp} />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: CLR.muted, textTransform: "uppercase" as const, letterSpacing: "0.04em", display: "block", marginBottom: 3 }}>Total</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: CLR.primary }}>{fmtAmount(line.lineTotal, currency)}</span>
+                    </div>
+                  </div>
+
+                  {/* Expand toggle */}
+                  <button onClick={() => patchLine(i, { showDetails: !line.showDetails })}
+                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: line.showDetails ? CLR.primary : CLR.muted, padding: 0, display: "flex", alignItems: "center", gap: 4 }}>
+                    {line.showDetails ? "▲ Hide details" : "▼ Disc % & more"}
+                  </button>
+
+                  {/* Expand panel */}
+                  {line.showDetails && (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #f3f4f6" }}>
+                      <div style={{ marginBottom: 8 }}>
+                        <label style={{ fontSize: 10, fontWeight: 600, color: CLR.muted, display: "block", marginBottom: 3, textTransform: "uppercase" as const }}>Discount %</label>
+                        <input type="number" min={0} max={100} step={0.1} value={line.discount}
+                          onChange={e => patchLine(i, { discount: Number(e.target.value) })}
+                          disabled={readOnly} style={{ ...mobileInp, width: 100 }} />
+                      </div>
+                      <div style={{ marginBottom: 8 }}>
+                        <label style={{ fontSize: 10, fontWeight: 600, color: CLR.muted, display: "block", marginBottom: 3, textTransform: "uppercase" as const }}>Arabic Name</label>
+                        <input value={line.descriptionAr} onChange={e => patchLine(i, { descriptionAr: e.target.value })}
+                          disabled={readOnly} dir="rtl" placeholder="الاسم بالعربية…" style={{ ...txtInp, padding: "9px 12px", fontSize: 13 }} />
+                      </div>
+                      <div style={{ marginBottom: 8 }}>
+                        <label style={{ fontSize: 10, fontWeight: 600, color: CLR.muted, display: "block", marginBottom: 3, textTransform: "uppercase" as const }}>Details EN</label>
+                        <textarea value={line.productDetails} onChange={e => patchLine(i, { productDetails: e.target.value })}
+                          disabled={readOnly} rows={2} placeholder="Product details in English…"
+                          style={{ ...txtInp, padding: "9px 12px", fontSize: 13, resize: "vertical" }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 10, fontWeight: 600, color: CLR.muted, display: "block", marginBottom: 3, textTransform: "uppercase" as const }}>Details AR</label>
+                        <textarea value={line.detailsAr} onChange={e => patchLine(i, { detailsAr: e.target.value })}
+                          disabled={readOnly} rows={2} dir="rtl" placeholder="تفاصيل المنتج بالعربية…"
+                          style={{ ...txtInp, padding: "9px 12px", fontSize: 13, resize: "vertical" }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </React.Fragment>
+            );
+          }
+
+          // ── Desktop grid layout ────────────────────────────────────────
           return (
             <React.Fragment key={i}>
               <div style={{
@@ -855,12 +981,7 @@ export function LineItemsEditor({
                     : line.isNonInventory
                       ? <input value={line.productKey} onChange={e => patchLine(i, { productKey: e.target.value })}
                           placeholder="—" style={{ width: "100%", padding: "6px 7px", fontSize: 11, fontFamily: "monospace", border: "1px solid #d1d5db", background: "#fff", outline: "none", boxSizing: "border-box" as const }} />
-                      : <ProductIDCell
-                          value={line.productKey}
-                          products={searchPool}
-                          onSelect={p => onProductSelect(i, p)}
-                          onChange={v => patchLine(i, { productKey: v })}
-                        />
+                      : <ProductIDCell value={line.productKey} products={searchPool} onSelect={p => onProductSelect(i, p)} onChange={v => patchLine(i, { productKey: v })} />
                   }
                 </div>
 
@@ -871,19 +992,13 @@ export function LineItemsEditor({
                     : line.isNonInventory
                       ? <input value={line.description} onChange={e => patchLine(i, { description: e.target.value })}
                           placeholder="Custom item description…" style={{ width: "100%", padding: "6px 8px", fontSize: 12, border: "1px solid #d1d5db", fontFamily: "inherit", outline: "none", boxSizing: "border-box" as const }} />
-                      : <DescriptionCell
-                          value={line.description}
-                          products={searchPool}
-                          onSelect={p => onProductSelect(i, p)}
-                          onChange={v => patchLine(i, { description: v })}
-                        />
+                      : <DescriptionCell value={line.description} products={searchPool} onSelect={p => onProductSelect(i, p)} onChange={v => patchLine(i, { description: v })} />
                   }
                 </div>
 
                 {/* Details toggle */}
                 <div style={{ padding: "5px 2px", textAlign: "center" as const }}>
-                  <button
-                    onClick={() => patchLine(i, { showDetails: !line.showDetails })}
+                  <button onClick={() => patchLine(i, { showDetails: !line.showDetails })}
                     title="Toggle Arabic name and product details"
                     style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: line.showDetails ? CLR.primary : CLR.faint, padding: 0, lineHeight: 1 }}>
                     {line.showDetails ? "▲" : "▼"}
@@ -892,13 +1007,7 @@ export function LineItemsEditor({
 
                 {/* Period */}
                 <div style={{ padding: "5px 4px" }}>
-                  <PeriodCell
-                    value={line.billingPeriod}
-                    prod={prod}
-                    currency={currency}
-                    readOnly={readOnly}
-                    onChange={period => onPeriodChange(i, period)}
-                  />
+                  <PeriodCell value={line.billingPeriod} prod={prod} currency={currency} readOnly={readOnly} onChange={period => onPeriodChange(i, period)} />
                 </div>
 
                 {/* Qty */}
@@ -1135,6 +1244,12 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
   const fl:  React.CSSProperties = { fontSize: 11, fontWeight: 600, color: CLR.muted, letterSpacing: "0.04em", marginBottom: 4, display: "block", textTransform: "uppercase" as const };
   const sec: React.CSSProperties = { background: "#fff", border: "1px solid #e5e7eb", padding: "16px 18px" };
   const st:  React.CSSProperties = { fontSize: 11, fontWeight: 700, color: CLR.muted, letterSpacing: "0.06em", textTransform: "uppercase" as const, marginBottom: 14 };
+  const [modalMobile, setModalMobile] = useState(typeof window !== "undefined" ? window.innerWidth < 768 : false);
+  useEffect(() => {
+    const h = () => setModalMobile(window.innerWidth < 768);
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
+  }, []);
 
   async function submit() {
     if (!customer)          { setError("Select a customer."); return; }
@@ -1181,8 +1296,8 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
   }
 
   return (
-    <Overlay onClose={onClose}>
-      <ModalBox title={`New ${label}`} wide>
+    <Overlay onClose={onClose} blockOutsideClick>
+      <ModalBox title={`New ${label}`} wide onClose={onClose}>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
           {/* Customer */}
@@ -1211,28 +1326,30 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
           {/* Document Info */}
           <div style={sec}>
             <p style={st}>Document Info</p>
-            <div style={{ marginBottom: 12 }}>
-              <label style={fl}>Subject / Title</label>
-              <input value={subject} onChange={e => setSubject(e.target.value)}
-                placeholder={`e.g. Cloud services for ${customer?.fullName ?? "customer"}…`}
-                style={inp} />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div>
-                <label style={fl}>Date</label>
-                <input type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)} style={inp} />
+                <label style={fl}>Subject / Title</label>
+                <input value={subject} onChange={e => setSubject(e.target.value)}
+                  placeholder={`e.g. Cloud services for ${customer?.fullName ?? "customer"}…`}
+                  style={inp} />
               </div>
-              <div>
-                <label style={fl}>Due Date (optional)</label>
-                <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} style={inp} />
-              </div>
-              {docType === "QUOTATION" && (
+              <div style={{ display: "grid", gridTemplateColumns: modalMobile ? "1fr" : `repeat(${docType === "QUOTATION" ? 3 : 2}, 1fr)`, gap: 10 }}>
                 <div>
-                  <label style={fl}>Valid Until</label>
-                  <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} style={inp} />
-                  <p style={{ fontSize: 11, color: CLR.faint, marginTop: 3 }}>Auto-set to 30 days from issue date. Edit to override.</p>
+                  <label style={fl}>Date</label>
+                  <input type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)} style={inp} />
                 </div>
-              )}
+                <div>
+                  <label style={fl}>Due Date (optional)</label>
+                  <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} style={inp} />
+                </div>
+                {docType === "QUOTATION" && (
+                  <div>
+                    <label style={fl}>Valid Until</label>
+                    <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} style={inp} />
+                    <p style={{ fontSize: 11, color: CLR.faint, marginTop: 3 }}>Auto-set to 30 days from issue date. Edit to override.</p>
+                  </div>
+                )}
+              </div>
               <div>
                 <label style={fl}>Reference Number</label>
                 <input value={refNum} onChange={e => setRefNum(e.target.value)}
@@ -1255,7 +1372,7 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
           {/* Notes */}
           <div style={sec}>
             <p style={st}>Notes</p>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div>
                 <label style={fl}>Customer-visible notes</label>
                 <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} style={{ ...inp, resize: "vertical" }} />
@@ -1270,7 +1387,7 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
           {/* Terms */}
           <div style={sec}>
             <p style={st}>Terms &amp; Conditions</p>
-            <textarea value={terms} onChange={e => setTerms(e.target.value)} rows={4}
+            <textarea value={terms} onChange={e => setTerms(e.target.value)} rows={8}
               placeholder="Enter terms and conditions for this document…"
               style={{ ...inp, resize: "vertical" }} />
           </div>
@@ -1326,21 +1443,24 @@ export function CreateDocModal({ docType, onClose, onCreated }: {
 // Primitives
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function Overlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+export function Overlay({ children, onClose, blockOutsideClick }: { children: React.ReactNode; onClose: () => void; blockOutsideClick?: boolean }) {
   return (
     <div
-      style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "32px 16px", overflowY: "auto" }}
-      onClick={onClose}>
+      style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "0px 16px 32px 16px", overflowY: "auto" }}
+      onClick={blockOutsideClick ? undefined : onClose}>
       <div onClick={e => e.stopPropagation()}>{children}</div>
     </div>
   );
 }
 
-export function ModalBox({ title, children, wide }: { title: string; children: React.ReactNode; wide?: boolean }) {
+export function ModalBox({ title, children, wide, onClose }: { title: string; children: React.ReactNode; wide?: boolean; onClose?: () => void }) {
   return (
     <div style={{ background: "#fff", width: wide ? "min(1100px, 98vw)" : "min(480px, 96vw)", boxShadow: "0 20px 60px rgba(0,0,0,0.25)" }}>
-      <div style={{ padding: "16px 20px", borderBottom: "1px solid #e5e7eb", fontSize: 15, fontWeight: 600, color: CLR.text, position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
-        {title}
+      <div style={{ padding: "16px 20px", borderTop: "4px solid #318774", fontSize: 15, fontWeight: 600, color: "#d9d9d9", position: "sticky", top: 0, background: "#151515", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span>{title}</span>
+        {onClose && (
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af", fontSize: 20, lineHeight: 1, padding: "0 4px" }}>✕</button>
+        )}
       </div>
       <div style={{ padding: 20 }}>{children}</div>
     </div>

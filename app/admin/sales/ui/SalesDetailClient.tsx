@@ -135,7 +135,7 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res  = await fetch(`${ENDPOINT_FOR_TYPE[docType]}/${docId}`);
+      const res  = await fetch(`/api/admin/sales/${docId}`);
       const data = await res.json();
       const d    = data.doc;
       setDoc(d);
