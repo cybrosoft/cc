@@ -1,6 +1,8 @@
 // app/admin/sales/proforma/[id]/page.tsx
 import SalesDetailClient from "../../ui/SalesDetailClient";
+import { PageShell } from "@/components/ui/admin-ui";
 
-export default function ProformaDetailPage({ params }: { params: { id: string } }) {
-  return <SalesDetailClient docId={params.id} docType="PROFORMA" backHref="/admin/sales/proforma" />;
+export default async function ProformaDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  return <PageShell breadcrumb="ADMIN / SALES / PROFORMA INVOICES" title="Proforma Invoice"><SalesDetailClient docId={id} docType="PROFORMA" backHref="/admin/sales/proforma" /></PageShell>;
 }

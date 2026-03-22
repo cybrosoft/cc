@@ -1,11 +1,11 @@
-// app/api/admin/sales/rfq/[id]/route.ts
+// app/api/admin/sales/po/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/require-admin";
 
 type Params = { params: Promise<{ id: string }> };
 
-// GET /api/admin/sales/rfq/[id]
+// GET /api/admin/sales/po/[id]
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
     await requireAdmin();
@@ -27,7 +27,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 }
 
-// PATCH /api/admin/sales/rfq/[id]
+// PATCH /api/admin/sales/po/[id]
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
     await requireAdmin();
@@ -46,7 +46,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         ...(body.dueDate            !== undefined ? { dueDate:            body.dueDate   ? new Date(body.dueDate)   : null }    : {}),
         ...(body.issueDate          !== undefined ? { issueDate:          body.issueDate ? new Date(body.issueDate) : null }    : {}),
         ...(body.validUntil         !== undefined ? { validUntil:         body.validUntil ? new Date(body.validUntil) : null }  : {}),
-        ...(body.rfqTitle           !== undefined ? {{ rfqTitle:           body.rfqTitle }}                                        : {{}}),
         ...(body.lines !== undefined ? {
           lines: {
             deleteMany: {},
@@ -73,7 +72,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 }
 
-// DELETE /api/admin/sales/rfq/[id]
+// DELETE /api/admin/sales/po/[id]
 export async function DELETE(_req: NextRequest, { params }: Params) {
   try {
     await requireAdmin();

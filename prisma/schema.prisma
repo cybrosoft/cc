@@ -117,6 +117,7 @@ enum SalesDocumentStatus {
   IN_REVIEW    // admin is actively reviewing
   QUOTED       // admin responded with a quotation
   CLOSED       // closed without action
+  FOLLOW_UP
 
   // Quotation
   REVISED      // quote was revised after sending
@@ -265,7 +266,10 @@ model User {
   notePrivate String? @db.Text
 
   // Step 4
-  salesDocuments SalesDocument[]
+  salesDocuments   SalesDocument[]
+  assignedLeads    SalesDocument[] @relation("AssignedLeads")
+  assignedActivities CRMActivity[] @relation("ActivityAssignee")
+  createdActivities  CRMActivity[] @relation("ActivityCreator")
   notifications  Notification[]
 
   // Step 9 — Notification preferences
@@ -725,6 +729,17 @@ model SalesDocument {
   // Saudi e-Invoice Phase 1 QR
   zatcaQrCode String?
 
+  // CRM / Lead fields (RFQ only)
+  leadSource        String?   // PORTAL | MANUAL | REFERRAL | EMAIL | PHONE | OTHER
+  leadPriority      String?   // LOW | MEDIUM | HIGH | URGENT
+  assignedToId      String?
+  assignedTo        User?     @relation("AssignedLeads", fields: [assignedToId], references: [id], onDelete: SetNull)
+  expectedCloseDate DateTime?
+  followUpDate      DateTime?
+  lostReason        String?
+
+  activities CRMActivity[]
+
   // Invoice reminder — weekly automated reminders, up to 4 times
   // Only applies to INVOICE type with unpaid status (ISSUED / SENT / PARTIAL / OVERDUE)
   reminderEnabled    Boolean   @default(false)
@@ -745,6 +760,30 @@ model SalesDocument {
   @@index([emailSentAt])
   @@index([validUntil])
   @@index([reminderEnabled])
+}
+
+model CRMActivity {
+  id          String    @id @default(cuid())
+  documentId  String
+  document    SalesDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  type        String    // CALL | MEETING | TASK | NOTE
+  title       String
+  description String?   @db.Text
+  dueDate     DateTime?
+  completedAt DateTime?
+
+  assignedToId     String?
+  assignedTo       User?   @relation("ActivityAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdByAdminId String?
+  createdBy        User?   @relation("ActivityCreator", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([documentId])
+  @@index([dueDate])
+  @@index([assignedToId])
 }
 
 // ── Sales Document Line ───────────────────────────────────────────────────────
