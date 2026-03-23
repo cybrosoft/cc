@@ -5,13 +5,6 @@ import { CLR } from "@/components/ui/admin-ui";
 
 const SECTIONS = [
   {
-    href: "/admin/sales/rfq",
-    icon: "📥",
-    title: "RFQ Received",
-    description: "Manage inbound requests for quotation from customers.",
-    color: "#fef3c7", border: "#fcd34d", text: "#92400e",
-  },
-  {
     href: "/admin/sales/quotations",
     icon: "📋",
     title: "Quotations",
@@ -76,7 +69,7 @@ export default function SalesDashboardClient() {
           DOCUMENT FLOW
         </p>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: 12 }}>
-          {["RFQ", "→", "Quotation", "→", "Proforma", "→", "Invoice", "→", "Payment"].map((item, i) => (
+          {["Lead (CRM)", "→", "Quotation", "→", "Proforma", "→", "Invoice", "→", "Payment"].map((item, i) => (
             <span key={i} style={{
               fontWeight: item === "→" ? 400 : 600,
               color: item === "→" ? CLR.faint : CLR.text,

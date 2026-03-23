@@ -8,7 +8,8 @@ type Params = { params: Promise<{ id: string }> };
 // GET /api/admin/sales/quotations/[id]
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
-    await requireAdmin();
+    const auth = await requireAdmin();
+    if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { id } = await params;
     const doc = await prisma.salesDocument.findUniqueOrThrow({
       where:   { id },
@@ -30,21 +31,25 @@ export async function GET(_req: NextRequest, { params }: Params) {
 // PATCH /api/admin/sales/quotations/[id]
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
-    await requireAdmin();
+    const auth = await requireAdmin();
+    if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { id } = await params;
     const body = await req.json();
+    const current = await prisma.salesDocument.findUnique({ where: { id }, select: { status: true } });
+    const autoRevise = body.lines !== undefined && ["SENT", "ACCEPTED"].includes(current?.status ?? "");
     const doc = await prisma.salesDocument.update({
       where: { id },
       data: {
-        ...(body.status             !== undefined ? { status:             body.status }                                          : {}),
-        ...(body.notes              !== undefined ? { notes:              body.notes }                                           : {}),
-        ...(body.internalNote       !== undefined ? { internalNote:       body.internalNote }                                    : {}),
-        ...(body.rfqFileUrl         !== undefined ? { rfqFileUrl:         body.rfqFileUrl }                                      : {}),
-        ...(body.subject            !== undefined ? { subject:            body.subject }                                         : {}),
-        ...(body.referenceNumber    !== undefined ? { referenceNumber:    body.referenceNumber }                                 : {}),
-        ...(body.termsAndConditions !== undefined ? { termsAndConditions: body.termsAndConditions }                              : {}),
-        ...(body.dueDate            !== undefined ? { dueDate:            body.dueDate   ? new Date(body.dueDate)   : null }    : {}),
-        ...(body.issueDate          !== undefined ? { issueDate:          body.issueDate ? new Date(body.issueDate) : null }    : {}),
+        ...(autoRevise ? { status: "REVISED" } : {}),
+        ...(body.status             !== undefined ? { status:             body.status }                                         : {}),
+        ...(body.notes              !== undefined ? { notes:              body.notes }                                          : {}),
+        ...(body.internalNote       !== undefined ? { internalNote:       body.internalNote }                                   : {}),
+        ...(body.rfqFileUrl         !== undefined ? { rfqFileUrl:         body.rfqFileUrl }                                     : {}),
+        ...(body.subject            !== undefined ? { subject:            body.subject }                                        : {}),
+        ...(body.referenceNumber    !== undefined ? { referenceNumber:    body.referenceNumber }                                : {}),
+        ...(body.termsAndConditions !== undefined ? { termsAndConditions: body.termsAndConditions }                             : {}),
+        ...(body.dueDate            !== undefined ? { dueDate:            body.dueDate    ? new Date(body.dueDate)    : null }  : {}),
+        ...(body.issueDate          !== undefined ? { issueDate:          body.issueDate  ? new Date(body.issueDate)  : null }  : {}),
         ...(body.validUntil         !== undefined ? { validUntil:         body.validUntil ? new Date(body.validUntil) : null }  : {}),
         ...(body.lines !== undefined ? {
           lines: {
@@ -66,6 +71,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         } : {}),
       },
     });
+
+    if (autoRevise) {
+      await prisma.salesDocumentLog.create({
+        data: {
+          documentId:  id,
+          field:       "status",
+          oldValue:    current!.status,
+          newValue:    "REVISED",
+          note:        "Auto-set to Revised on edit",
+          changedById: auth.user.id,
+        },
+      }).catch(() => {});
+    }
+
     return NextResponse.json({ doc });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: e.status ?? 500 });
@@ -75,7 +94,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 // DELETE /api/admin/sales/quotations/[id]
 export async function DELETE(_req: NextRequest, { params }: Params) {
   try {
-    await requireAdmin();
+    const auth = await requireAdmin();
+    if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { id } = await params;
     const doc = await prisma.salesDocument.update({
       where: { id },

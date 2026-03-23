@@ -31,6 +31,12 @@ interface NavGroup {
 const NAV: NavGroup[] = [
   { id: "dashboard", label: "Dashboard", icon: "dashboard", href: "/admin", exactMatch: true },
   {
+    id: "crm", label: "CRM", icon: "user",
+    children: [
+      { id: "leads", label: "Leads", icon: "rfq", href: "/admin/crm/leads" },
+    ],
+  },
+  {
     id: "catalog", label: "Catalog", icon: "catalog",
     children: [
       { id: "categories", label: "Categories",  icon: "category",  href: "/admin/catalog/categories" },
@@ -44,7 +50,6 @@ const NAV: NavGroup[] = [
   {
     id: "sales", label: "Sales", icon: "sales",
     children: [
-      { id: "rfq",      label: "RFQ Received",     icon: "rfq",      href: "/admin/sales/rfq",               badge: "0", alert: true },
       { id: "quotes",   label: "Quotations",        icon: "quote",    href: "/admin/sales/quotations" },
       { id: "po",       label: "Issued PO",         icon: "po",       href: "/admin/sales/po" },
       { id: "dn",       label: "Delivery Notes",    icon: "delivery", href: "/admin/sales/delivery-notes" },
@@ -72,116 +77,101 @@ const NAV: NavGroup[] = [
   },
 ];
 
-function isActive(pathname: string, href: string, exactMatch?: boolean): boolean {
+function isActive(pathname: string, href?: string, exactMatch?: boolean): boolean {
+  if (!href) return false;
   if (exactMatch) return pathname === href;
   return pathname === href || pathname.startsWith(href + "/");
 }
 
-function Badge({ value, alert }: { value: string; alert?: boolean }) {
-  if (!value || value === "0") return null;
-  return (
-    <span style={{
-      fontSize: 11, fontWeight: 600, padding: "1px 7px",
-      background: alert ? "#fee2e2" : "#f3f4f6",
-      color: alert ? "#dc2626" : "#6b7280",
-      border: `1px solid ${alert ? "#fca5a5" : "#e5e7eb"}`,
-      flexShrink: 0,
-    }}>{value}</span>
-  );
-}
-
 function NavItem({ item, pathname, onLinkClick, openGroup, setOpenGroup }: {
   item: NavGroup; pathname: string; onLinkClick?: () => void;
-  openGroup?: string | null; setOpenGroup?: (id: string | null) => void;
+  openGroup: string | null; setOpenGroup: (id: string | null) => void;
 }) {
-  const hasChildren = !!(item.children?.length);
-  const isLeaf      = !hasChildren;
-  const selfActive  = isLeaf && !!item.href && isActive(pathname, item.href, item.exactMatch);
-  const childActive = hasChildren && item.children!.some(c => isActive(pathname, c.href));
-  const highlight   = selfActive || childActive;
-  const isOpen      = openGroup === item.id;
+  const isOpen        = openGroup === item.id;
+  const isGroupActive = item.children
+    ? item.children.some(c => isActive(pathname, c.href))
+    : isActive(pathname, item.href, item.exactMatch);
 
-  const bgColor = highlight
-    ? colors.primaryLight
-    : isOpen && !childActive
-      ? "#f3f4f6"
-      : "transparent";
-
-  const rowStyle: React.CSSProperties = {
-    width: "100%", display: "flex", alignItems: "center", gap: 10,
-    padding: "10px 16px",
-    background: bgColor,
-    borderLeft: `3px solid ${highlight ? colors.primary : "transparent"}`,
-    borderTop: "none", borderRight: "none", borderBottom: "none",
-    cursor: "pointer", textDecoration: "none",
-    transition: "background 0.12s",
-  };
-  const labelStyle: React.CSSProperties = {
-    flex: 1, textAlign: "left", fontSize: 13.5,
-    fontWeight: highlight ? 500 : 400,
-    color: highlight ? colors.primary : colors.textSecondary,
-    whiteSpace: "nowrap",
-  };
-  const iconColor = highlight ? colors.primary : colors.textFaint;
-
-  if (isLeaf && item.href) {
+  // Leaf node (no children)
+  if (!item.children) {
+    const active = isActive(pathname, item.href, item.exactMatch);
     return (
-      <Link href={item.href} style={rowStyle} className="cy-nav-item" onClick={onLinkClick}>
-        <Icon name={item.icon} size={15} color={iconColor} />
-        <span style={labelStyle}>{item.label}</span>
-        {item.badge && <Badge value={item.badge} alert={item.alert} />}
+      <Link href={item.href!} onClick={onLinkClick}
+        style={{
+          display: "flex", alignItems: "center", padding: "9px 16px", gap: 10,
+          textDecoration: "none",
+          background: active ? colors.primaryLight : "transparent",
+          borderLeft: `3px solid ${active ? colors.primary : "transparent"}`,
+        }}
+        className="cy-nav-item">
+        <Icon name={item.icon} size={15} color={active ? colors.primary : colors.textFaint} />
+        <span style={{ fontSize: 13.5, fontWeight: active ? 600 : 400, color: active ? colors.primary : colors.textPrimary }}>
+          {item.label}
+        </span>
       </Link>
     );
   }
 
+  // Group with children
   return (
     <div>
-      <button onClick={() => setOpenGroup?.(isOpen ? null : item.id)} style={rowStyle} className="cy-nav-item">
-        <Icon name={item.icon} size={15} color={iconColor} />
-        <span style={labelStyle}>{item.label}</span>
-        {item.badge && <Badge value={item.badge} alert={item.alert} />}
-        <span style={{ display: "flex", flexShrink: 0, transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>
-          <Icon name="chevron" size={13} color={colors.textFaint} />
+      <button
+        onClick={() => setOpenGroup(isOpen ? null : item.id)}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", padding: "9px 16px", gap: 10,
+          background: "transparent", border: "none", cursor: "pointer", textAlign: "left" as const,
+          borderLeft: `3px solid ${isGroupActive ? colors.primary : "transparent"}`,
+        }}
+        className="cy-nav-item">
+        <Icon name={item.icon} size={15} color={isGroupActive ? colors.primary : colors.textFaint} />
+        <span style={{ flex: 1, fontSize: 13.5, fontWeight: isGroupActive ? 600 : 400, color: isGroupActive ? colors.primary : colors.textPrimary }}>
+          {item.label}
         </span>
+        {item.badge && (
+          <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", background: item.alert ? "#fef3c7" : "#f3f4f6", color: item.alert ? "#92400e" : colors.textMuted, border: `1px solid ${item.alert ? "#fcd34d" : "#e5e7eb"}` }}>
+            {item.badge}
+          </span>
+        )}
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textFaint} strokeWidth="2"
+          style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", flexShrink: 0 }}>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
       </button>
-      <div style={{
-        display: "grid",
-        gridTemplateRows: isOpen ? "1fr" : "0fr",
-        transition: "grid-template-rows 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
-      }}>
-        <div style={{ overflow: "hidden" }}>
-          <div style={{ borderLeft: `1px solid ${colors.border}`, marginLeft: 26 }}>
-            {item.children!.map(child => {
-              const ca = isActive(pathname, child.href);
-              return (
-                <Link key={child.id} href={child.href} onClick={onLinkClick}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 9,
-                    padding: "9px 16px 9px 14px",
-                    background: ca ? colors.primaryLight : "transparent",
-                    borderLeft: `3px solid ${ca ? colors.primary : "transparent"}`,
-                    textDecoration: "none", transition: "background 0.12s",
-                  }}
-                  className="cy-nav-child"
-                >
-                  <Icon name={child.icon} size={14} color={ca ? colors.primary : colors.textFaint} />
-                  <span style={{
-                    flex: 1, fontSize: 13.5, fontWeight: ca ? 500 : 400,
-                    color: ca ? colors.primary : colors.textSecondary, whiteSpace: "nowrap",
-                  }}>{child.label}</span>
-                  {child.badge && <Badge value={child.badge} alert={child.alert} />}
-                </Link>
-              );
-            })}
-          </div>
+
+      {isOpen && (
+        <div style={{ background: "#fafafa", borderBottom: `1px solid ${colors.borderLight}` }}>
+          {item.children!.map(child => {
+            const active = isActive(pathname, child.href);
+            return (
+              <Link key={child.id} href={child.href} onClick={onLinkClick}
+                style={{
+                  display: "flex", alignItems: "center",
+                  padding: "8px 16px 8px 42px", gap: 8,
+                  textDecoration: "none",
+                  background: active ? colors.primaryLight : "transparent",
+                  borderLeft: `3px solid ${active ? colors.primary : "transparent"}`,
+                }}
+                className="cy-nav-item">
+                <Icon name={child.icon} size={13} color={active ? colors.primary : colors.textFaint} />
+                <span style={{ flex: 1, fontSize: 13, fontWeight: active ? 600 : 400, color: active ? colors.primary : colors.textMuted }}>
+                  {child.label}
+                </span>
+                {child.badge && (
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 5px", background: child.alert ? "#fef3c7" : "#f3f4f6", color: child.alert ? "#92400e" : colors.textMuted, border: `1px solid ${child.alert ? "#fcd34d" : "#e5e7eb"}` }}>
+                    {child.badge}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
         </div>
-      </div>
+      )}
     </div>
   );
 }
 
 function SidebarContent({ userEmail, userName, initials, pathname, onLinkClick }: {
-  userEmail: string; userName?: string | null; initials: string;
+  userEmail: string; userName: string | null; initials: string;
   pathname: string; onLinkClick?: () => void;
 }) {
   const defaultOpen = NAV.find(item =>
@@ -194,7 +184,8 @@ function SidebarContent({ userEmail, userName, initials, pathname, onLinkClick }
       {/* Logo */}
       <div style={{
         height: 56, display: "flex", alignItems: "center", padding: "0 18px",
-        background: colors.headerBg, borderBottom: `1px solid ${colors.headerBorder}`, borderRight: `1px solid #383838`, flexShrink: 0,
+        background: colors.headerBg, borderBottom: `1px solid ${colors.headerBorder}`,
+        borderRight: `1px solid #383838`, flexShrink: 0,
       }}>
         <span style={{
           fontSize: 23, fontWeight: 700, letterSpacing: "-0.02em",
@@ -223,8 +214,7 @@ function SidebarContent({ userEmail, userName, initials, pathname, onLinkClick }
         ].map(x => (
           <Link key={x.label} href={x.href} onClick={onLinkClick}
             style={{ display: "flex", alignItems: "center", padding: "9px 16px", gap: 10, textDecoration: "none", color: "inherit" }}
-            className="cy-nav-item"
-          >
+            className="cy-nav-item">
             <Icon name={x.icon} size={15} color={colors.textFaint} />
             <span style={{ fontSize: 13.5, color: colors.textMuted }}>{x.label}</span>
           </Link>
@@ -234,7 +224,8 @@ function SidebarContent({ userEmail, userName, initials, pathname, onLinkClick }
       {/* User row */}
       <div style={{
         padding: "11px 14px", borderTop: `1px solid ${colors.border}`,
-        display: "flex", alignItems: "center", gap: 10, flexShrink: 0, borderRight: `1px solid ${colors.border}`
+        display: "flex", alignItems: "center", gap: 10, flexShrink: 0,
+        borderRight: `1px solid ${colors.border}`,
       }}>
         <div style={{
           width: 30, height: 30, background: colors.primary, flexShrink: 0,
@@ -287,12 +278,15 @@ export function AdminNav({ userEmail, userName }: AdminNavProps) {
         .cy-hamburger-btn   { display: none; }
         .cy-mobile-topbar   { display: none; }
         .cy-desktop-topbar  { display: flex; }
+        .cy-nav-item:hover  { background: #f9fafb !important; }
+        .cy-mobile-spacer   { display: none; height: 56px; flex-shrink: 0; }
 
         @media (max-width: 1023px) {
           .cy-sidebar-desktop { display: none !important; }
           .cy-hamburger-btn   { display: none !important; }
           .cy-mobile-topbar   { display: flex !important; }
           .cy-desktop-topbar  { display: none !important; }
+          .cy-mobile-spacer   { display: block !important; }
         }
       `}</style>
 
@@ -302,7 +296,7 @@ export function AdminNav({ userEmail, userName }: AdminNavProps) {
         background: "#ffffff", overflow: "hidden",
         height: "100vh", position: "sticky", top: 0,
       }}>
-        <SidebarContent userEmail={userEmail} userName={userName} initials={initials} pathname={pathname} onLinkClick={() => {}} />
+        <SidebarContent userEmail={userEmail} userName={userName ?? null} initials={initials} pathname={pathname} onLinkClick={() => {}} />
       </aside>
 
       {/* Mobile topbar */}
@@ -351,7 +345,10 @@ export function AdminNav({ userEmail, userName }: AdminNavProps) {
 
       <div className="cy-mobile-spacer" />
 
-      {drawerOpen && <div onClick={() => setDrawerOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 350, background: "rgba(0,0,0,0.5)" }} />}
+      {drawerOpen && (
+        <div onClick={() => setDrawerOpen(false)}
+          style={{ position: "fixed", inset: 0, zIndex: 350, background: "rgba(0,0,0,0.5)" }} />
+      )}
 
       {/* Mobile drawer */}
       <aside style={{
@@ -363,7 +360,7 @@ export function AdminNav({ userEmail, userName }: AdminNavProps) {
         boxShadow: drawerOpen ? "4px 0 24px rgba(0,0,0,0.18)" : "none",
         overflow: "hidden",
       }}>
-        <SidebarContent userEmail={userEmail} userName={userName} initials={initials} pathname={pathname} onLinkClick={() => setDrawerOpen(false)} />
+        <SidebarContent userEmail={userEmail} userName={userName ?? null} initials={initials} pathname={pathname} onLinkClick={() => setDrawerOpen(false)} />
       </aside>
     </>
   );

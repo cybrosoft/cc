@@ -1,7 +1,6 @@
 // app/api/admin/sales/shared/list-create-handler.ts
 // Generic GET (list) + POST (create) handler factory.
 // Used by: quotations, po, delivery-notes, proforma, invoices, returns.
-
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/require-admin";
@@ -27,13 +26,14 @@ export function makeListHandler(docType: SalesDocumentType) {
           ...(q ? {
             OR: [
               { docNum:   { contains: q, mode: "insensitive" } },
-              { customer: { email:    { contains: q, mode: "insensitive" } } },
-              { customer: { fullName: { contains: q, mode: "insensitive" } } },
+              { customer: { email:       { contains: q, mode: "insensitive" } } },
+              { customer: { fullName:    { contains: q, mode: "insensitive" } } },
+              { customer: { companyName: { contains: q, mode: "insensitive" } } },
             ],
           } : {}),
         },
         include: {
-          customer:  { select: { id: true, fullName: true, email: true, customerNumber: true } },
+          customer:  { select: { id: true, fullName: true, companyName: true, email: true, customerNumber: true } },
           market:    { select: { id: true, key: true, name: true, defaultCurrency: true } },
           originDoc: { select: { id: true, docNum: true, type: true } },
           _count:    { select: { lines: true, payments: true } },

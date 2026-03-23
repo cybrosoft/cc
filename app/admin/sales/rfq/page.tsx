@@ -1,3 +1,5 @@
 // app/admin/sales/rfq/page.tsx
-import SalesListPage from "../ui/SalesListPage";
-export default function Page() { return <SalesListPage docType="RFQ" />; }
+import { redirect } from "next/navigation";
+export default function RFQPage() {
+  redirect("/admin/crm/leads");
+}

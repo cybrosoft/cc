@@ -53,15 +53,10 @@ export const STATUS_LABEL: Record<SalesDocumentStatus, string> = {
   OVERDUE:        "Overdue",
   WRITTEN_OFF:    "Written Off",
   APPLIED:        "Applied",
+  FOLLOW_UP:      "Follow Up",
 };
 
 // ── Customer-visible status ───────────────────────────────────────────────────
-// Maps internal admin statuses to what the customer portal shows.
-// WRITTEN_OFF → customer sees OVERDUE (don't reveal write-off)
-// IN_REVIEW   → customer sees PENDING
-// REVISED     → customer sees SENT (latest revision)
-// DRAFT       → hidden (null = don't show)
-// VOID        → hidden
 
 export function toCustomerStatus(
   status: SalesDocumentStatus,
@@ -72,6 +67,7 @@ export function toCustomerStatus(
     REVISED:     "SENT",
     DRAFT:       null,
     VOID:        null,
+    FOLLOW_UP:   "PENDING",
   };
 
   if (status in map) return map[status] ?? null;
@@ -81,11 +77,12 @@ export function toCustomerStatus(
 // ── Valid statuses per document type ─────────────────────────────────────────
 
 export const VALID_STATUSES: Record<SalesDocumentType, SalesDocumentStatus[]> = {
-  RFQ:           ["DRAFT","PENDING","IN_REVIEW","QUOTED","CONVERTED","CLOSED","VOID"],
-  QUOTATION:     ["DRAFT","SENT","REVISED","ACCEPTED","REJECTED","CONVERTED","EXPIRED","VOID"],
+  // RFQ acts as CRM lead — has extended status set
+  RFQ:           ["DRAFT","PENDING","IN_REVIEW","PROCESSING","QUOTED","FOLLOW_UP","ACCEPTED","REJECTED","CONVERTED","EXPIRED","CANCELLED","CLOSED","VOID"],
+  QUOTATION:     ["DRAFT","ISSUED","SENT","REVISED","ACCEPTED","REJECTED","CONVERTED","EXPIRED","VOID"],
   PO:            ["DRAFT","ISSUED","CONVERTED","CLOSED","VOID"],
   DELIVERY_NOTE: ["DRAFT","ISSUED","SENT","DELIVERED","CANCELLED","CONVERTED","VOID"],
-  PROFORMA:      ["DRAFT","SENT","ACCEPTED","CONVERTED","VOID"],
+  PROFORMA:      ["DRAFT","ISSUED","SENT","ACCEPTED","CONVERTED","VOID"],
   INVOICE:       ["DRAFT","ISSUED","SENT","PARTIALLY_PAID","PAID","OVERDUE","WRITTEN_OFF","VOID"],
   CREDIT_NOTE:   ["DRAFT","ISSUED","SENT","APPLIED","VOID"],
 };

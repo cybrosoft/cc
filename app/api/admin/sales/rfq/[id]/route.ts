@@ -19,6 +19,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         originDoc:   { select: { id: true, docNum: true, type: true } },
         derivedDocs: { select: { id: true, docNum: true, type: true, status: true } },
         payments:    true,
+        assignedTo:  { select: { id: true, fullName: true, email: true } },
       },
     });
     return NextResponse.json({ doc });
@@ -36,17 +37,25 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const doc = await prisma.salesDocument.update({
       where: { id },
       data: {
+        // Standard fields
         ...(body.status             !== undefined ? { status:             body.status }                                          : {}),
         ...(body.notes              !== undefined ? { notes:              body.notes }                                           : {}),
         ...(body.internalNote       !== undefined ? { internalNote:       body.internalNote }                                    : {}),
+        ...(body.rfqTitle           !== undefined ? { rfqTitle:           body.rfqTitle }                                        : {}),
         ...(body.rfqFileUrl         !== undefined ? { rfqFileUrl:         body.rfqFileUrl }                                      : {}),
         ...(body.subject            !== undefined ? { subject:            body.subject }                                         : {}),
         ...(body.referenceNumber    !== undefined ? { referenceNumber:    body.referenceNumber }                                 : {}),
         ...(body.termsAndConditions !== undefined ? { termsAndConditions: body.termsAndConditions }                              : {}),
         ...(body.dueDate            !== undefined ? { dueDate:            body.dueDate   ? new Date(body.dueDate)   : null }    : {}),
         ...(body.issueDate          !== undefined ? { issueDate:          body.issueDate ? new Date(body.issueDate) : null }    : {}),
-        ...(body.validUntil         !== undefined ? { validUntil:         body.validUntil ? new Date(body.validUntil) : null }  : {}),
-        ...(body.rfqTitle           !== undefined ? {{ rfqTitle:           body.rfqTitle }}                                        : {{}}),
+        // CRM / Lead fields
+        ...(body.leadSource        !== undefined ? { leadSource:        body.leadSource        || null } : {}),
+        ...(body.leadPriority      !== undefined ? { leadPriority:      body.leadPriority      || null } : {}),
+        ...(body.assignedToId      !== undefined ? { assignedToId:      body.assignedToId      || null } : {}),
+        ...(body.lostReason        !== undefined ? { lostReason:        body.lostReason        || null } : {}),
+        ...(body.expectedCloseDate !== undefined ? { expectedCloseDate: body.expectedCloseDate ? new Date(body.expectedCloseDate) : null } : {}),
+        ...(body.followUpDate      !== undefined ? { followUpDate:      body.followUpDate      ? new Date(body.followUpDate)      : null } : {}),
+        // Line items
         ...(body.lines !== undefined ? {
           lines: {
             deleteMany: {},

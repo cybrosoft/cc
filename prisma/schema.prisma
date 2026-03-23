@@ -251,11 +251,12 @@ model User {
   marketingAccepted Boolean?
 
   sessions Session[]
-
+  
   subscriptions         Subscription[]
   approvedSubscriptions Subscription[] @relation("SubscriptionApprovedBy")
   statusLogEntries      SubscriptionStatusLog[] @relation("StatusLogChangedBy")
   renewalEntries        SubscriptionRenewal[]   @relation("RenewalCreatedBy")
+  documentLogs SalesDocumentLog[] @relation("DocumentLogChanger")
 
   servers   Server[]
   auditLogs AuditLog[]
@@ -704,6 +705,7 @@ model SalesDocument {
   vatPercent   Decimal @default(0)
   vatAmount    Int     @default(0) // cents
   total        Int     @default(0) // cents
+  manualSent Boolean? @default(false)
 
   subject            String?
   referenceNumber    String?
@@ -738,6 +740,8 @@ model SalesDocument {
   followUpDate      DateTime?
   lostReason        String?
 
+  pdfKey            String?
+
   activities CRMActivity[]
 
   // Invoice reminder — weekly automated reminders, up to 4 times
@@ -748,6 +752,7 @@ model SalesDocument {
 
   lines    SalesDocumentLine[]
   payments SalesPayment[]
+  logs SalesDocumentLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -760,6 +765,20 @@ model SalesDocument {
   @@index([emailSentAt])
   @@index([validUntil])
   @@index([reminderEnabled])
+}
+
+model SalesDocumentLog {
+  id         String        @id @default(cuid())
+  documentId String
+  document   SalesDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  field      String
+  oldValue   String?
+  newValue   String?
+  note       String?       @db.Text
+  changedById String
+  changedBy   User         @relation("DocumentLogChanger", fields: [changedById], references: [id], onDelete: Restrict)
+  createdAt  DateTime      @default(now())
+  @@index([documentId])
 }
 
 model CRMActivity {

@@ -24,9 +24,10 @@ const DOC_SELECT = {
   dueDate:    true,
   validUntil: true,
   paidAt:     true,
+  createdAt:  true,
   customer: {
     select: {
-      id: true, fullName: true, email: true, customerNumber: true,
+      id: true, fullName: true, companyName: true, email: true, customerNumber: true,
     },
   },
   market: {
@@ -61,8 +62,9 @@ export async function makeListHandler(docType: SalesDocumentType) {
           { docNum:            { contains: q, mode: "insensitive" } },
           { subject:           { contains: q, mode: "insensitive" } },
           { referenceNumber:   { contains: q, mode: "insensitive" } },
-          { customer: { email:    { contains: q, mode: "insensitive" } } },
-          { customer: { fullName: { contains: q, mode: "insensitive" } } },
+          { customer: { email:       { contains: q, mode: "insensitive" } } },
+          { customer: { fullName:    { contains: q, mode: "insensitive" } } },
+          { customer: { companyName: { contains: q, mode: "insensitive" } } },
         ];
       }
 

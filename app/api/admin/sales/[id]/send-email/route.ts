@@ -1,6 +1,6 @@
 // app/api/admin/sales/[id]/send-email/route.ts
 // POST — sends document email to customer using market legalInfo for company details.
-// Updates emailSentAt + emailSentCount. Auto-advances DRAFT/ISSUED → SENT.
+// Updates emailSentAt + emailSentCount. Auto-advances DRAFT → ISSUED → SENT.
 //
 // mode:
 //   "default"      — send with default template text
@@ -19,6 +19,28 @@ const PERIOD_LABEL: Record<string, string> = {
   MONTHLY: "Monthly", SIX_MONTHS: "6 Months",
   YEARLY: "Yearly",   ONE_TIME: "One-time",
 };
+
+// ── Helper: write status transition to SalesDocumentLog ──────────────────────
+async function logStatusChange(
+  docId: string,
+  oldStatus: string,
+  newStatus: string,
+  note: string,
+  changedById: string
+) {
+  try {
+    await prisma.salesDocumentLog.create({
+      data: {
+        documentId:  docId,
+        field:       "status",
+        oldValue:    oldStatus,
+        newValue:    newStatus,
+        note,
+        changedById,
+      },
+    });
+  } catch { /* best-effort — don't fail send if log fails */ }
+}
 
 export async function POST(
   req: NextRequest,
@@ -53,14 +75,33 @@ export async function POST(
     // ── Mark as Sent — no email, just record the date ─────────────────────
     if (mode === "mark_as_sent") {
       const now = new Date();
+
+      // Auto-advance: DRAFT → ISSUED → SENT
+      const statusUpdates: Array<{ from: string; to: string }> = [];
+      let currentStatus = doc.status;
+      if (currentStatus === "DRAFT") {
+        statusUpdates.push({ from: "DRAFT", to: "ISSUED" });
+        currentStatus = "ISSUED";
+      }
+      if (currentStatus === "ISSUED") {
+        statusUpdates.push({ from: "ISSUED", to: "SENT" });
+        currentStatus = "SENT";
+      }
+
       await prisma.salesDocument.update({
         where: { id },
         data: {
           emailSentAt:    now,
           emailSentCount: { increment: 1 },
           manualSent:     true,
+          ...(statusUpdates.length > 0 ? { status: currentStatus as any } : {}),
         },
       });
+
+      // Log each status transition
+      for (const s of statusUpdates) {
+        await logStatusChange(id, s.from, s.to, "Auto-advanced on mark as sent", auth.user.id);
+      }
 
       await prisma.auditLog.create({
         data: {
@@ -68,7 +109,7 @@ export async function POST(
           action:       "SALES_DOCUMENT_MARKED_AS_SENT",
           entityType:   "SalesDocument",
           entityId:     id,
-          metadataJson: JSON.stringify({ docNum: doc.docNum }),
+          metadataJson: JSON.stringify({ docNum: doc.docNum, statusAdvanced: currentStatus }),
         },
       });
 
@@ -313,11 +354,25 @@ export async function POST(
       return NextResponse.json({ error: sendError.message }, { status: 500 });
     }
 
-    // Update email tracking + clear manualSent (real email was sent)
+    // ── Auto-advance status + log each transition ──────────────────────────
+    const statusUpdates: Array<{ from: string; to: string }> = [];
+    let currentStatus = doc.status;
+
+    if (currentStatus === "DRAFT") {
+      statusUpdates.push({ from: "DRAFT", to: "ISSUED" });
+      currentStatus = "ISSUED";
+    }
+    if (currentStatus === "ISSUED") {
+      statusUpdates.push({ from: "ISSUED", to: "SENT" });
+      currentStatus = "SENT";
+    }
+
+    // Update email tracking + status
     const updateData: Record<string, any> = {
       emailSentAt:    new Date(),
       emailSentCount: { increment: 1 },
       manualSent:     false,
+      ...(statusUpdates.length > 0 ? { status: currentStatus } : {}),
     };
 
     if (mode === "reminder") {
@@ -325,11 +380,16 @@ export async function POST(
       updateData.reminderLastSentAt = new Date();
     }
 
-    // Auto-advance status
-    if (doc.status === "DRAFT")  updateData.status = "ISSUED";
-    if (doc.status === "ISSUED") updateData.status = "SENT";
-
     await prisma.salesDocument.update({ where: { id }, data: updateData });
+
+    // Log each status transition to SalesDocumentLog
+    for (const s of statusUpdates) {
+      await logStatusChange(
+        id, s.from, s.to,
+        `Auto-advanced on email send (mode: ${mode})`,
+        auth.user.id
+      );
+    }
 
     await prisma.auditLog.create({
       data: {
@@ -341,6 +401,7 @@ export async function POST(
           docNum: doc.docNum, mode,
           to: toAddr, cc: ccAddr ?? null, bcc: bccAddr ?? null,
           subject,
+          statusAdvanced: statusUpdates.length > 0 ? currentStatus : null,
         }),
       },
     });

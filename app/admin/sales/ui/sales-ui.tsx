@@ -3,6 +3,7 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { CLR } from "@/components/ui/admin-ui";
+import { VALID_STATUSES } from "@/lib/sales/document-helpers";
 import { Icon } from "@/components/ui/Icon";
 import type { SalesDocumentType } from "@prisma/client";
 
@@ -199,7 +200,7 @@ export interface SalesDocRow {
   currency: string; total: number; issueDate: string; dueDate?: string | null;
   emailSentCount?: number | null;
   customer: { fullName?: string | null; email: string; customerNumber?: string | null };
-  market: { key: string; name: string };
+  market: { id?: string; key: string; name: string };
   originDoc?: { docNum: string; type: string } | null;
 }
 
@@ -1704,21 +1705,23 @@ export function SendEmailModal({
 // ─────────────────────────────────────────────────────────────────────────────
 
 const STATUS_TRANSITIONS_ALL: Record<string, string[]> = {
-  DRAFT:          ["ISSUED", "VOID"],
-  PENDING:        ["IN_REVIEW", "QUOTED", "CLOSED", "VOID"],
-  IN_REVIEW:      ["QUOTED", "CLOSED", "VOID"],
-  QUOTED:         ["CONVERTED", "CLOSED", "VOID"],
+  DRAFT:          ["PENDING", "ISSUED", "VOID"],
+  PENDING:        ["IN_REVIEW", "PROCESSING", "QUOTED", "FOLLOW_UP", "CONVERTED", "CLOSED", "VOID"],
+  IN_REVIEW:      ["PROCESSING", "QUOTED", "FOLLOW_UP", "CONVERTED", "CLOSED", "VOID"],
+  PROCESSING:     ["QUOTED", "FOLLOW_UP", "CONVERTED", "CLOSED", "VOID"],
+  QUOTED:         ["FOLLOW_UP", "ACCEPTED", "REJECTED", "CONVERTED", "CLOSED", "VOID"],
+  FOLLOW_UP:      ["IN_REVIEW", "PROCESSING", "QUOTED", "ACCEPTED", "REJECTED", "CONVERTED", "CLOSED", "VOID"],
+  ACCEPTED:       ["CONVERTED", "FOLLOW_UP", "VOID"],
+  REJECTED:       ["FOLLOW_UP", "CONVERTED", "CLOSED", "VOID"],
+  EXPIRED:        ["FOLLOW_UP", "CONVERTED", "CLOSED", "VOID"],
+  CANCELLED:      ["FOLLOW_UP", "CONVERTED", "VOID"],
   ISSUED:         ["SENT", "ACCEPTED", "REJECTED", "VOID"],
   SENT:           ["ACCEPTED", "REJECTED", "REVISED", "VOID"],
   REVISED:        ["ACCEPTED", "REJECTED", "VOID"],
-  ACCEPTED:       ["CONVERTED", "VOID"],
-  REJECTED:       ["VOID"],
   PARTIALLY_PAID: ["PAID", "OVERDUE", "VOID"],
   OVERDUE:        ["PAID", "WRITTEN_OFF", "VOID"],
   DELIVERED:      ["CONVERTED", "VOID"],
-  EXPIRED:        ["VOID"],
-  PROCESSING:     ["CONVERTED", "VOID"],
-  CONVERTED: [], PAID: [], WRITTEN_OFF: [], APPLIED: [], CLOSED: [], VOID: [], CANCELLED: [],
+  CONVERTED: [], PAID: [], WRITTEN_OFF: [], APPLIED: [], CLOSED: [], VOID: [],
 };
 
 const STATUS_CLR: Record<string, { bg: string; color: string; border: string }> = {
@@ -1753,7 +1756,9 @@ export function StatusChangeModal({ docId, docNum, docType, docStatus, onClose, 
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState("");
 
-  const options = STATUS_TRANSITIONS_ALL[docStatus] ?? [];
+  const options = docType === "RFQ"
+    ? (VALID_STATUSES["RFQ"] as string[]).filter(s => s !== docStatus)
+    : STATUS_TRANSITIONS_ALL[docStatus] ?? [];
 
   const inp: React.CSSProperties = {
     width: "100%", padding: "8px 10px", fontSize: 13,

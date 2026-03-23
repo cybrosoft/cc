@@ -22,7 +22,7 @@ const ENDPOINT_FOR_TYPE: Record<string, string> = {
 };
 
 const DETAIL_BASE: Record<string, string> = {
-  RFQ:           "/admin/sales/rfq",
+  RFQ:           "/admin/crm/leads",
   QUOTATION:     "/admin/sales/quotations",
   PO:            "/admin/sales/po",
   DELIVERY_NOTE: "/admin/sales/delivery-notes",
@@ -75,6 +75,32 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
   const [terms,        setTerms]        = useState("");
   const [newFile,      setNewFile]      = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // CRM / Lead fields (RFQ only)
+  const [leadSource,        setLeadSource]        = useState("");
+  const [leadPriority,      setLeadPriority]      = useState("");
+  const [assignedToId,      setAssignedToId]      = useState("");
+  const [expectedCloseDate, setExpectedCloseDate] = useState("");
+  const [followUpDate,      setFollowUpDate]      = useState("");
+  const [lostReason,        setLostReason]        = useState("");
+
+  // CRM Activities
+  const [activities,     setActivities]     = useState<any[]>([]);
+  const [actLoading,     setActLoading]     = useState(false);
+  const [showActForm,    setShowActForm]    = useState(false);
+  const [actType,        setActType]        = useState("NOTE");
+  const [actTitle,       setActTitle]       = useState("");
+  const [actDesc,        setActDesc]        = useState("");
+  const [actDue,         setActDue]         = useState("");
+  const [actSaving,      setActSaving]      = useState(false);
+  const [actError,       setActError]       = useState("");
+
+  // Status / change log
+  const [docLogs,        setDocLogs]        = useState<any[]>([]);
+  const [logsLoading,    setLogsLoading]    = useState(false);
+
+  // Admin users for assignee dropdown
+  const [adminUsers,     setAdminUsers]     = useState<{ id: string; fullName: string | null; email: string }[]>([]);
 
   const [eligibleProducts, setEligibleProducts] = useState<EligibleProduct[]>([]);
 
@@ -167,6 +193,41 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
     } catch {}
   }, []);
 
+  // Fetch admin users for assignee dropdown
+  useEffect(() => {
+    if (docType !== "RFQ") return;
+    fetch("/api/admin/users?role=ADMIN&pageSize=100")
+      .then(r => r.json())
+      .then(d => setAdminUsers(d.data ?? []))
+      .catch(() => {});
+  }, [docType]);
+
+  // Fetch CRM activities
+  const loadActivities = useCallback(async () => {
+    if (docType !== "RFQ") return;
+    setActLoading(true);
+    try {
+      const res  = await fetch(`/api/admin/crm/leads/${docId}/activities`);
+      const data = await res.json();
+      setActivities(data.activities ?? []);
+    } catch { /**/ }
+    setActLoading(false);
+  }, [docId, docType]);
+
+  useEffect(() => { loadActivities(); }, [loadActivities]);
+
+  const loadLogs = useCallback(async () => {
+    setLogsLoading(true);
+    try {
+      const res  = await fetch(`/api/admin/sales/${docId}/log`);
+      const data = await res.json();
+      setDocLogs(data.logs ?? []);
+    } catch { /**/ }
+    setLogsLoading(false);
+  }, [docId]);
+
+  useEffect(() => { loadLogs(); }, [loadLogs]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -210,6 +271,13 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
     setDueDate(d.dueDate ? d.dueDate.split("T")[0] : "");
     setIssueDate(d.issueDate ? d.issueDate.split("T")[0] : "");
     setTerms(d.termsAndConditions ?? "");
+    // CRM fields
+    setLeadSource(d.leadSource        ?? "");
+    setLeadPriority(d.leadPriority    ?? "");
+    setAssignedToId(d.assignedToId    ?? "");
+    setExpectedCloseDate(d.expectedCloseDate ? d.expectedCloseDate.split("T")[0] : "");
+    setFollowUpDate(d.followUpDate    ? d.followUpDate.split("T")[0]    : "");
+    setLostReason(d.lostReason        ?? "");
   }
 
   function startEdit()  { populateEdit(doc); setEditing(true);  setError(""); }
@@ -241,6 +309,14 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
           issueDate:          issueDate    || null,
           termsAndConditions: terms        || null,
           ...(rfqFileUrl ? { rfqFileUrl } : {}),
+          ...(docType === "RFQ" ? {
+            leadSource:        leadSource        || null,
+            leadPriority:      leadPriority      || null,
+            assignedToId:      assignedToId      || null,
+            expectedCloseDate: expectedCloseDate || null,
+            followUpDate:      followUpDate      || null,
+            lostReason:        lostReason        || null,
+          } : {}),
           lines: lines.map(l => ({
             id:             l.id,
             productId:      l.productId,
@@ -309,7 +385,7 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
   const balanceDue      = doc.total - totalPaid;
   const isLocked        = LOCKED_STATUSES.includes(doc.status);
   const isWarning       = WARN_STATUSES.includes(doc.status);
-  const canSend         = !["VOID", "DRAFT"].includes(doc.status);
+  const canSend = !["VOID"].includes(doc.status);
   const hasBeenSent     = (doc.emailSentCount ?? 0) > 0;
   const isInvoiceUnpaid = doc.type === "INVOICE" && ["ISSUED", "SENT", "PARTIALLY_PAID", "OVERDUE"].includes(doc.status);
   const canPay          = ["ISSUED", "SENT", "PARTIALLY_PAID", "OVERDUE"].includes(doc.status);
@@ -544,6 +620,248 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
             </div>
           </div>
 
+          {/* CRM Lead Info — RFQ only */}
+          {docType === "RFQ" && (
+            <div style={card}>
+              <p style={sectionLabel}>Lead Info</p>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
+                <div>
+                  <p style={fieldLabel}>Lead Source</p>
+                  {editing ? (
+                    <select style={inputStyle} value={leadSource} onChange={e => setLeadSource(e.target.value)}>
+                      <option value="">— Select —</option>
+                      {["PORTAL","MANUAL","REFERRAL","EMAIL","PHONE","OTHER"].map(s => (
+                        <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>
+                      ))}
+                    </select>
+                  ) : <p style={fieldValue}>{leadSource || "—"}</p>}
+                </div>
+                <div>
+                  <p style={fieldLabel}>Priority</p>
+                  {editing ? (
+                    <select style={inputStyle} value={leadPriority} onChange={e => setLeadPriority(e.target.value)}>
+                      <option value="">— Select —</option>
+                      {["LOW","MEDIUM","HIGH","URGENT"].map(p => (
+                        <option key={p} value={p}>{p.charAt(0) + p.slice(1).toLowerCase()}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p style={{ ...fieldValue, color: leadPriority === "URGENT" ? "#dc2626" : leadPriority === "HIGH" ? "#b45309" : "#111827" }}>
+                      {leadPriority || "—"}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <p style={fieldLabel}>Assigned To</p>
+                  {editing ? (
+                    <select style={inputStyle} value={assignedToId} onChange={e => setAssignedToId(e.target.value)}>
+                      <option value="">— Unassigned —</option>
+                      {adminUsers.map(u => (
+                        <option key={u.id} value={u.id}>{u.fullName ?? u.email}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p style={fieldValue}>
+                      {assignedToId
+                        ? (adminUsers.find(u => u.id === assignedToId)?.fullName ?? adminUsers.find(u => u.id === assignedToId)?.email ?? assignedToId)
+                        : "—"}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <p style={fieldLabel}>Expected Close</p>
+                  {editing
+                    ? <input type="date" style={inputStyle} value={expectedCloseDate} onChange={e => setExpectedCloseDate(e.target.value)} />
+                    : <p style={fieldValue}>{expectedCloseDate ? new Date(expectedCloseDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}</p>}
+                </div>
+                <div>
+                  <p style={fieldLabel}>Follow-up Date</p>
+                  {editing
+                    ? <input type="date" style={inputStyle} value={followUpDate} onChange={e => setFollowUpDate(e.target.value)} />
+                    : (
+                      <p style={{ ...fieldValue, color: followUpDate && new Date(followUpDate) < new Date() ? "#dc2626" : "#111827" }}>
+                        {followUpDate ? new Date(followUpDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                        {followUpDate && new Date(followUpDate) < new Date() && <span style={{ fontSize: 11, marginLeft: 6, color: "#dc2626" }}>Overdue</span>}
+                      </p>
+                    )}
+                </div>
+                {(["REJECTED","CLOSED","VOID"].includes(doc.status) || lostReason) && (
+                  <div style={{ gridColumn: "1/-1" }}>
+                    <p style={fieldLabel}>Lost Reason</p>
+                    {editing
+                      ? <input style={inputStyle} value={lostReason} onChange={e => setLostReason(e.target.value)} placeholder="Why was this lead lost?" />
+                      : <p style={{ ...fieldValue, color: lostReason ? "#111827" : "#9ca3af" }}>{lostReason || "—"}</p>}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* CRM Activities — RFQ only */}
+          {docType === "RFQ" && (
+            <div style={card}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <p style={{ ...sectionLabel, marginBottom: 0 }}>Activity Log</p>
+                <button onClick={() => setShowActForm(v => !v)}
+                  style={{ padding: "5px 12px", fontSize: 11, fontWeight: 600, background: CLR.primaryBg, color: CLR.primary, border: `1px solid ${CLR.primary}44`, cursor: "pointer", fontFamily: "inherit" }}>
+                  + Log Activity
+                </button>
+              </div>
+
+              {/* Add activity form */}
+              {showActForm && (
+                <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", padding: 14, marginBottom: 14 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                    <div>
+                      <p style={{ ...fieldLabel, marginBottom: 4 }}>Type</p>
+                      <select style={inputStyle} value={actType} onChange={e => setActType(e.target.value)}>
+                        {["CALL","MEETING","TASK","NOTE"].map(t => (
+                          <option key={t} value={t}>{t.charAt(0) + t.slice(1).toLowerCase()}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <p style={{ ...fieldLabel, marginBottom: 4 }}>Due Date</p>
+                      <input type="date" style={inputStyle} value={actDue} onChange={e => setActDue(e.target.value)} />
+                    </div>
+                    <div style={{ gridColumn: "1/-1" }}>
+                      <p style={{ ...fieldLabel, marginBottom: 4 }}>Title</p>
+                      <input style={inputStyle} value={actTitle} onChange={e => setActTitle(e.target.value)} placeholder="e.g. Follow-up call with customer" />
+                    </div>
+                    <div style={{ gridColumn: "1/-1" }}>
+                      <p style={{ ...fieldLabel, marginBottom: 4 }}>Notes</p>
+                      <textarea style={{ ...inputStyle, height: 70, resize: "vertical" }} value={actDesc} onChange={e => setActDesc(e.target.value)} placeholder="Optional details…" />
+                    </div>
+                  </div>
+                  {actError && <p style={{ fontSize: 12, color: "#dc2626", marginBottom: 8 }}>{actError}</p>}
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button onClick={() => { setShowActForm(false); setActTitle(""); setActDesc(""); setActDue(""); setActError(""); }}
+                      style={{ padding: "6px 12px", fontSize: 12, fontWeight: 600, background: "#fff", color: "#374151", border: "1px solid #d1d5db", cursor: "pointer", fontFamily: "inherit" }}>
+                      Cancel
+                    </button>
+                    <button disabled={actSaving || !actTitle.trim()} onClick={async () => {
+                      setActSaving(true); setActError("");
+                      try {
+                        const res = await fetch(`/api/admin/crm/leads/${docId}/activities`, {
+                          method: "POST", headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ type: actType, title: actTitle, description: actDesc || null, dueDate: actDue || null }),
+                        });
+                        if (!res.ok) throw new Error((await res.json()).error);
+                        setShowActForm(false); setActTitle(""); setActDesc(""); setActDue("");
+                        loadActivities();
+                      } catch (e: any) { setActError(e.message); }
+                      setActSaving(false);
+                    }}
+                      style={{ padding: "6px 14px", fontSize: 12, fontWeight: 600, background: CLR.primary, color: "#fff", border: "none", cursor: actSaving ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
+                      {actSaving ? "Saving…" : "Save Activity"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Activity list */}
+              {actLoading ? (
+                <p style={{ fontSize: 12, color: "#9ca3af" }}>Loading…</p>
+              ) : activities.length === 0 ? (
+                <p style={{ fontSize: 12, color: "#9ca3af" }}>No activities yet.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                  {activities.map((a, i) => (
+                    <div key={a.id} style={{ padding: "10px 0", borderBottom: i < activities.length - 1 ? "1px solid #f3f4f6" : "none", display: "flex", gap: 12 }}>
+                      {/* Type indicator */}
+                      <div style={{ width: 32, height: 32, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: a.completedAt ? "#f0fdf4" : "#f3f4f6", border: `1px solid ${a.completedAt ? "#86efac" : "#e5e7eb"}`, fontSize: 11, fontWeight: 700, color: a.completedAt ? "#15803d" : "#6b7280" }}>
+                        {a.type === "CALL" ? "📞" : a.type === "MEETING" ? "👥" : a.type === "TASK" ? "✓" : "📝"}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                          <p style={{ fontSize: 13, fontWeight: 600, color: a.completedAt ? "#6b7280" : "#111827", textDecoration: a.completedAt ? "line-through" : "none" }}>{a.title}</p>
+                          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                            {a.dueDate && !a.completedAt && (
+                              <span style={{ fontSize: 10, padding: "1px 6px", background: new Date(a.dueDate) < new Date() ? "#fef2f2" : "#f3f4f6", color: new Date(a.dueDate) < new Date() ? "#dc2626" : "#6b7280", border: `1px solid ${new Date(a.dueDate) < new Date() ? "#fecaca" : "#e5e7eb"}` }}>
+                                {new Date(a.dueDate) < new Date() ? "Overdue" : new Date(a.dueDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
+                              </span>
+                            )}
+                            {!a.completedAt && (
+                              <button onClick={async () => {
+                                await fetch(`/api/admin/crm/leads/${docId}/activities`, {
+                                  method: "PATCH", headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ id: a.id, completedAt: new Date().toISOString() }),
+                                });
+                                loadActivities();
+                              }}
+                                style={{ fontSize: 10, padding: "1px 7px", background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>
+                                Done
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        {a.description && <p style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>{a.description}</p>}
+                        <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 3 }}>
+                          {a.type} · {new Date(a.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                          {a.completedAt && ` · Completed ${new Date(a.completedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}`}
+                          {a.createdBy && ` · by ${a.createdBy.fullName ?? a.createdBy.email}`}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Status History */}
+          <div style={card}>
+            <p style={sectionLabel}>Status History</p>
+            {logsLoading ? (
+              <p style={{ fontSize: 12, color: "#9ca3af" }}>Loading…</p>
+            ) : docLogs.length === 0 ? (
+              <p style={{ fontSize: 12, color: "#9ca3af" }}>No status changes recorded yet.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                {docLogs.map((log, i) => (
+                  <div key={log.id} style={{ padding: "10px 0", borderBottom: i < docLogs.length - 1 ? "1px solid #f3f4f6" : "none", display: "flex", gap: 12, alignItems: "flex-start" }}>
+                    {/* Timeline dot */}
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: CLR.primary, flexShrink: 0, marginTop: 5 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        {log.field === "status" ? (
+                          <>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>
+                              Status changed
+                            </span>
+                            {log.oldValue && (
+                              <>
+                                <span style={{ fontSize: 11, padding: "1px 7px", background: "#f3f4f6", border: "1px solid #e5e7eb", color: "#6b7280" }}>
+                                  {log.oldValue.replace(/_/g, " ")}
+                                </span>
+                                <span style={{ fontSize: 11, color: "#9ca3af" }}>→</span>
+                              </>
+                            )}
+                            <span style={{ fontSize: 11, padding: "1px 7px", background: CLR.primaryBg, border: `1px solid ${CLR.primary}44`, color: CLR.primary, fontWeight: 600 }}>
+                              {log.newValue?.replace(/_/g, " ")}
+                            </span>
+                          </>
+                        ) : (
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>
+                            {log.field} updated
+                            {log.oldValue && <span style={{ fontWeight: 400, color: "#6b7280" }}> · was: {log.oldValue}</span>}
+                          </span>
+                        )}
+                      </div>
+                      {log.note && (
+                        <p style={{ fontSize: 11, color: "#6b7280", marginTop: 3, fontStyle: "italic" }}>"{log.note}"</p>
+                      )}
+                      <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 3 }}>
+                        {new Date(log.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        {log.changedBy && ` · by ${log.changedBy.fullName ?? log.changedBy.email}`}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Document chain */}
           {(doc.originDoc || (doc.derivedDocs ?? []).length > 0) && (
             <div style={card}>
@@ -625,7 +943,10 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
         <StatusChangeModal
           docId={docId} docNum={doc.docNum} docType={doc.type} docStatus={doc.status}
           onClose={() => setShowStatus(false)}
-          onChanged={newStatus => setDoc((prev: any) => ({ ...prev, status: newStatus }))}
+          onChanged={newStatus => {
+            setDoc((prev: any) => ({ ...prev, status: newStatus }));
+            loadLogs();
+          }}
         />
       )}
 

@@ -1,6 +1,5 @@
 // app/api/admin/sales/[id]/status/route.ts
-// PATCH — update document status with validation.
-// WRITTEN_OFF is admin-only and never exposed to customer portal.
+// PATCH — update document status with validation + audit log.
 export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -17,9 +16,9 @@ export async function PATCH(
     if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { id } = await context.params;
-    const body   = await req.json().catch(() => null);
+    const body      = await req.json().catch(() => null);
     const newStatus: SalesDocumentStatus = body?.status;
-    const note: string = body?.note ?? "";
+    const note: string = body?.note?.trim() ?? "";
 
     if (!newStatus) return NextResponse.json({ error: "status required" }, { status: 400 });
 
@@ -37,12 +36,26 @@ export async function PATCH(
       }, { status: 400 });
     }
 
-    const updated = await prisma.salesDocument.update({
-      where: { id },
-      data:  { status: newStatus },
-      select: { id: true, docNum: true, status: true, updatedAt: true },
-    });
+    // Update status + write log in a transaction
+    const [updated] = await prisma.$transaction([
+      prisma.salesDocument.update({
+        where: { id },
+        data:  { status: newStatus },
+        select: { id: true, docNum: true, status: true, updatedAt: true },
+      }),
+      prisma.salesDocumentLog.create({
+        data: {
+          documentId:  id,
+          field:       "status",
+          oldValue:    doc.status,
+          newValue:    newStatus,
+          note:        note || null,
+          changedById: auth.user.id,
+        },
+      }),
+    ]);
 
+    // Also write to auditLog for system-wide audit trail
     await prisma.auditLog.create({
       data: {
         actorUserId:  auth.user.id,
@@ -56,7 +69,7 @@ export async function PATCH(
           note,
         }),
       },
-    });
+    }).catch(() => { /* auditLog is best-effort */ });
 
     return NextResponse.json({ ok: true, doc: updated });
   } catch (e: any) {
