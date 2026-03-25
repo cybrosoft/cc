@@ -3,7 +3,6 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { CLR } from "@/components/ui/admin-ui";
-import { VALID_STATUSES } from "@/lib/sales/document-helpers";
 import { Icon } from "@/components/ui/Icon";
 import type { SalesDocumentType } from "@prisma/client";
 
@@ -200,7 +199,7 @@ export interface SalesDocRow {
   currency: string; total: number; issueDate: string; dueDate?: string | null;
   emailSentCount?: number | null;
   customer: { fullName?: string | null; email: string; customerNumber?: string | null };
-  market: { id?: string; key: string; name: string };
+  market: { key: string; name: string };
   originDoc?: { docNum: string; type: string } | null;
 }
 
@@ -852,7 +851,7 @@ export function LineItemsEditor({
       </div>}
 
       {/* Lines */}
-      <div style={{ border: isMobile ? "none" : "1px solid #e5e7eb" }}>
+      <div style={{ border: "1px solid #e5e7eb" }}>
         {lines.length === 0 && (
           <div style={{ padding: "18px", fontSize: 12, color: CLR.faint, textAlign: "center" }}>
             No items — use the buttons below to add products or custom items.
@@ -895,7 +894,7 @@ export function LineItemsEditor({
                       ? <input value={line.description} onChange={e => patchLine(i, { description: e.target.value })}
                           placeholder="Description…" style={{ width: "100%", padding: "9px 12px", fontSize: 13, border: "1px solid #d1d5db", fontFamily: "inherit", outline: "none", boxSizing: "border-box" as const }} />
                       : readOnly
-                        ? <span style={{ fontSize: 12 }}>{line.description || "—"}</span>
+                        ? <span style={{ fontSize: 12, whiteSpace: "pre-wrap" }}>{line.description || "—"}</span>
                         : <DescriptionCell value={line.description} products={searchPool} onSelect={p => onProductSelect(i, p)} onChange={v => patchLine(i, { description: v })} inputStyle={{ padding: "9px 12px", fontSize: 13 }} />
                     }
                   </div>
@@ -1705,23 +1704,21 @@ export function SendEmailModal({
 // ─────────────────────────────────────────────────────────────────────────────
 
 const STATUS_TRANSITIONS_ALL: Record<string, string[]> = {
-  DRAFT:          ["PENDING", "ISSUED", "VOID"],
-  PENDING:        ["IN_REVIEW", "PROCESSING", "QUOTED", "FOLLOW_UP", "CONVERTED", "CLOSED", "VOID"],
-  IN_REVIEW:      ["PROCESSING", "QUOTED", "FOLLOW_UP", "CONVERTED", "CLOSED", "VOID"],
-  PROCESSING:     ["QUOTED", "FOLLOW_UP", "CONVERTED", "CLOSED", "VOID"],
-  QUOTED:         ["FOLLOW_UP", "ACCEPTED", "REJECTED", "CONVERTED", "CLOSED", "VOID"],
-  FOLLOW_UP:      ["IN_REVIEW", "PROCESSING", "QUOTED", "ACCEPTED", "REJECTED", "CONVERTED", "CLOSED", "VOID"],
-  ACCEPTED:       ["CONVERTED", "FOLLOW_UP", "VOID"],
-  REJECTED:       ["FOLLOW_UP", "CONVERTED", "CLOSED", "VOID"],
-  EXPIRED:        ["FOLLOW_UP", "CONVERTED", "CLOSED", "VOID"],
-  CANCELLED:      ["FOLLOW_UP", "CONVERTED", "VOID"],
+  DRAFT:          ["ISSUED", "VOID"],
+  PENDING:        ["IN_REVIEW", "QUOTED", "CLOSED", "VOID"],
+  IN_REVIEW:      ["QUOTED", "CLOSED", "VOID"],
+  QUOTED:         ["CONVERTED", "CLOSED", "VOID"],
   ISSUED:         ["SENT", "ACCEPTED", "REJECTED", "VOID"],
   SENT:           ["ACCEPTED", "REJECTED", "REVISED", "VOID"],
   REVISED:        ["ACCEPTED", "REJECTED", "VOID"],
+  ACCEPTED:       ["CONVERTED", "VOID"],
+  REJECTED:       ["VOID"],
   PARTIALLY_PAID: ["PAID", "OVERDUE", "VOID"],
   OVERDUE:        ["PAID", "WRITTEN_OFF", "VOID"],
   DELIVERED:      ["CONVERTED", "VOID"],
-  CONVERTED: [], PAID: [], WRITTEN_OFF: [], APPLIED: [], CLOSED: [], VOID: [],
+  EXPIRED:        ["VOID"],
+  PROCESSING:     ["CONVERTED", "VOID"],
+  CONVERTED: [], PAID: [], WRITTEN_OFF: [], APPLIED: [], CLOSED: [], VOID: [], CANCELLED: [],
 };
 
 const STATUS_CLR: Record<string, { bg: string; color: string; border: string }> = {
@@ -1756,9 +1753,7 @@ export function StatusChangeModal({ docId, docNum, docType, docStatus, onClose, 
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState("");
 
-  const options = docType === "RFQ"
-    ? (VALID_STATUSES["RFQ"] as string[]).filter(s => s !== docStatus)
-    : STATUS_TRANSITIONS_ALL[docStatus] ?? [];
+  const options = STATUS_TRANSITIONS_ALL[docStatus] ?? [];
 
   const inp: React.CSSProperties = {
     width: "100%", padding: "8px 10px", fontSize: 13,

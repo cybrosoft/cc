@@ -241,7 +241,11 @@ export default function SalesDocDetailPage() {
                 )}
               </div>
             )}
-            <button onClick={() => window.print()} style={{ padding: "7px 18px", fontSize: 12, fontWeight: 600, lineHeight: 1, background: "#fff", color: CLR.text, border: "1px solid #d1d5db", cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Download PDF</button>
+            <button onClick={async () => {
+              const res  = await fetch(`/api/admin/sales/${id}/pdf`);
+              // PDF route redirects to signed URL — open in new tab
+              window.open(`/api/admin/sales/${id}/pdf`, "_blank");
+            }} style={{ padding: "7px 18px", fontSize: 12, fontWeight: 600, lineHeight: 1, background: "#fff", color: CLR.text, border: "1px solid #d1d5db", cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Download PDF</button>
           </div>
         </div>
       )}
@@ -282,7 +286,8 @@ export default function SalesDocDetailPage() {
             <div style={{ maxWidth: "35%", wordBreak: "break-word" }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: "#6b7280", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>Bill To</div>
               {doc.customer.companyName ? (
-                <><div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2, lineHeight: 1.75 }}>{doc.customer.companyName}</div></>
+                <><div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2, lineHeight: 1.75 }}>{doc.customer.companyName}</div>
+                {doc.customer.fullName && <div style={{ fontSize: 12, color: "#374151", lineHeight: 1.75 }}>{doc.customer.fullName}</div>}</>
               ) : (
                 <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2, lineHeight: 1.75 }}>{doc.customer.fullName ?? doc.customer.email}</div>
               )}

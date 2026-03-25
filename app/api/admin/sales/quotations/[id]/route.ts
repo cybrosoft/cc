@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { calcTotals } from "@/lib/sales/document-helpers";
+import { invalidatePdf } from "@/lib/sales/invalidate-pdf";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -37,10 +39,22 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const body = await req.json();
     const current = await prisma.salesDocument.findUnique({ where: { id }, select: { status: true } });
     const autoRevise = body.lines !== undefined && ["SENT", "ACCEPTED"].includes(current?.status ?? "");
+
+    // Recalculate totals if lines are being updated
+    let recalcTotals: { subtotal: number; vatAmount: number; total: number } | null = null;
+    if (body.lines !== undefined) {
+      const mkt = await prisma.market.findFirst({ where: { salesDocuments: { some: { id } } }, select: { vatPercent: true } });
+      const vatPct = Number(mkt?.vatPercent ?? 0);
+      recalcTotals = calcTotals(
+        (body.lines ?? []).map((l: any) => ({ unitPrice: l.unitPrice, quantity: l.quantity, discount: l.discount ?? 0 })),
+        vatPct
+      );
+    }
     const doc = await prisma.salesDocument.update({
       where: { id },
       data: {
         ...(autoRevise ? { status: "REVISED" } : {}),
+        ...(recalcTotals ? { subtotal: recalcTotals.subtotal, vatAmount: recalcTotals.vatAmount, total: recalcTotals.total } : {}),
         ...(body.status             !== undefined ? { status:             body.status }                                         : {}),
         ...(body.notes              !== undefined ? { notes:              body.notes }                                          : {}),
         ...(body.internalNote       !== undefined ? { internalNote:       body.internalNote }                                   : {}),
@@ -84,6 +98,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         },
       }).catch(() => {});
     }
+
+    // Invalidate cached PDF — doc content changed
+    await invalidatePdf(id);
 
     return NextResponse.json({ doc });
   } catch (e: any) {

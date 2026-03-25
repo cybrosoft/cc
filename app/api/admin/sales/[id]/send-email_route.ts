@@ -15,7 +15,6 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 import { Resend } from "resend";
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { generatePrintToken } from "@/lib/sales/print-token";
 
 const s3pdf = new S3Client({
   region:   process.env.SUPABASE_S3_REGION!,
@@ -60,7 +59,8 @@ async function logStatusChange(
 async function getPdfBuffer(
   docId: string,
   docNum: string,
-  pdfKey: string | null
+  pdfKey: string | null,
+  cookieHeader: string
 ): Promise<Buffer | null> {
   try {
     // If cached in S3 — fetch buffer directly
@@ -75,8 +75,7 @@ async function getPdfBuffer(
 
     // Generate via Puppeteer
     const baseUrl  = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
-    const token    = generatePrintToken(docId);
-    const printUrl = `${baseUrl}/print/sales/${docId}?token=${token}`;
+    const printUrl = `${baseUrl}/admin/sales/${docId}?embed=1&print=1`;
 
     const puppeteer = await import("puppeteer");
     const browser   = await puppeteer.default.launch({
@@ -86,8 +85,18 @@ async function getPdfBuffer(
 
     try {
       const page = await browser.newPage();
+      if (cookieHeader) {
+        const urlObj  = new URL(baseUrl);
+        const cookies = cookieHeader.split(";").flatMap(c => {
+          const [name, ...rest] = c.trim().split("=");
+          const n = name?.trim(); const v = rest.join("=").trim();
+          if (!n || !v) return [];
+          return [{ name: n, value: v, domain: urlObj.hostname, path: "/" }];
+        });
+        if (cookies.length) await page.setCookie(...cookies);
+      }
       await page.goto(printUrl, { waitUntil: "networkidle0", timeout: 30000 });
-      await page.waitForSelector("body", { timeout: 10000 });
+      await page.waitForSelector("#print-area", { timeout: 15000 });
       await new Promise(r => setTimeout(r, 800));
       const pdf = await page.pdf({ format: "A4", printBackground: true, margin: { top: "12mm", bottom: "12mm", left: "10mm", right: "10mm" } });
       const buf = Buffer.from(pdf);
@@ -404,7 +413,8 @@ export async function POST(
     const resend = new Resend(apiKey);
 
     // Generate/fetch PDF attachment
-    const pdfBuffer = await getPdfBuffer(id, doc.docNum, (doc as any).pdfKey ?? null);
+    const cookieHeader = req.headers.get("cookie") ?? "";
+    const pdfBuffer = await getPdfBuffer(id, doc.docNum, (doc as any).pdfKey ?? null, cookieHeader);
 
     const { error: sendError } = await resend.emails.send({
       from:    `${fromNameSetting?.value ?? fromName} <${fromAddr}>`,

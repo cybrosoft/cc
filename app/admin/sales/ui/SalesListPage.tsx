@@ -60,6 +60,7 @@ export default function SalesListPage({ docType }: Props) {
   const [allDocs,    setAllDocs]    = useState<SalesDocRow[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [iframeSrc,  setIframeSrc]  = useState<string>("");
 
   // Filters
   const [q,         setQ]         = useState("");
@@ -120,7 +121,7 @@ export default function SalesListPage({ docType }: Props) {
           email:          d.customer?.email ?? "",
           customerNumber: d.customer?.customerNumber ?? null,
         },
-        market:    { id: d.market?.id ?? "", key: d.market?.key ?? "", name: d.market?.name ?? "" },
+        market:    { key: d.market?.key ?? "", name: d.market?.name ?? "" },
         originDoc: d.originDoc ?? null,
       }));
       setAllDocs(rows.sort((a, b) => new Date((b as any).createdAt).getTime() - new Date((a as any).createdAt).getTime()));
@@ -150,6 +151,15 @@ export default function SalesListPage({ docType }: Props) {
     }
     return true;
   });
+
+  // Fetch print token when selected doc changes
+  useEffect(() => {
+    if (!selectedId) { setIframeSrc(""); return; }
+    fetch(`/api/admin/sales/${selectedId}/print-token`)
+      .then(r => r.json())
+      .then(d => { if (d.ok) setIframeSrc(`/print/sales/${selectedId}?token=${d.token}`); })
+      .catch(() => {});
+  }, [selectedId]);
 
   const hasFilters     = q || status || marketKey;
   const selected       = docs.find(d => d.id === selectedId) ?? allDocs.find(d => d.id === selectedId) ?? null;
@@ -383,7 +393,7 @@ export default function SalesListPage({ docType }: Props) {
                   )}
 
                   {/* Download PDF */}
-                  <button onClick={() => printDoc(selected.id)}
+                  <button onClick={() => window.open(`/api/admin/sales/${selected.id}/pdf`, "_blank")}
                     style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", fontSize: 11, fontWeight: 600, background: "#fff", color: CLR.text, border: "1px solid #d1d5db", cursor: "pointer", fontFamily: "inherit" }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     Download PDF
@@ -394,7 +404,7 @@ export default function SalesListPage({ docType }: Props) {
                 <div style={{ flex: 1, overflow: "hidden" }}>
                   <iframe
                     key={selected.id}
-                    src={`/admin/sales/${selected.id}?embed=1`}
+                    src={iframeSrc}
                     style={{ width: "100%", height: "100%", border: "none", display: "block" }}
                     title={selected.docNum}
                   />
@@ -446,7 +456,7 @@ export default function SalesListPage({ docType }: Props) {
         <RecordPaymentModal
           docId={selected.id} docNum={selected.docNum}
           currency={selected.currency} total={selected.total}
-          marketId={selected.market.id ?? ""}
+          marketId={(selected.market as any)?.id ?? ""}
           onClose={() => setShowPayment(false)}
           onSaved={() => { setShowPayment(false); fetchDocs(); }}
         />
