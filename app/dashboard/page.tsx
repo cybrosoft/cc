@@ -1,3 +1,5 @@
+// app/dashboard/page.tsx
+
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -13,12 +15,12 @@ export default async function DashboardPage() {
       id: true,
       email: true,
       fullName: true,
+      companyName: true,
       customerNumber: true,
       market: {
         select: {
           key: true,
           defaultCurrency: true,
-          // vatPercent excluded — Decimal, not serializable
         },
       },
       customerGroup: {
@@ -33,6 +35,7 @@ export default async function DashboardPage() {
     id: dbUser.id,
     email: dbUser.email,
     name: dbUser.fullName ?? null,
+    companyName: dbUser.companyName ?? null,
     customerNumber: String(dbUser.customerNumber),
     market: dbUser.market.key,
     currency: dbUser.market.defaultCurrency,
