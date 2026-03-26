@@ -1,63 +1,43 @@
-// app/dashboard/page.tsx
-import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/get-session-user";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import DashboardClient from "./DashboardClient";
-
-async function getCustomerData(userId: string) {
-  const now = new Date();
-  const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-
-  const [subs, servers] = await Promise.all([
-    prisma.subscription.findMany({
-      where:   { userId },
-      orderBy: { createdAt: "desc" },
-      include: {
-        product: { select: { name: true, type: true } }, // nullable — product may be null
-        market:  { select: { name: true, key: true, defaultCurrency: true } },
-      },
-    }),
-    prisma.server.findMany({
-      where: { userId },
-    }),
-  ]);
-
-  return {
-    subs: subs.map(s => ({
-      id:               s.id,
-      productName:      s.product?.name ?? "—",
-      productType:      s.product?.type ?? "service",
-      marketKey:        s.market.key,
-      currency:         s.market.defaultCurrency,
-      status:           s.status,
-      paymentStatus:    s.paymentStatus,
-      billingPeriod:    s.billingPeriod,
-      currentPeriodEnd: s.currentPeriodEnd?.toISOString() ?? null,
-    })),
-    serverCount:  servers.length,
-    expiringSoon: subs.filter(s =>
-      s.status === "ACTIVE" &&
-      s.currentPeriodEnd &&
-      s.currentPeriodEnd <= thirtyDaysFromNow &&
-      s.currentPeriodEnd >= now
-    ).length,
-    unpaidCount: subs.filter(s => s.paymentStatus === "UNPAID").length,
-  };
-}
+import { DashboardHomeClient } from "./DashboardHomeClient";
 
 export default async function DashboardPage() {
-  const user = await getSessionUser();
-  if (!user) redirect("/login");
+  const session = await getSessionUser();
+  if (!session) redirect("/login");
 
-  const data = await getCustomerData(user.id);
+  const dbUser = await prisma.user.findUnique({
+    where: { id: session.id },
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      customerNumber: true,
+      market: {
+        select: {
+          key: true,
+          defaultCurrency: true,
+          // vatPercent excluded — Decimal, not serializable
+        },
+      },
+      customerGroup: {
+        select: { name: true },
+      },
+    },
+  });
 
-  return (
-    <DashboardClient
-      user={user}
-      subs={data.subs}
-      serverCount={data.serverCount}
-      expiringSoon={data.expiringSoon}
-      unpaidCount={data.unpaidCount}
-    />
-  );
+  if (!dbUser) redirect("/login");
+
+  const user = {
+    id: dbUser.id,
+    email: dbUser.email,
+    name: dbUser.fullName ?? null,
+    customerNumber: String(dbUser.customerNumber),
+    market: dbUser.market.key,
+    currency: dbUser.market.defaultCurrency,
+    customerGroup: dbUser.customerGroup?.name ?? null,
+  };
+
+  return <DashboardHomeClient user={user} />;
 }

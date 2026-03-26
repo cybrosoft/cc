@@ -33,6 +33,7 @@ const NAV: NavGroup[] = [
   {
     id: "crm", label: "CRM", icon: "user",
     children: [
+      { id: "customers",     label: "Customers",     icon: "customers",     href: "/admin/customers" },
       { id: "leads", label: "Leads", icon: "rfq", href: "/admin/crm/leads" },
     ],
   },
@@ -62,7 +63,6 @@ const NAV: NavGroup[] = [
   {
     id: "management", label: "Management", icon: "management",
     children: [
-      { id: "customers",     label: "Customers",     icon: "customers",     href: "/admin/customers" },
       { id: "subscriptions", label: "Subscriptions", icon: "subscriptions", href: "/admin/subscriptions" },
       { id: "servers",       label: "Servers",       icon: "server",        href: "/admin/servers" },
     ],
