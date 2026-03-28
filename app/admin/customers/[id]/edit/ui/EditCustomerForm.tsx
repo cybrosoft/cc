@@ -23,7 +23,12 @@ type Customer = {
   fullName: string | null; mobile: string | null; accountType: AccountType | null;
   country: string | null; province: string | null;
   companyName: string | null; vatTaxId: string | null; commercialRegistrationNumber: string | null;
-  addressLine1: string | null; addressLine2: string | null; district: string | null; city: string | null;
+  // NEW fields — optional so existing data without them still works
+  shortAddressCode: string | null;
+  addressLine1: string | null; addressLine2: string | null;
+  buildingNumber: string | null; secondaryNumber: string | null;
+  district: string | null; city: string | null;
+  postalCode: string | null;
 };
 
 type ApiOk  = { ok: true;  user: { id: string; email: string } };
@@ -165,12 +170,19 @@ export default function EditCustomerForm({
   const [companyName,                  setCompanyName]                  = useState(customer.companyName                  ?? "");
   const [vatTaxId,                     setVatTaxId]                     = useState(customer.vatTaxId                     ?? "");
   const [commercialRegistrationNumber, setCommercialRegistrationNumber] = useState(customer.commercialRegistrationNumber ?? "");
+  // NEW — Short Address Code
+  const [shortAddressCode, setShortAddressCode] = useState(customer.shortAddressCode ?? "");
 
   // Address
-  const [addressLine1, setAddressLine1] = useState(customer.addressLine1 ?? "");
-  const [addressLine2, setAddressLine2] = useState(customer.addressLine2 ?? "");
-  const [district,     setDistrict]     = useState(customer.district     ?? "");
-  const [city,         setCity]         = useState(customer.city         ?? "");
+  const [addressLine1,    setAddressLine1]    = useState(customer.addressLine1    ?? "");
+  const [addressLine2,    setAddressLine2]    = useState(customer.addressLine2    ?? "");
+  // NEW — Saudi-only address fields
+  const [buildingNumber,  setBuildingNumber]  = useState(customer.buildingNumber  ?? "");
+  const [secondaryNumber, setSecondaryNumber] = useState(customer.secondaryNumber ?? "");
+  const [district,        setDistrict]        = useState(customer.district        ?? "");
+  const [city,            setCity]            = useState(customer.city            ?? "");
+  // NEW — Postal Code (all markets)
+  const [postalCode,      setPostalCode]      = useState(customer.postalCode      ?? "");
 
   // Tags
   const [allTags,      setAllTags]      = useState<TagRow[]>([]);
@@ -187,8 +199,8 @@ export default function EditCustomerForm({
   useEffect(() => {
     async function load() {
       const [allRes, userRes] = await Promise.all([
-        fetch("/api/admin/catalog/tags",                          { cache: "no-store" }),
-        fetch(`/api/admin/users/${customer.id}/tags`,             { cache: "no-store" }),
+        fetch("/api/admin/catalog/tags",              { cache: "no-store" }),
+        fetch(`/api/admin/users/${customer.id}/tags`, { cache: "no-store" }),
       ]);
       const allJ  = await allRes.json().catch(() => null)  as { ok: boolean; data?: TagRow[] } | null;
       const userJ = await userRes.json().catch(() => null) as { ok: boolean; data?: TagRow[] } | null;
@@ -217,11 +229,19 @@ export default function EditCustomerForm({
           email: email.trim().toLowerCase(), marketId, customerGroupId: groupToSend,
           fullName: fullName.trim() || null, mobile: mobile.trim() || null, accountType,
           country: country || null, province: provinceToSend,
+          // business
           companyName:                  isBusiness ? (companyName.trim()                  || null) : null,
           vatTaxId:                     isBusiness ? (vatTaxId.trim()                     || null) : null,
           commercialRegistrationNumber: isBusiness ? (commercialRegistrationNumber.trim() || null) : null,
-          addressLine1: addressLine1.trim() || null, addressLine2: addressLine2.trim() || null,
-          district: district.trim() || null, city: city.trim() || null,
+          shortAddressCode:             isBusiness ? (shortAddressCode.trim()             || null) : null,
+          // address
+          addressLine1: addressLine1.trim() || null,
+          addressLine2: addressLine2.trim() || null,
+          buildingNumber:  isSaudi ? (buildingNumber.trim()  || null) : null,
+          secondaryNumber: isSaudi ? (secondaryNumber.trim() || null) : null,
+          district:  district.trim()  || null,
+          city:      city.trim()      || null,
+          postalCode: postalCode.trim() || null,
         }),
       });
       const data = await res.json().catch(() => null) as ApiOk | ApiErr | null;
@@ -316,11 +336,14 @@ export default function EditCustomerForm({
             <Field label="VAT / Tax ID">
               <input className={inputCls} value={vatTaxId} onChange={(e) => setVatTaxId(e.target.value)} placeholder="Tax ID" />
             </Field>
-            <div className="md:col-span-2">
-              <Field label="Commercial Registration Number">
-                <input className={inputCls} value={commercialRegistrationNumber} onChange={(e) => setCommercialRegistrationNumber(e.target.value)} placeholder="CR number" />
-              </Field>
-            </div>
+            <Field label="Commercial Registration Number">
+              <input className={inputCls} value={commercialRegistrationNumber} onChange={(e) => setCommercialRegistrationNumber(e.target.value)} placeholder="CR number" />
+            </Field>
+            {/* NEW — Short Address Code */}
+            <Field label="Short Address Code">
+              <input className={inputCls} value={shortAddressCode} onChange={(e) => setShortAddressCode(e.target.value)} placeholder="e.g. RNAD2323" maxLength={8} />
+              <p className="mt-1 text-[11px] text-gray-400">Saudi National Address short code</p>
+            </Field>
           </div>
         </section>
       )}
@@ -333,7 +356,7 @@ export default function EditCustomerForm({
             <input className={inputCls} value={country} onChange={(e) => {
               const next = e.target.value.toUpperCase();
               setCountry(next);
-              if (next !== "SA") setProvince("");
+              if (next !== "SA") { setProvince(""); setBuildingNumber(""); setSecondaryNumber(""); }
             }} placeholder="ISO code e.g. SA, US, GB" maxLength={2} />
           </Field>
           {isSaudi ? (
@@ -348,12 +371,14 @@ export default function EditCustomerForm({
               <input className={inputCls} value={provinceStateText} onChange={(e) => setProvinceStateText(e.target.value)} placeholder="Province or state" />
             </Field>
           )}
+
           <Field label="City">
             <input className={inputCls} value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" />
           </Field>
           <Field label="District / County">
             <input className={inputCls} value={district} onChange={(e) => setDistrict(e.target.value)} placeholder="District" />
           </Field>
+
           <div className="md:col-span-2">
             <Field label="Address Line 1">
               <input className={inputCls} value={addressLine1} onChange={(e) => setAddressLine1(e.target.value)} placeholder="Street, building, etc." />
@@ -364,6 +389,25 @@ export default function EditCustomerForm({
               <input className={inputCls} value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)} placeholder="Apartment, suite, etc." />
             </Field>
           </div>
+
+          {/* NEW — Saudi-only fields */}
+          {isSaudi && (
+            <>
+              <Field label="Building Number">
+                <input className={inputCls} value={buildingNumber} onChange={(e) => setBuildingNumber(e.target.value)} placeholder="e.g. 1234" />
+                <p className="mt-1 text-[11px] text-gray-400">Saudi National Address — building number</p>
+              </Field>
+              <Field label="Secondary Number">
+                <input className={inputCls} value={secondaryNumber} onChange={(e) => setSecondaryNumber(e.target.value)} placeholder="e.g. 5678" />
+                <p className="mt-1 text-[11px] text-gray-400">Saudi National Address — secondary/unit number</p>
+              </Field>
+            </>
+          )}
+
+          {/* NEW — Postal Code (all markets) */}
+          <Field label="Postal Code / Zip">
+            <input className={inputCls} value={postalCode} onChange={(e) => setPostalCode(e.target.value)} placeholder={isSaudi ? "e.g. 12345" : "e.g. 10001"} />
+          </Field>
         </div>
       </section>
 

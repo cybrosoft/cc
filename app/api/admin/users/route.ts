@@ -1,167 +1,125 @@
 // app/api/admin/users/route.ts
-export const runtime = "nodejs";
 
-import { NextResponse }   from "next/server";
-import { prisma }         from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth/get-session-user";
-import { AccountType, Role } from "@prisma/client";
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { requireAdmin } from "@/lib/auth/require-admin";
 
-const VALID_ACCOUNT_TYPES: AccountType[] = ["BUSINESS", "PERSONAL"];
-const PAGE_SIZE = 50;
+// ─── GET — list users ─────────────────────────────────────────────────────────
 
-// ─── GET /api/admin/users — paginated customer list ──────────────────────────
-
-export async function GET(req: Request) {
-  const admin = await getSessionUser();
-  if (!admin || admin.role !== "ADMIN")
-    return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
+export async function GET(req: NextRequest) {
+  const auth = await requireAdmin(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const page              = Math.max(1, Number(searchParams.get("page") ?? "1"));
-  const pageSizeParam     = Number(searchParams.get("pageSize") ?? String(PAGE_SIZE));
-  const effectivePageSize = Math.min(9999, Math.max(1, Number.isFinite(pageSizeParam) ? pageSizeParam : PAGE_SIZE));
-  const search            = searchParams.get("search")?.trim() ?? "";
-  const marketId          = searchParams.get("marketId")?.trim() ?? "";
-  const role              = searchParams.get("role")?.trim() ?? "";
-  const accountType       = searchParams.get("accountType")?.trim() ?? "";
+  const search   = searchParams.get("search")   ?? "";
+  const marketId = searchParams.get("marketId") ?? "";
+  const groupId  = searchParams.get("groupId")  ?? "";
+  const role     = searchParams.get("role")     ?? "CUSTOMER";
 
-  const where: Record<string, unknown> = {
-    role: (role && Object.values(Role).includes(role as Role)) ? role as Role : Role.CUSTOMER,
-  };
+  const users = await prisma.user.findMany({
+    where: {
+      role: role as "ADMIN" | "STAFF" | "CUSTOMER",
+      ...(marketId ? { marketId } : {}),
+      ...(groupId  ? { customerGroupId: groupId } : {}),
+      ...(search
+        ? {
+            OR: [
+              { email:       { contains: search, mode: "insensitive" } },
+              { fullName:    { contains: search, mode: "insensitive" } },
+              { companyName: { contains: search, mode: "insensitive" } },
+            ],
+          }
+        : {}),
+    },
+    select: {
+      id:             true,
+      customerNumber: true,
+      email:          true,
+      fullName:       true,
+      mobile:         true,
+      accountType:    true,
+      role:           true,
+      marketId:       true,
+      market:         { select: { id: true, key: true, name: true } },
+      customerGroupId: true,
+      customerGroup:  { select: { id: true, key: true, name: true } },
+      companyName:    true,
+      vatTaxId:       true,
+      commercialRegistrationNumber: true,
+      shortAddressCode: true,
+      country:        true,
+      province:       true,
+      addressLine1:   true,
+      addressLine2:   true,
+      buildingNumber:  true,
+      secondaryNumber: true,
+      district:       true,
+      city:           true,
+      postalCode:     true,
+      notePublic:     true,
+      notePrivate:    true,
+      tags:           { select: { id: true, key: true, name: true } },
+      createdAt:      true,
+    },
+    orderBy: { customerNumber: "desc" },
+  });
 
-  if (marketId) where.marketId = marketId;
-
-  if (accountType && VALID_ACCOUNT_TYPES.includes(accountType as AccountType)) {
-    where.accountType = accountType as AccountType;
-  }
-
-  if (search) {
-    where.OR = [
-      { email:       { contains: search, mode: "insensitive" } },
-      { fullName:    { contains: search, mode: "insensitive" } },
-      { companyName: { contains: search, mode: "insensitive" } },
-    ];
-  }
-
-  const [total, data] = await Promise.all([
-    prisma.user.count({ where }),
-    prisma.user.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip:    (page - 1) * effectivePageSize,
-      take:    effectivePageSize,
-      select: {
-        id:             true,
-        customerNumber: true,
-        email:          true,
-        fullName:       true,
-        mobile:         true,
-        role:           true,
-        accountType:    true,
-        country:        true,
-        city:           true,
-        companyName:    true,
-        createdAt:      true,
-        market:         { select: { id: true, name: true, key: true, defaultCurrency: true, vatPercent: true } },
-        customerGroup:  { select: { id: true, name: true, key: true } },
-        tags:           { select: { id: true, key: true, name: true } },
-        _count:         { select: { subscriptions: true, servers: true } },
-      },
-    }),
-  ]);
-
-  return NextResponse.json({ ok: true, data, total, page, pageSize: effectivePageSize });
+  return NextResponse.json(users);
 }
 
-// ─── POST /api/admin/users — create customer ─────────────────────────────────
+// ─── POST — create customer ───────────────────────────────────────────────────
 
-export async function POST(req: Request) {
-  const admin = await getSessionUser();
-  if (!admin || admin.role !== "ADMIN")
-    return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
+export async function POST(req: NextRequest) {
+  const auth = await requireAdmin(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
 
-  const body = (await req.json().catch(() => null)) as {
-    email?:                        string;
-    marketId?:                     string;
-    customerGroupId?:              string | null;
-    fullName?:                     string | null;
-    mobile?:                       string | null;
-    accountType?:                  AccountType | null;
-    country?:                      string | null;
-    province?:                     string | null;
-    companyName?:                  string | null;
-    vatTaxId?:                     string | null;
-    commercialRegistrationNumber?: string | null;
-    addressLine1?:                 string | null;
-    addressLine2?:                 string | null;
-    district?:                     string | null;
-    city?:                         string | null;
-    notePublic?:                   string | null;
-    notePrivate?:                  string | null;
-    tagKeys?:                      string[];
-  } | null;
+  const body = await req.json();
 
-  const email    = body?.email?.trim().toLowerCase();
-  const marketId = body?.marketId?.trim();
+  const {
+    email, fullName, mobile, accountType, marketId, customerGroupId,
+    country, province,
+    companyName, vatTaxId, commercialRegistrationNumber, shortAddressCode,
+    addressLine1, addressLine2, buildingNumber, secondaryNumber,
+    district, city, postalCode,
+    notePublic, notePrivate,
+    tagIds,
+  } = body;
 
-  if (!email)    return NextResponse.json({ ok: false, error: "email is required" },    { status: 400 });
-  if (!marketId) return NextResponse.json({ ok: false, error: "marketId is required" }, { status: 400 });
+  if (!email)    return NextResponse.json({ error: "Email is required"  }, { status: 400 });
+  if (!marketId) return NextResponse.json({ error: "Market is required" }, { status: 400 });
 
   const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing)  return NextResponse.json({ ok: false, error: "A customer with this email already exists" }, { status: 409 });
-
-  const market = await prisma.market.findUnique({ where: { id: marketId } });
-  if (!market)   return NextResponse.json({ ok: false, error: "Market not found" }, { status: 404 });
-
-  // Resolve customerGroupId — use provided or fall back to default group
-  let customerGroupId: string | null = body?.customerGroupId ?? null;
-  if (!customerGroupId) {
-    const defaultGroup = await prisma.customerGroup.findFirst({ orderBy: { name: "asc" } });
-    customerGroupId = defaultGroup?.id ?? null;
-  }
-
-  // Resolve tag ids
-  const tagKeys: string[] = body?.tagKeys ?? [];
-  const tags = tagKeys.length
-    ? await prisma.tag.findMany({ where: { key: { in: tagKeys } }, select: { id: true } })
-    : [];
+  if (existing)  return NextResponse.json({ error: "A user with this email already exists" }, { status: 409 });
 
   const user = await prisma.user.create({
     data: {
       email,
+      role: "CUSTOMER",
       marketId,
-      customerGroupId,
-      fullName:                     body?.fullName    ?? null,
-      mobile:                       body?.mobile      ?? null,
-      accountType:                  body?.accountType ?? null,
-      country:                      body?.country     ?? null,
-      province:                     body?.province    ?? null,
-      companyName:                  body?.companyName ?? null,
-      vatTaxId:                     body?.vatTaxId    ?? null,
-      commercialRegistrationNumber: body?.commercialRegistrationNumber ?? null,
-      addressLine1:                 body?.addressLine1 ?? null,
-      addressLine2:                 body?.addressLine2 ?? null,
-      district:                     body?.district    ?? null,
-      city:                         body?.city        ?? null,
-      notePublic:                   body?.notePublic  ?? null,
-      notePrivate:                  body?.notePrivate ?? null,
-      tags: tags.length ? { connect: tags.map(t => ({ id: t.id })) } : undefined,
-    },
-    select: {
-      id: true, customerNumber: true, email: true, fullName: true,
-      market: { select: { id: true, key: true, name: true, defaultCurrency: true, vatPercent: true } },
-    },
-  });
-
-  await prisma.auditLog.create({
-    data: {
-      actorUserId:  admin.id,
-      action:       "CUSTOMER_CREATED",
-      entityType:   "User",
-      entityId:     user.id,
-      metadataJson: JSON.stringify({ email, marketId }),
+      customerGroupId: customerGroupId || null,
+      fullName:  fullName  || null,
+      mobile:    mobile    || null,
+      accountType: accountType || null,
+      country:   country   || null,
+      province:  province  || null,
+      companyName:                  companyName                  || null,
+      vatTaxId:                     vatTaxId                     || null,
+      commercialRegistrationNumber: commercialRegistrationNumber || null,
+      shortAddressCode:             shortAddressCode             || null,
+      addressLine1:   addressLine1   || null,
+      addressLine2:   addressLine2   || null,
+      buildingNumber:  buildingNumber  || null,
+      secondaryNumber: secondaryNumber || null,
+      district:       district        || null,
+      city:           city            || null,
+      postalCode:     postalCode      || null,
+      notePublic:     notePublic      || null,
+      notePrivate:    notePrivate     || null,
+      ...(Array.isArray(tagIds) && tagIds.length > 0
+        ? { tags: { connect: tagIds.map((id: string) => ({ id })) } }
+        : {}),
     },
   });
 
-  return NextResponse.json({ ok: true, data: user }, { status: 201 });
+  return NextResponse.json(user, { status: 201 });
 }
