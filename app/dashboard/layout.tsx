@@ -3,6 +3,7 @@ import { getSessionUser } from "@/lib/auth/get-session-user";
 import { prisma } from "@/lib/prisma";
 import { DashboardDrawer } from "./DashboardDrawer";
 import { getBillingNavVisibility } from "@/lib/customer/billing-nav";
+import "./dashboard.css";
 
 export default async function DashboardLayout({
   children,
@@ -18,14 +19,13 @@ export default async function DashboardLayout({
     select: {
       id: true,
       email: true,
-      fullName: true,        // schema: fullName String?
-      companyName: true,     // schema: companyName String?
-      customerNumber: true,  // schema: customerNumber Int
+      fullName: true,
+      companyName: true,
+      customerNumber: true,
       market: {
         select: {
           key: true,
           defaultCurrency: true,
-          // vatPercent excluded — Decimal, not serializable
         },
       },
     },

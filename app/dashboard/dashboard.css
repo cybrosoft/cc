@@ -840,3 +840,60 @@
   font-size: 13.5px;
 }
 .activity-empty p { margin: 0; }
+/* ── Page content wrapper (used by all dashboard pages) ─────── */
+/* Applied via className="cy-dash-wrap" on every page's root div */
+.cy-dash-wrap {
+  padding: 24px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+@media (max-width: 1023px) {
+  .cy-dash-wrap { padding: 16px; }
+}
+@media (max-width: 599px) {
+  .cy-dash-wrap { padding: 12px; }
+}
+
+/* Page title (h1 used across all customer pages) */
+.cy-page-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+@media (max-width: 599px) {
+  .cy-page-title { font-size: 18px; }
+}
+
+/* Grid helpers used across pages */
+.cy-row-half {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+@media (max-width: 900px) {
+  .cy-row-half { grid-template-columns: minmax(0,1fr); gap: 12px; }
+}
+
+.cy-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4,1fr);
+  gap: 12px;
+}
+@media (max-width: 900px) {
+  .cy-stats-grid { grid-template-columns: repeat(2,1fr); gap: 8px; }
+}
+
+/* Shimmer skeleton animation (used by all pages) */
+@keyframes cy-shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position:  400px 0; }
+}
+.cy-shimmer {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e4e4e4 50%, #f0f0f0 75%);
+  background-size: 800px 100%;
+  animation: cy-shimmer 1.4s ease-in-out infinite;
+  border-radius: 4px;
+  display: inline-block;
+}
