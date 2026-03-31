@@ -8,9 +8,11 @@ export type SessionUser = Prisma.UserGetPayload<{
     id: true;
     email: true;
     role: true;
+    status: true;
     marketId: true;
     customerGroupId: true;
     customerNumber: true;
+    totpEnabled: true;
     createdAt: true;
     market: true;
     customerGroup: true;
@@ -20,7 +22,6 @@ export type SessionUser = Prisma.UserGetPayload<{
 function normalizeSid(raw: string): string {
   const v = raw.trim();
   if (!v) return "";
-  // handle quoted cookies (sometimes happens via proxies/dev tools)
   if (v.startsWith('"') && v.endsWith('"') && v.length >= 2) return v.slice(1, -1);
   return v;
 }
@@ -40,9 +41,11 @@ export async function getSessionUser(): Promise<SessionUser | null> {
           id: true,
           email: true,
           role: true,
+          status: true,
           marketId: true,
           customerGroupId: true,
           customerNumber: true,
+          totpEnabled: true,
           createdAt: true,
           market: true,
           customerGroup: true,

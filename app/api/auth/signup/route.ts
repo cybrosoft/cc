@@ -1,11 +1,14 @@
 // FILE: app/api/auth/signup/route.ts
+// Updated for Step 10 minimal signup flow:
+// - Accepts marketKey ("saudi" | "global") instead of marketId
+// - fullName, mobile, tcAccepted no longer required at signup (collected in Onboarding Wizard)
+// - Only email + marketKey required
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateOtp, getOtpExpiry, hashOtp } from "@/lib/otp";
 import { sendOtpEmail } from "@/lib/email/send-otp";
-import { AccountType } from "@prisma/client";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
@@ -16,24 +19,13 @@ function readString(obj: Record<string, unknown>, key: string): string | null {
   return typeof v === "string" ? v : null;
 }
 
-function readBoolean(obj: Record<string, unknown>, key: string): boolean | null {
-  const v = obj[key];
-  return typeof v === "boolean" ? v : null;
-}
-
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
 function getPendingSignupExpiry(): Date {
+  // 30 minutes — enough time to complete OTP + onboarding
   return new Date(Date.now() + 30 * 60 * 1000);
-}
-
-function readAccountType(obj: Record<string, unknown>, key: string): AccountType | null {
-  const v = obj[key];
-  if (v === "BUSINESS") return AccountType.BUSINESS;
-  if (v === "PERSONAL") return AccountType.PERSONAL;
-  return null;
 }
 
 export async function POST(req: Request) {
@@ -45,53 +37,34 @@ export async function POST(req: Request) {
     }
 
     const normalizedEmail = normalizeEmail(String(readString(raw, "email") ?? ""));
-    const marketId = String(readString(raw, "marketId") ?? "").trim();
 
-    const fullName = String(readString(raw, "fullName") ?? "").trim();
-    const mobile = String(readString(raw, "mobile") ?? "").trim();
-
-    const accountType = readAccountType(raw, "accountType");
-
-    const companyName = readString(raw, "companyName")?.trim() || null;
-    const vatTaxId = readString(raw, "vatTaxId")?.trim() || null;
-    const commercialRegistrationNumber = readString(raw, "commercialRegistrationNumber")?.trim() || null;
-
-    const addressLine1 = readString(raw, "addressLine1")?.trim() || null;
-    const addressLine2 = readString(raw, "addressLine2")?.trim() || null;
-    const district = readString(raw, "district")?.trim() || null;
-    const city = readString(raw, "city")?.trim() || null;
-
-    const country = readString(raw, "country")?.trim() || null;
-    const province = readString(raw, "province")?.trim() || null;
-
-    const tcAccepted = readBoolean(raw, "tcAccepted");
-    const privacyAccepted = readBoolean(raw, "privacyAccepted");
-    const marketingAccepted = readBoolean(raw, "marketingAccepted");
+    // Accept marketKey ("saudi" | "global") — uppercase to match DB keys (SAUDI, GLOBAL)
+    const marketKey = readString(raw, "marketKey")?.trim().toUpperCase() || null;
+    const marketId  = readString(raw, "marketId")?.trim() || null;
 
     if (!normalizedEmail) {
-      return NextResponse.json({ ok: false, error: "Email required." }, { status: 400 });
-    }
-    if (!marketId) {
-      return NextResponse.json({ ok: false, error: "Market required." }, { status: 400 });
-    }
-    if (!fullName || !mobile) {
-      return NextResponse.json({ ok: false, error: "Missing required fields." }, { status: 400 });
-    }
-    if (tcAccepted !== true || privacyAccepted !== true) {
-      return NextResponse.json({ ok: false, error: "Terms & Privacy must be accepted." }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Email is required." }, { status: 400 });
     }
 
+    if (!marketKey && !marketId) {
+      return NextResponse.json({ ok: false, error: "Market is required." }, { status: 400 });
+    }
+
+    // Resolve market record
     const market = await prisma.market.findFirst({
-      where: { id: marketId, isActive: true },
-      select: { id: true },
+      where: marketKey
+        ? { key: marketKey, isActive: true }
+        : { id: marketId!, isActive: true },
+      select: { id: true, key: true },
     });
 
     if (!market) {
-      return NextResponse.json({ ok: false, error: "Invalid market." }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Market not found." }, { status: 400 });
     }
 
+    // Check if user already exists
     const existingUser = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
+      where:  { email: normalizedEmail },
       select: { id: true },
     });
 
@@ -99,65 +72,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, userExists: true });
     }
 
+    // Create or update pending signup — only email + marketId required now
+    // All other fields (name, mobile, address, T&C) collected in Onboarding Wizard
     await prisma.pendingSignup.upsert({
-      where: { email: normalizedEmail },
+      where:  { email: normalizedEmail },
       create: {
-        email: normalizedEmail,
-        marketId: market.id,
+        email:     normalizedEmail,
+        marketId:  market.id,
         expiresAt: getPendingSignupExpiry(),
-
-        fullName,
-        mobile,
-        accountType,
-
-        companyName,
-        vatTaxId,
-        commercialRegistrationNumber,
-
-        addressLine1,
-        addressLine2,
-        district,
-        city,
-        country,
-        province,
-
-        tcAccepted: true,
-        privacyAccepted: true,
-        marketingAccepted: marketingAccepted === true,
       },
       update: {
-        marketId: market.id,
+        marketId:  market.id,
         expiresAt: getPendingSignupExpiry(),
-
-        fullName,
-        mobile,
-        accountType,
-
-        companyName,
-        vatTaxId,
-        commercialRegistrationNumber,
-
-        addressLine1,
-        addressLine2,
-        district,
-        city,
-        country,
-        province,
-
-        tcAccepted: true,
-        privacyAccepted: true,
-        marketingAccepted: marketingAccepted === true,
       },
     });
 
-    const code = generateOtp();
+    // Generate and send OTP
+    const code     = generateOtp();
     const codeHash = hashOtp(normalizedEmail, code);
 
     await prisma.loginOtp.create({
       data: {
-        email: normalizedEmail,
+        email:        normalizedEmail,
         codeHash,
-        expiresAt: getOtpExpiry(),
+        expiresAt:    getOtpExpiry(),
         attemptCount: 0,
       },
     });
@@ -165,6 +103,7 @@ export async function POST(req: Request) {
     await sendOtpEmail(normalizedEmail, code);
 
     return NextResponse.json({ ok: true, userExists: false });
+
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[signup] error:", msg);

@@ -4,6 +4,8 @@
 //         + new fields on Product (nameAr, detailsAr, productDetails)
 //         + new fields on Category (nameAr)
 //         + new fields on Market (vatPercent, legalInfo, companyProfile, paymentMethods)
+// Step 10: Added CustomerStatus enum, UserStatusLog model,
+//          User.status, User.googleId, User.microsoftId, User.totpSecret, User.totpEnabled
 
 datasource db {
   provider = "postgresql"
@@ -90,6 +92,15 @@ enum PaymentStatus {
 enum AccountType {
   BUSINESS
   PERSONAL
+}
+
+// ── Step 10 — Customer account status ────────────────────────────────────────
+enum CustomerStatus {
+  PENDING        // just registered — awaiting admin review
+  INFO_REQUIRED  // admin requested more information
+  ACTIVE         // approved — full access
+  REJECTED       // application rejected
+  SUSPENDED      // existing customer suspended by admin
 }
 
 // ── NEW Step 4 Enums ──────────────────────────────────────────────────────────
@@ -240,27 +251,35 @@ model User {
   vatTaxId                     String?
   commercialRegistrationNumber String?
 
-  addressLine1 String?
-  addressLine2 String?
-  district     String?
-  city         String?
-  buildingNumber  String?   // Saudi only — WASL/National Address building number
-  secondaryNumber String?   // Saudi only — WASL/National Address secondary number
-  postalCode      String?   // all markets — postal/zip code
+  addressLine1     String?
+  addressLine2     String?
+  district         String?
+  city             String?
+  buildingNumber   String?  // Saudi only — WASL/National Address building number
+  secondaryNumber  String?  // Saudi only — WASL/National Address secondary number
+  postalCode       String?  // all markets — postal/zip code
   shortAddressCode String?  // business info — Saudi National Address short code e.g. RNAD2323
-  tags         Tag[] // many-to-many (implicit)
+
+  tags Tag[] // many-to-many (implicit)
 
   tcAccepted        Boolean?
   privacyAccepted   Boolean?
   marketingAccepted Boolean?
 
+  // Step 10 — Auth enhancements
+  status      CustomerStatus @default(PENDING)
+  googleId    String?        @unique // Google SSO subject ID
+  microsoftId String?        @unique // Microsoft SSO subject ID
+  totpSecret  String?                // AES-256 encrypted TOTP secret
+  totpEnabled Boolean        @default(false)
+
   sessions Session[]
-  
+
   subscriptions         Subscription[]
-  approvedSubscriptions Subscription[] @relation("SubscriptionApprovedBy")
+  approvedSubscriptions Subscription[]          @relation("SubscriptionApprovedBy")
   statusLogEntries      SubscriptionStatusLog[] @relation("StatusLogChangedBy")
   renewalEntries        SubscriptionRenewal[]   @relation("RenewalCreatedBy")
-  documentLogs SalesDocumentLog[] @relation("DocumentLogChanger")
+  documentLogs          SalesDocumentLog[]      @relation("DocumentLogChanger")
 
   servers   Server[]
   auditLogs AuditLog[]
@@ -271,11 +290,11 @@ model User {
   notePrivate String? @db.Text
 
   // Step 4
-  salesDocuments   SalesDocument[]
-  assignedLeads    SalesDocument[] @relation("AssignedLeads")
-  assignedActivities CRMActivity[] @relation("ActivityAssignee")
-  createdActivities  CRMActivity[] @relation("ActivityCreator")
-  notifications  Notification[]
+  salesDocuments     SalesDocument[]
+  assignedLeads      SalesDocument[] @relation("AssignedLeads")
+  assignedActivities CRMActivity[]   @relation("ActivityAssignee")
+  createdActivities  CRMActivity[]   @relation("ActivityCreator")
+  notifications      Notification[]
 
   // Step 9 — Notification preferences
   notifPrefs Json?   // { "INVOICE_ISSUED": { email: true, sms: false, inapp: true }, ... }
@@ -286,11 +305,16 @@ model User {
   // Step 9 — Broadcasts created by this admin
   broadcastsCreated NotificationBroadcast[] @relation("BroadcastCreatedBy")
 
+  // Step 10 — User status log relations
+  userStatusLogs     UserStatusLog[] // logs where this user's status was changed
+  adminStatusActions UserStatusLog[] @relation("UserStatusLogAdmin") // logs where this admin made the change
+
   createdAt DateTime @default(now())
 
   @@index([marketId])
   @@index([customerGroupId])
   @@index([role])
+  @@index([status])
 }
 
 model PendingSignup {
@@ -311,13 +335,13 @@ model PendingSignup {
   vatTaxId                     String?
   commercialRegistrationNumber String?
 
-  addressLine1 String?
-  addressLine2 String?
-  district     String?
-  city         String?
-  buildingNumber  String?
-  secondaryNumber String?
-  postalCode      String?
+  addressLine1     String?
+  addressLine2     String?
+  district         String?
+  city             String?
+  buildingNumber   String?
+  secondaryNumber  String?
+  postalCode       String?
   shortAddressCode String?
 
   tcAccepted        Boolean?
@@ -388,14 +412,14 @@ model Tag {
 }
 
 model Product {
-  id       String      @id @default(cuid())
-  type     ProductType
-  key      String      @unique
-  name     String
-  nameAr   String?     // NEW Step 4 — Arabic product name
-  productDetails  String? @db.Text  // NEW Step 4 — EN marketing details (shown to customers)
-  detailsAr       String? @db.Text  // NEW Step 4 — Arabic details
-  isActive Boolean @default(true)
+  id             String      @id @default(cuid())
+  type           ProductType
+  key            String      @unique
+  name           String
+  nameAr         String?     // NEW Step 4 — Arabic product name
+  productDetails String?     @db.Text // NEW Step 4 — EN marketing details (shown to customers)
+  detailsAr      String?     @db.Text // NEW Step 4 — Arabic details
+  isActive       Boolean     @default(true)
 
   billingPeriods BillingPeriod[]
   unitLabel      String?
@@ -496,9 +520,9 @@ model Subscription {
   currentPeriodStart DateTime?
   currentPeriodEnd   DateTime?
 
-  autoRenew              Boolean   @default(false)  // auto-renew on expiry
-  renewalBillingPeriod   BillingPeriod?            // if set, overrides billingPeriod on renewal
-  renewalPriceCents      Int?                      // if set, overrides catalog price on renewal
+  autoRenew              Boolean        @default(false) // auto-renew on expiry
+  renewalBillingPeriod   BillingPeriod?               // if set, overrides billingPeriod on renewal
+  renewalPriceCents      Int?                         // if set, overrides catalog price on renewal
 
   invoiceNumber          String?
   receiptUrl             String?
@@ -528,32 +552,32 @@ model Subscription {
   @@index([approvedByUserId])
 }
 
-// ── Subscription Renewal Log ─────────────────────────────────────────────────
+// ── Subscription Renewal Log ──────────────────────────────────────────────────
 model SubscriptionRenewal {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   subscriptionId String
   subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
   // Period for this renewal
-  periodStart    DateTime
-  periodEnd      DateTime
-  billingPeriod  BillingPeriod
+  periodStart   DateTime
+  periodEnd     DateTime
+  billingPeriod BillingPeriod
 
   // Pricing snapshot at time of renewal
-  priceCents     Int               // plan price
-  addonsCents    Int      @default(0) // total addons price
-  totalCents     Int               // grand total
-  currency       String
+  priceCents  Int            // plan price
+  addonsCents Int   @default(0) // total addons price
+  totalCents  Int            // grand total
+  currency    String
 
   // Override price (admin set)
-  overrideCents  Int?              // if set, used instead of catalog price
-  overrideNote   String?
+  overrideCents Int?    // if set, used instead of catalog price
+  overrideNote  String?
 
   // Addon subscriptions renewed (comma-separated IDs stored as JSON)
   renewedAddonIds String  @default("[]")
 
-  isAutomatic    Boolean  @default(false)
-  notes          String?  @db.Text
+  isAutomatic Boolean @default(false)
+  notes       String? @db.Text
 
   renewedByUserId String?
   renewedBy       User?   @relation("RenewalCreatedBy", fields: [renewedByUserId], references: [id], onDelete: SetNull)
@@ -573,9 +597,9 @@ model SubscriptionStatusLog {
   subscriptionId String
   subscription   Subscription       @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
-  status         SubscriptionStatus // the new status set
-  comment        String             @db.Text
-  isAutomatic    Boolean            @default(false) // true = system triggered
+  status      SubscriptionStatus // the new status set
+  comment     String             @db.Text
+  isAutomatic Boolean            @default(false) // true = system triggered
 
   changedByUserId String?
   changedBy       User?   @relation("StatusLogChangedBy", fields: [changedByUserId], references: [id], onDelete: SetNull)
@@ -595,9 +619,9 @@ model Server {
   subscriptionId String?
   subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
 
-  hetznerServerId      String? @unique
-  hetznerApiToken      String?
-  oracleInstanceId     String? @unique
+  hetznerServerId       String? @unique
+  hetznerApiToken       String?
+  oracleInstanceId      String? @unique
   oracleInstanceRegion  String?
   oracleCompartmentOcid String?
 
@@ -670,6 +694,31 @@ model AuditLog {
 }
 
 //////////////////////////////////////////////////////
+// Step 10 — User Status Log
+//////////////////////////////////////////////////////
+
+// ── User Status Log ───────────────────────────────────────────────────────────
+// Every admin action on a customer's status is recorded here.
+// Shown as a timeline at the bottom of the admin customer edit page.
+model UserStatusLog {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status           CustomerStatus
+  note             String?  @db.Text // admin's note / reason / message sent to customer
+  changedByAdminId String?
+  changedByAdmin   User?    @relation("UserStatusLogAdmin", fields: [changedByAdminId], references: [id], onDelete: SetNull)
+  isAutomatic      Boolean  @default(false) // true = system-triggered (e.g. on registration)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([status])
+}
+
+//////////////////////////////////////////////////////
 // NEW MODELS — Step 4
 //////////////////////////////////////////////////////
 
@@ -713,7 +762,7 @@ model SalesDocument {
   vatPercent   Decimal @default(0)
   vatAmount    Int     @default(0) // cents
   total        Int     @default(0) // cents
-  manualSent Boolean? @default(false)
+  manualSent   Boolean? @default(false)
 
   subject            String?
   referenceNumber    String?
@@ -748,19 +797,19 @@ model SalesDocument {
   followUpDate      DateTime?
   lostReason        String?
 
-  pdfKey            String?
+  pdfKey String?
 
   activities CRMActivity[]
 
   // Invoice reminder — weekly automated reminders, up to 4 times
   // Only applies to INVOICE type with unpaid status (ISSUED / SENT / PARTIAL / OVERDUE)
   reminderEnabled    Boolean   @default(false)
-  reminderCount      Int       @default(0)       // how many reminders sent so far (max 4)
-  reminderLastSentAt DateTime?                   // when last reminder was sent
+  reminderCount      Int       @default(0)    // how many reminders sent so far (max 4)
+  reminderLastSentAt DateTime?               // when last reminder was sent
 
   lines    SalesDocumentLine[]
   payments SalesPayment[]
-  logs SalesDocumentLog[]
+  logs     SalesDocumentLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -776,23 +825,24 @@ model SalesDocument {
 }
 
 model SalesDocumentLog {
-  id         String        @id @default(cuid())
-  documentId String
-  document   SalesDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  field      String
-  oldValue   String?
-  newValue   String?
-  note       String?       @db.Text
+  id          String        @id @default(cuid())
+  documentId  String
+  document    SalesDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  field       String
+  oldValue    String?
+  newValue    String?
+  note        String?       @db.Text
   changedById String
-  changedBy   User         @relation("DocumentLogChanger", fields: [changedById], references: [id], onDelete: Restrict)
-  createdAt  DateTime      @default(now())
+  changedBy   User          @relation("DocumentLogChanger", fields: [changedById], references: [id], onDelete: Restrict)
+  createdAt   DateTime      @default(now())
+
   @@index([documentId])
 }
 
 model CRMActivity {
-  id          String    @id @default(cuid())
-  documentId  String
-  document    SalesDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  id         String        @id @default(cuid())
+  documentId String
+  document   SalesDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   type        String    // CALL | MEETING | TASK | NOTE
   title       String
@@ -822,16 +872,16 @@ model SalesDocumentLine {
   productId String?
   product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
-  description   String
-  descriptionAr String? // Arabic name override for this line only
-  billingPeriod String? // MONTHLY | SIX_MONTHS | YEARLY | ONE_TIME | null
+  description    String
+  descriptionAr  String? // Arabic name override for this line only
+  billingPeriod  String? // MONTHLY | SIX_MONTHS | YEARLY | ONE_TIME | null
   productDetails String? @db.Text // EN details override for this line only
   detailsAr      String? @db.Text // AR details override for this line only
-  quantity    Decimal @default(1)
-  unitPrice   Int     // cents
-  discount    Decimal @default(0) // percentage 0–100
-  lineTotal   Int     // cents, after discount
-  sortOrder   Int     @default(0)
+  quantity       Decimal @default(1)
+  unitPrice      Int     // cents
+  discount       Decimal @default(0) // percentage 0–100
+  lineTotal      Int     // cents, after discount
+  sortOrder      Int     @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -935,7 +985,6 @@ model PortalSetting {
 
   @@index([key])
 }
-
 
 //////////////////////////////////////////////////////
 // Step 9 — Notification System
