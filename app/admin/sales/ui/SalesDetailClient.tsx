@@ -76,6 +76,12 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
   const [newFile,      setNewFile]      = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Official invoice upload state
+  const [uploading,   setUploading]   = useState(false);
+  const [deleting,    setDeleting]    = useState(false);
+  const [uploadMsg,   setUploadMsg]   = useState<{ ok: boolean; text: string } | null>(null);
+  const uploadFileRef = useRef<HTMLInputElement>(null);
+
   // CRM / Lead fields (RFQ only)
   const [leadSource,        setLeadSource]        = useState("");
   const [leadPriority,      setLeadPriority]      = useState("");
@@ -193,7 +199,6 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
     } catch {}
   }, []);
 
-  // Fetch admin users for assignee dropdown
   useEffect(() => {
     if (docType !== "RFQ") return;
     fetch("/api/admin/users?role=ADMIN&pageSize=100")
@@ -202,7 +207,6 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
       .catch(() => {});
   }, [docType]);
 
-  // Fetch CRM activities
   const loadActivities = useCallback(async () => {
     if (docType !== "RFQ") return;
     setActLoading(true);
@@ -271,7 +275,6 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
     setDueDate(d.dueDate ? d.dueDate.split("T")[0] : "");
     setIssueDate(d.issueDate ? d.issueDate.split("T")[0] : "");
     setTerms(d.termsAndConditions ?? "");
-    // CRM fields
     setLeadSource(d.leadSource        ?? "");
     setLeadPriority(d.leadPriority    ?? "");
     setAssignedToId(d.assignedToId    ?? "");
@@ -339,6 +342,45 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
     setSaving(false);
   }
 
+  async function uploadOfficialInvoice(file: File) {
+    setUploading(true); setUploadMsg(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res  = await fetch(`/api/admin/sales/${docId}/official-invoice`, { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setDoc((prev: any) => ({ ...prev, officialInvoiceUrl: data.officialInvoiceUrl }));
+      setUploadMsg({ ok: true, text: "Official invoice uploaded successfully" });
+    } catch (e: any) {
+      setUploadMsg({ ok: false, text: e.message });
+    }
+    setUploading(false);
+  }
+
+  async function deleteOfficialInvoice() {
+    if (!confirm("Remove uploaded official invoice?")) return;
+    setDeleting(true); setUploadMsg(null);
+    try {
+      const res  = await fetch(`/api/admin/sales/${docId}/official-invoice`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setDoc((prev: any) => ({ ...prev, officialInvoiceUrl: null }));
+      setUploadMsg({ ok: true, text: "Official invoice removed" });
+    } catch (e: any) {
+      setUploadMsg({ ok: false, text: e.message });
+    }
+    setDeleting(false);
+  }
+
+  async function viewOfficialInvoice() {
+    try {
+      const res  = await fetch(`/api/admin/sales/${docId}/official-invoice/view`);
+      const data = await res.json();
+      if (data.url) window.open(data.url, "_blank");
+    } catch { /**/ }
+  }
+
   async function sendEmailDirect(mode: "default" | "resend") {
     setSaving(true); setError("");
     setSendDropOpen(false);
@@ -385,13 +427,79 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
   const balanceDue      = doc.total - totalPaid;
   const isLocked        = LOCKED_STATUSES.includes(doc.status);
   const isWarning       = WARN_STATUSES.includes(doc.status);
-  const canSend = !["VOID"].includes(doc.status);
+  const canSend         = !["VOID"].includes(doc.status);
   const hasBeenSent     = (doc.emailSentCount ?? 0) > 0;
   const isInvoiceUnpaid = doc.type === "INVOICE" && ["ISSUED", "SENT", "PARTIALLY_PAID", "OVERDUE"].includes(doc.status);
   const canPay          = ["ISSUED", "SENT", "PARTIALLY_PAID", "OVERDUE"].includes(doc.status);
 
+  // Saudi official invoice logic
+  const isSaudi          = doc.market?.key === "SAUDI";
+  const isOfficialType   = ["INVOICE", "CREDIT_NOTE"].includes(doc.type);
+  const needsOfficialPdf = isSaudi && isOfficialType;
+  const hasOfficialPdf   = !!doc.officialInvoiceUrl;
+  const sendBlocked      = needsOfficialPdf && !hasOfficialPdf;
+
+  // Market-aware label
+  const docLabel = needsOfficialPdf
+    ? (doc.type === "INVOICE" ? "Invoice Memo" : "Credit Note Memo")
+    : doc.type.replace(/_/g, " ");
+
   return (
     <div>
+
+      {/* Official Invoice Upload Panel — Saudi INVOICE/CREDIT_NOTE only */}
+      {needsOfficialPdf && (
+        <div style={{ marginBottom: 16, border: `1px solid ${hasOfficialPdf ? "#86efac" : "#fcd34d"}`, background: hasOfficialPdf ? "#f0fdf4" : "#fffbeb", padding: "12px 16px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {hasOfficialPdf ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 15 }}>✓</span>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#15803d" }}>Official Invoice Attached</div>
+                  <div style={{ fontSize: 11, color: "#6b7280" }}>ZATCA-compliant PDF uploaded — ready to send</div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 15 }}>⚠</span>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#b45309" }}>No Official Invoice Attached</div>
+                  <div style={{ fontSize: 11, color: "#6b7280" }}>Upload the Zoho-generated ZATCA PDF before sending to customer</div>
+                </div>
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+            {hasOfficialPdf && (
+              <>
+                <button onClick={viewOfficialInvoice}
+                  style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", fontSize: 11, fontWeight: 600, color: CLR.primary, border: `1px solid ${CLR.primary}33`, background: "#fff", cursor: "pointer", fontFamily: "inherit" }}>
+                  View ↗
+                </button>
+                <button onClick={deleteOfficialInvoice} disabled={deleting}
+                  style={{ padding: "6px 12px", fontSize: 11, fontWeight: 600, color: "#dc2626", border: "1px solid #fecaca", background: "#fef2f2", cursor: deleting ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: deleting ? 0.6 : 1 }}>
+                  {deleting ? "Removing…" : "Remove"}
+                </button>
+              </>
+            )}
+            <label style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 14px", fontSize: 11, fontWeight: 600, background: hasOfficialPdf ? "#fff" : "#b45309", color: hasOfficialPdf ? "#374151" : "#fff", border: hasOfficialPdf ? "1px solid #d1d5db" : "none", cursor: uploading ? "not-allowed" : "pointer", opacity: uploading ? 0.6 : 1 }}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              {uploading ? "Uploading…" : hasOfficialPdf ? "Replace" : "Upload Zoho PDF"}
+              <input ref={uploadFileRef} type="file" accept="application/pdf" style={{ display: "none" }}
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) uploadOfficialInvoice(file);
+                }} />
+            </label>
+          </div>
+          {uploadMsg && (
+            <div style={{ width: "100%", fontSize: 12, fontWeight: 600, color: uploadMsg.ok ? "#15803d" : "#dc2626" }}>
+              {uploadMsg.ok ? "✓ " : "✗ "}{uploadMsg.text}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Action bar */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", marginBottom: 20, flexWrap: "wrap", gap: 10, flexDirection: isMobile ? "column" : "row" }}>
@@ -399,37 +507,36 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <button
               onClick={() => window.history.back()}
-              style={{
-                background: "#fff", border: "1px solid #9ca3af", cursor: "pointer",
-                fontSize: 12, color: "#9ca3af", letterSpacing: ".05em",
-                padding: "5px 14px", fontFamily: "inherit", display: "flex",
-                alignItems: "center", gap: 4, marginRight: "10px",
-              }}>
+              style={{ background: "#fff", border: "1px solid #9ca3af", cursor: "pointer", fontSize: 12, color: "#9ca3af", letterSpacing: ".05em", padding: "5px 14px", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4, marginRight: "10px" }}>
               ← Back
             </button>
             <h1 style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em", color: "#111827", margin: 0, fontFamily: "monospace" }}>{doc.docNum}</h1>
             <SalesStatusBadge status={doc.status} />
+            {/* Market-aware doc type label */}
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" }}>{docLabel}</span>
           </div>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {/* PDF Download */}
           {!editing && (
-            <a
-              href={`/admin/sales/${docId}?print=1`}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "7px 14px", fontSize: 12, fontWeight: 600,
-                background: "#fff", color: "#374151",
-                border: "1px solid #d1d5db",
-                cursor: "pointer", fontFamily: "inherit",
-                textDecoration: "none",
-              }}>
+            <button
+              onClick={async () => {
+                if (sendBlocked) return;
+                const res  = await fetch(`/api/admin/sales/${docId}/pdf`);
+                if (!res.ok) { alert("PDF download failed"); return; }
+                const blob = await res.blob();
+                const href = URL.createObjectURL(blob);
+                const a    = document.createElement("a");
+                a.href = href; a.download = `${doc.docNum}.pdf`;
+                document.body.appendChild(a); a.click();
+                document.body.removeChild(a); URL.revokeObjectURL(href);
+              }}
+              disabled={sendBlocked}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", fontSize: 12, fontWeight: 600, background: "#fff", color: "#374151", border: "1px solid #d1d5db", cursor: sendBlocked ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: sendBlocked ? 0.4 : 1 }}>
               <Icon name="download" size={13} color="#6b7280" />
-              PDF
-            </a>
+              {needsOfficialPdf ? "ZATCA e-Invoice Download" : "PDF"}
+            </button>
           )}
 
           {!editing ? (
@@ -449,21 +556,27 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
           )}
 
           {!editing && (
-            <button onClick={() => setShowStatus(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", fontSize: 12, fontWeight: 600, background: "#fff", color: "#374151", border: "1px solid #d1d5db", cursor: "pointer", fontFamily: "inherit" }}>
-              <Icon name="chevron" size={13} color="#6b7280" />
+            <button
+              onClick={() => { if (sendBlocked) { alert("Upload the official invoice before changing status"); return; } setShowStatus(true); }}
+              title={sendBlocked ? "Upload official invoice first" : undefined}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", fontSize: 12, fontWeight: 600, background: "#fff", color: sendBlocked ? "#9ca3af" : "#374151", border: `1px solid ${sendBlocked ? "#e5e7eb" : "#d1d5db"}`, cursor: sendBlocked ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
+              <Icon name="chevron" size={13} color={sendBlocked ? "#d1d5db" : "#6b7280"} />
               Status
             </button>
           )}
 
           {!editing && canSend && (
             <div ref={sendDropRef} style={{ position: "relative" }}>
-              <button onClick={() => setSendDropOpen(v => !v)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", fontSize: 12, fontWeight: 600, background: CLR.primary, color: "#fff", border: "none", cursor: "pointer", fontFamily: "inherit" }}>
-                <Icon name="mail" size={13} color="#fff" />
+              <button
+                onClick={() => { if (sendBlocked) return; setSendDropOpen(v => !v); }}
+                title={sendBlocked ? "Upload official invoice before sending" : undefined}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", fontSize: 12, fontWeight: 600, background: sendBlocked ? "#f3f4f6" : CLR.primary, color: sendBlocked ? "#9ca3af" : "#fff", border: sendBlocked ? "1px solid #e5e7eb" : "none", cursor: sendBlocked ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
+                <Icon name="mail" size={13} color={sendBlocked ? "#9ca3af" : "#fff"} />
                 Send
-                <span style={{ width: 1, height: 14, background: "rgba(255,255,255,0.3)", margin: "0 2px" }} />
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg>
+                <span style={{ width: 1, height: 14, background: sendBlocked ? "#e5e7eb" : "rgba(255,255,255,0.3)", margin: "0 2px" }} />
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={sendBlocked ? "#9ca3af" : "#fff"} strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg>
               </button>
-              {sendDropOpen && (
+              {sendDropOpen && !sendBlocked && (
                 <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 200, background: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 4px 16px rgba(0,0,0,0.10)", minWidth: 210 }}>
                   <DropItem icon="mail" label="Send" hint="Default template" onClick={() => sendEmailDirect("default")} />
                   {isInvoiceUnpaid && <DropItem icon="bell" label="Send Reminder" hint={doc.reminderEnabled ? `Active · ${doc.reminderCount ?? 0}/4 sent` : "Weekly, up to 4 times"} onClick={() => { setSendDropOpen(false); setSendModalMode("reminder"); }} active={doc.reminderEnabled} />}
@@ -708,7 +821,6 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
                 </button>
               </div>
 
-              {/* Add activity form */}
               {showActForm && (
                 <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", padding: 14, marginBottom: 14 }}>
                   <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 10 }}>
@@ -759,7 +871,6 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
                 </div>
               )}
 
-              {/* Activity list */}
               {actLoading ? (
                 <p style={{ fontSize: 12, color: "#9ca3af" }}>Loading…</p>
               ) : activities.length === 0 ? (
@@ -768,7 +879,6 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
                 <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                   {activities.map((a, i) => (
                     <div key={a.id} style={{ padding: "10px 0", borderBottom: i < activities.length - 1 ? "1px solid #f3f4f6" : "none", display: "flex", gap: 12 }}>
-                      {/* Type indicator */}
                       <div style={{ width: 32, height: 32, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: a.completedAt ? "#f0fdf4" : "#f3f4f6", border: `1px solid ${a.completedAt ? "#86efac" : "#e5e7eb"}`, fontSize: 11, fontWeight: 700, color: a.completedAt ? "#15803d" : "#6b7280" }}>
                         {a.type === "CALL" ? "📞" : a.type === "MEETING" ? "👥" : a.type === "TASK" ? "✓" : "📝"}
                       </div>
@@ -820,37 +930,27 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
               <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                 {docLogs.map((log, i) => (
                   <div key={log.id} style={{ padding: "10px 0", borderBottom: i < docLogs.length - 1 ? "1px solid #f3f4f6" : "none", display: "flex", gap: 12, alignItems: "flex-start" }}>
-                    {/* Timeline dot */}
                     <div style={{ width: 8, height: 8, borderRadius: "50%", background: CLR.primary, flexShrink: 0, marginTop: 5 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         {log.field === "status" ? (
                           <>
-                            <span style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>
-                              Status changed
-                            </span>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>Status changed</span>
                             {log.oldValue && (
                               <>
-                                <span style={{ fontSize: 11, padding: "1px 7px", background: "#f3f4f6", border: "1px solid #e5e7eb", color: "#6b7280" }}>
-                                  {log.oldValue.replace(/_/g, " ")}
-                                </span>
+                                <span style={{ fontSize: 11, padding: "1px 7px", background: "#f3f4f6", border: "1px solid #e5e7eb", color: "#6b7280" }}>{log.oldValue.replace(/_/g, " ")}</span>
                                 <span style={{ fontSize: 11, color: "#9ca3af" }}>→</span>
                               </>
                             )}
-                            <span style={{ fontSize: 11, padding: "1px 7px", background: CLR.primaryBg, border: `1px solid ${CLR.primary}44`, color: CLR.primary, fontWeight: 600 }}>
-                              {log.newValue?.replace(/_/g, " ")}
-                            </span>
+                            <span style={{ fontSize: 11, padding: "1px 7px", background: CLR.primaryBg, border: `1px solid ${CLR.primary}44`, color: CLR.primary, fontWeight: 600 }}>{log.newValue?.replace(/_/g, " ")}</span>
                           </>
                         ) : (
                           <span style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>
-                            {log.field} updated
-                            {log.oldValue && <span style={{ fontWeight: 400, color: "#6b7280" }}> · was: {log.oldValue}</span>}
+                            {log.field} updated{log.oldValue && <span style={{ fontWeight: 400, color: "#6b7280" }}> · was: {log.oldValue}</span>}
                           </span>
                         )}
                       </div>
-                      {log.note && (
-                        <p style={{ fontSize: 11, color: "#6b7280", marginTop: 3, fontStyle: "italic" }}>"{log.note}"</p>
-                      )}
+                      {log.note && <p style={{ fontSize: 11, color: "#6b7280", marginTop: 3, fontStyle: "italic" }}>"{log.note}"</p>}
                       <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 3 }}>
                         {new Date(log.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                         {log.changedBy && ` · by ${log.changedBy.fullName ?? log.changedBy.email}`}
@@ -943,10 +1043,7 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
         <StatusChangeModal
           docId={docId} docNum={doc.docNum} docType={doc.type} docStatus={doc.status}
           onClose={() => setShowStatus(false)}
-          onChanged={newStatus => {
-            setDoc((prev: any) => ({ ...prev, status: newStatus }));
-            loadLogs();
-          }}
+          onChanged={newStatus => { setDoc((prev: any) => ({ ...prev, status: newStatus })); loadLogs(); }}
         />
       )}
 

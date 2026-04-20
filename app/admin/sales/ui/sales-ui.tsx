@@ -1753,7 +1753,12 @@ export function StatusChangeModal({ docId, docNum, docType, docStatus, onClose, 
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState("");
 
-  const options = STATUS_TRANSITIONS_ALL[docStatus] ?? [];
+  // INVOICE and CREDIT_NOTE: manual status change restricted to DRAFT, ISSUED, VOID only.
+// SENT → via send email. PAID/PARTIALLY_PAID → via Record Payment. CONVERTED → via Convert button.
+const INVOICE_MANUAL_STATUSES = ["DRAFT", "ISSUED", "VOID"];
+const options = ["INVOICE", "CREDIT_NOTE"].includes(docType)
+  ? INVOICE_MANUAL_STATUSES.filter(s => s !== docStatus)
+  : (STATUS_TRANSITIONS_ALL[docStatus] ?? []);
 
   const inp: React.CSSProperties = {
     width: "100%", padding: "8px 10px", fontSize: 13,

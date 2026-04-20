@@ -1,37 +1,36 @@
 // lib/notifications/channels/email.ts
 // Email notification channel using Resend.
-// Follows the same pattern as lib/email/send-otp.ts (existing).
-// Updates the Notification record with delivery status.
+// Uses getEmailConfig("notifications", marketKey) for correct from name/address per market.
 
 import { Resend } from "resend";
 import { prisma } from "@/lib/prisma";
+import { getEmailConfig } from "@/lib/email/email-config";
 import { wrapEmailHtml } from "../templates";
 
 interface EmailParams {
   user: {
-    id:       string;
-    email:    string;
+    id:        string;
+    email:     string;
     fullName?: string | null;
+    marketKey?: string | null; // market key e.g. "SAUDI", "GLOBAL"
   };
-  subject:   string;
-  htmlBody:  string;  // already rendered with variables
-  eventType: string;
-  link?:     string;
-  notificationId?: string; // if updating an existing record
+  subject:         string;
+  htmlBody:        string;
+  eventType:       string;
+  link?:           string;
+  notificationId?: string;
 }
 
 export async function sendEmail(params: EmailParams): Promise<void> {
   const { user, subject, htmlBody, eventType, notificationId } = params;
 
-  const apiKey     = process.env.RESEND_API_KEY;
-  const fromEmail  = process.env.EMAIL_FROM ?? "noreply@cybrosoft.com";
-
+  const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     console.error("[email channel] RESEND_API_KEY not set");
     return;
   }
 
-  // Load portal settings for branding
+  // Load portal branding settings
   const [nameSetting, logoSetting, colorSetting] = await Promise.all([
     prisma.portalSetting.findUnique({ where: { key: "portal.name" } }),
     prisma.portalSetting.findUnique({ where: { key: "portal.logoUrl" } }),
@@ -43,36 +42,30 @@ export async function sendEmail(params: EmailParams): Promise<void> {
   const primaryColor = colorSetting?.value ?? "#318774";
   const baseUrl      = process.env.NEXT_PUBLIC_BASE_URL ?? "";
 
+  // Get correct from/replyTo/bcc for notifications type + user's market
+  const emailCfg = await getEmailConfig("notifications", user.marketKey ?? undefined);
+
   // Wrap body in branded HTML shell
   const fullHtml = wrapEmailHtml({
     body:         htmlBody,
     portalName,
     logoUrl,
     primaryColor,
-    unsubLink:    `${baseUrl}/dashboard/notifications/preferences`,
+    unsubLink: `${baseUrl}/dashboard/notifications/preferences`,
   });
 
   const resend = new Resend(apiKey);
 
   try {
-    const fromName = await prisma.portalSetting.findUnique({ where: { key: "email.fromName" } });
-    const replyTo  = await prisma.portalSetting.findUnique({ where: { key: "email.replyTo" } });
-    const bcc      = await prisma.portalSetting.findUnique({ where: { key: "email.invoiceCC" } });
-
     const { error } = await resend.emails.send({
-      from:    `${fromName?.value ?? portalName} <${fromEmail}>`,
+      ...emailCfg,
       to:      user.email,
       subject,
       html:    fullHtml,
-      ...(replyTo?.value ? { replyTo: replyTo.value } : {}),
-      ...(bcc?.value && ["INVOICE_ISSUED", "INVOICE_OVERDUE", "PAYMENT_RECEIVED"].includes(eventType)
-        ? { bcc: bcc.value }
-        : {}),
     });
 
     if (error) {
       console.error(`[email channel] Resend error for ${user.email}:`, error);
-      // Update notification record with failure if we have an ID
       if (notificationId) {
         await prisma.notification.update({
           where: { id: notificationId },
@@ -82,7 +75,6 @@ export async function sendEmail(params: EmailParams): Promise<void> {
       return;
     }
 
-    // Mark email as sent on the notification record
     if (notificationId) {
       await prisma.notification.update({
         where: { id: notificationId },

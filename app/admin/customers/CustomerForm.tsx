@@ -21,6 +21,158 @@ const SAUDI_PROVINCES = [
   "Al-Bahah Province", "Al-Jawf Province", "Northern Borders Province",
 ];
 
+// ── Status config ─────────────────────────────────────────────────────────────
+const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string; border: string }> = {
+  PENDING:       { label: "Pending Approval", bg: "#fff8e6", color: "#92400e", border: "#fcd34d" },
+  ACTIVE:        { label: "Active",           bg: "#e8f5f0", color: "#166534", border: "#a7d9d1" },
+  INFO_REQUIRED: { label: "Info Required",    bg: "#fdf0ef", color: "#991b1b", border: "#fca5a5" },
+  SUSPENDED:     { label: "Suspended",        bg: "#f3f4f6", color: "#374151", border: "#d1d5db" },
+  REJECTED:      { label: "Rejected",         bg: "#fdf0ef", color: "#7f1d1d", border: "#fca5a5" },
+};
+
+const STATUS_ACTIONS: Record<string, Array<{ action: string; label: string; variant: "primary" | "danger" | "warning" | "outline"; needsReason?: boolean; needsMessage?: boolean; reasonLabel?: string }>> = {
+  PENDING: [
+    { action: "ACTIVE",        label: "Approve",           variant: "primary" },
+    { action: "INFO_REQUIRED", label: "Request Info",      variant: "warning", needsMessage: true, reasonLabel: "Information needed" },
+    { action: "REJECTED",      label: "Reject",            variant: "danger",  needsReason: true,  reasonLabel: "Reason for rejection" },
+  ],
+  INFO_REQUIRED: [
+    { action: "ACTIVE",        label: "Approve",           variant: "primary" },
+    { action: "SUSPENDED",     label: "Suspend",           variant: "danger",  needsReason: true,  reasonLabel: "Reason for suspension" },
+    { action: "REJECTED",      label: "Reject",            variant: "danger",  needsReason: true,  reasonLabel: "Reason for rejection" },
+  ],
+  ACTIVE: [
+    { action: "INFO_REQUIRED", label: "Request Info",      variant: "warning", needsMessage: true, reasonLabel: "Information needed" },
+    { action: "SUSPENDED",     label: "Suspend",           variant: "danger",  needsReason: true,  reasonLabel: "Reason for suspension" },
+  ],
+  SUSPENDED: [
+    { action: "ACTIVE",        label: "Reactivate",        variant: "primary" },
+  ],
+  REJECTED: [
+    { action: "ACTIVE",        label: "Reactivate",        variant: "primary" },
+  ],
+};
+
+// ── Status Action Panel ───────────────────────────────────────────────────────
+function StatusPanel({ customerId, currentStatus, onStatusChanged }: {
+  customerId: string;
+  currentStatus: string;
+  onStatusChanged: (newStatus: string) => void;
+}) {
+  const [modal,   setModal]   = useState<typeof STATUS_ACTIONS[string][0] | null>(null);
+  const [text,    setText]    = useState("");
+  const [saving,  setSaving]  = useState(false);
+  const [err,     setErr]     = useState<string | null>(null);
+
+  const cfg     = STATUS_CONFIG[currentStatus] ?? { label: currentStatus, bg: "#f3f4f6", color: "#6b7280", border: "#e5e7eb" };
+  const actions = STATUS_ACTIONS[currentStatus] ?? [];
+
+  function openModal(a: typeof STATUS_ACTIONS[string][0]) {
+    setText(""); setErr(null); setModal(a);
+  }
+
+  async function execute() {
+    if (!modal) return;
+    if ((modal.needsReason || modal.needsMessage) && !text.trim()) {
+      setErr(`${modal.reasonLabel ?? "A message"} is required.`); return;
+    }
+    setSaving(true); setErr(null);
+    try {
+      const res = await fetch(`/api/admin/users/${customerId}/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action:  modal.action,
+          reason:  modal.needsReason  ? text.trim() : undefined,
+          message: modal.needsMessage ? text.trim() : undefined,
+        }),
+      });
+      const d = await res.json().catch(() => null);
+      if (!res.ok || !d?.ok) { setErr(d?.error ?? "Failed to update status"); return; }
+      setModal(null);
+      onStatusChanged(modal.action);
+    } catch { setErr("Network error"); }
+    finally  { setSaving(false); }
+  }
+
+  const btnStyle = (variant: string): React.CSSProperties => {
+    const base: React.CSSProperties = { padding: "6px 14px", fontSize: 12, fontWeight: 600, border: "1px solid", cursor: "pointer", fontFamily: "inherit" };
+    if (variant === "primary") return { ...base, background: CLR.primary, color: "#fff",    borderColor: CLR.primary };
+    if (variant === "danger")  return { ...base, background: "#dc2626",   color: "#fff",    borderColor: "#dc2626"   };
+    if (variant === "warning") return { ...base, background: "#b45309",   color: "#fff",    borderColor: "#b45309"   };
+    return                            { ...base, background: "#fff",      color: CLR.text,  borderColor: "#e5e7eb"   };
+  };
+
+  return (
+    <>
+      <Card>
+        <div style={{ padding: "14px 18px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: CLR.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>Account Status</span>
+            <span style={{
+              fontSize: 11, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase",
+              padding: "3px 10px", background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`,
+            }}>
+              {cfg.label}
+            </span>
+          </div>
+          {actions.length > 0 && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {actions.map(a => (
+                <button key={a.action} onClick={() => openModal(a)} style={btnStyle(a.variant)}>
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* Modal */}
+      {modal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ background: "#fff", width: "100%", maxWidth: 480, border: "1px solid #e5e7eb", boxShadow: "0 8px 32px rgba(0,0,0,0.15)" }}>
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontWeight: 600, fontSize: 14, color: CLR.text }}>{modal.label}</span>
+              <button onClick={() => setModal(null)} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 18, color: CLR.muted, lineHeight: 1 }}>×</button>
+            </div>
+            <div style={{ padding: "20px" }}>
+              {(modal.needsReason || modal.needsMessage) && (
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: CLR.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                    {modal.reasonLabel ?? "Message"} <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <textarea
+                    value={text} onChange={e => { setText(e.target.value); setErr(null); }}
+                    rows={4} placeholder={modal.needsMessage ? "Describe what information is needed…" : "Provide a reason…"}
+                    style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }}
+                  />
+                </div>
+              )}
+              {!modal.needsReason && !modal.needsMessage && (
+                <p style={{ fontSize: 13, color: CLR.text, margin: "0 0 16px" }}>
+                  Are you sure you want to <strong>{modal.label.toLowerCase()}</strong> this account?
+                  {modal.action === "ACTIVE" && " A notification email will be sent to the customer."}
+                </p>
+              )}
+              {err && <div style={{ fontSize: 12, color: "#dc2626", marginBottom: 12 }}>{err}</div>}
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button onClick={() => setModal(null)} style={{ padding: "7px 16px", fontSize: 13, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer", fontFamily: "inherit", color: CLR.text }}>
+                  Cancel
+                </button>
+                <button onClick={execute} disabled={saving} style={btnStyle(modal.variant)}>
+                  {saving ? "Processing…" : modal.label}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Tag selector ──────────────────────────────────────────────────────────────
 function CustomerTagSelector({ allTags, selectedKeys, setSelectedKeys, onTagCreated }: {
   allTags: TagRow[]; selectedKeys: string[];
   setSelectedKeys: (v: string[]) => void; onTagCreated: (t: TagRow) => void;
@@ -39,7 +191,7 @@ function CustomerTagSelector({ allTags, selectedKeys, setSelectedKeys, onTagCrea
     setCreateErr(""); setCreating(true);
     try {
       const key = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
-      const res  = await fetch("/api/admin/catalog/tags", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key, name }) });
+      const res = await fetch("/api/admin/catalog/tags", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key, name }) });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) { setCreateErr(data?.error ?? "Failed to create tag"); return; }
       onTagCreated(data.data); add(data.data.key); setNewName("");
@@ -87,6 +239,105 @@ function CustomerTagSelector({ allTags, selectedKeys, setSelectedKeys, onTagCrea
   );
 }
 
+
+// ── Status History ────────────────────────────────────────────────────────────
+const STATUS_ACTION_LABELS: Record<string, { label: string; bg: string; color: string; border: string }> = {
+  ACTIVE:        { label: "Approved",       bg: "#e8f5f0", color: "#166534", border: "#a7d9d1" },
+  PENDING:       { label: "Set to Pending", bg: "#fff8e6", color: "#92400e", border: "#fcd34d" },
+  INFO_REQUIRED: { label: "Requested Info", bg: "#fdf0ef", color: "#991b1b", border: "#fca5a5" },
+  SUSPENDED:     { label: "Suspended",      bg: "#f3f4f6", color: "#374151", border: "#d1d5db" },
+  REJECTED:      { label: "Rejected",       bg: "#fdf0ef", color: "#7f1d1d", border: "#fca5a5" },
+};
+
+type LogEntry = {
+  id: string; action: string; from: string | null; to: string | null;
+  reason: string | null; message: string | null; actor: string; createdAt: string;
+};
+
+function StatusHistory({ customerId }: { customerId: string }) {
+  const [logs,    setLogs]    = useState<LogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`/api/admin/users/${customerId}/status-log`)
+      .then(r => r.json())
+      .then(d => { if (d.ok) setLogs(d.data ?? []); })
+      .finally(() => setLoading(false));
+  }, [customerId]);
+
+  if (loading) return (
+    <Card>
+      <CardHeader title="Status History" />
+      <div style={{ padding: "24px 18px", textAlign: "center", color: CLR.faint, fontSize: 13 }}>Loading…</div>
+    </Card>
+  );
+
+  if (logs.length === 0) return (
+    <Card>
+      <CardHeader title="Status History" />
+      <div style={{ padding: "24px 18px", textAlign: "center", color: CLR.faint, fontSize: 13 }}>No status changes recorded yet.</div>
+    </Card>
+  );
+
+  return (
+    <Card>
+      <CardHeader title="Status History" />
+      <div style={{ padding: "0 0 4px" }}>
+        {logs.map((log, idx) => {
+          const cfg = STATUS_ACTION_LABELS[log.action] ?? { label: log.action, bg: "#f3f4f6", color: "#6b7280", border: "#e5e7eb" };
+          const isLast = idx === logs.length - 1;
+          return (
+            <div key={log.id} style={{
+              display: "flex", gap: 14, padding: "12px 18px",
+              borderBottom: isLast ? "none" : "1px solid #f3f4f6",
+              alignItems: "flex-start",
+            }}>
+              <div style={{ display: "flex", flexDirection: "column" as const, alignItems: "center", flexShrink: 0, paddingTop: 3 }}>
+                <div style={{ width: 10, height: 10, borderRadius: "50%", background: cfg.color }} />
+                {!isLast && <div style={{ width: 1, background: "#e5e7eb", marginTop: 4, minHeight: 20, flex: 1 }} />}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" as const, marginBottom: 4 }}>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, padding: "2px 8px",
+                    background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`,
+                    letterSpacing: "0.04em", textTransform: "uppercase" as const,
+                  }}>{cfg.label}</span>
+                  {log.from && log.to && (
+                    <span style={{ fontSize: 11, color: CLR.faint }}>
+                      {log.from.replace("_", " ")} → {log.to.replace("_", " ")}
+                    </span>
+                  )}
+                </div>
+                {(log.reason || log.message) && (
+                  <div style={{
+                    fontSize: 12.5, color: "#374151", padding: "6px 10px",
+                    background: "#f9fafb", border: "1px solid #f3f4f6",
+                    marginBottom: 4, lineHeight: 1.6,
+                  }}>
+                    <strong style={{ color: CLR.muted, fontSize: 11, textTransform: "uppercase" as const, letterSpacing: "0.04em" }}>
+                      {log.message ? "Message: " : "Reason: "}
+                    </strong>
+                    {log.message ?? log.reason}
+                  </div>
+                )}
+                <div style={{ fontSize: 11.5, color: CLR.faint }}>
+                  By <strong style={{ color: CLR.muted }}>{log.actor}</strong>
+                  {" · "}
+                  {new Date(log.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                  {" "}
+                  {new Date(log.createdAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+// ── Main form ─────────────────────────────────────────────────────────────────
 export default function CustomerForm({ mode, customerId }: { mode: "create" | "edit"; customerId?: string }) {
   const router = useRouter();
 
@@ -98,7 +349,8 @@ export default function CustomerForm({ mode, customerId }: { mode: "create" | "e
   const [error,   setError]   = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // ── Account fields ──
+  const [customerStatus, setCustomerStatus] = useState<string>("PENDING");
+
   const [email,        setEmail]        = useState("");
   const [fullName,     setFullName]     = useState("");
   const [mobile,       setMobile]       = useState("");
@@ -107,30 +359,25 @@ export default function CustomerForm({ mode, customerId }: { mode: "create" | "e
   const [accountType,  setAccountType]  = useState<AccountType>("BUSINESS");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
-  // ── Business fields ──
   const [companyName,      setCompanyName]      = useState("");
   const [vatTaxId,         setVatTaxId]         = useState("");
-  const [crNumber,         setCrNumber]         = useState(""); // KSA only
-  const [shortAddressCode, setShortAddressCode] = useState(""); // KSA only
+  const [crNumber,         setCrNumber]         = useState("");
+  const [shortAddressCode, setShortAddressCode] = useState("");
 
-  // ── Location & Address fields ──
   const [country,         setCountry]         = useState("SA");
-  const [province,        setProvince]        = useState("");   // KSA dropdown
-  const [provinceText,    setProvinceText]    = useState("");   // Global free text
+  const [province,        setProvince]        = useState("");
+  const [provinceText,    setProvinceText]    = useState("");
   const [city,            setCity]            = useState("");
-  const [district,        setDistrict]        = useState("");   // KSA only
+  const [district,        setDistrict]        = useState("");
   const [addr1,           setAddr1]           = useState("");
-  const [addr2,           setAddr2]           = useState("");   // label: Street Name
-  const [buildingNumber,  setBuildingNumber]  = useState("");   // KSA only
-  const [secondaryNumber, setSecondaryNumber] = useState("");   // KSA only
-  const [postalCode,      setPostalCode]      = useState("");   // all markets
+  const [addr2,           setAddr2]           = useState("");
+  const [buildingNumber,  setBuildingNumber]  = useState("");
+  const [secondaryNumber, setSecondaryNumber] = useState("");
+  const [postalCode,      setPostalCode]      = useState("");
 
-  // ── Notes ──
   const [publicNote,  setPublicNote]  = useState("");
   const [privateNote, setPrivateNote] = useState("");
 
-  // ── Derived ──
-  // isSaudi from selected market key — this drives ALL KSA-only field visibility
   const isSaudi    = markets.find(m => m.id === marketId)?.key?.toLowerCase() === "saudi";
   const isBusiness = accountType === "BUSINESS";
 
@@ -172,7 +419,7 @@ export default function CustomerForm({ mode, customerId }: { mode: "create" | "e
           setPostalCode(c.postalCode ?? "");
           setPublicNote(c.notePublic ?? "");
           setPrivateNote(c.notePrivate ?? "");
-          // Province: use dropdown value for SA, text for others
+          setCustomerStatus(c.status ?? "PENDING");
           const mkt = mData.find(m => m.id === c.marketId);
           if (mkt?.key?.toLowerCase() === "saudi") setProvince(c.province ?? "");
           else setProvinceText(c.province ?? "");
@@ -187,7 +434,6 @@ export default function CustomerForm({ mode, customerId }: { mode: "create" | "e
 
   useEffect(() => { void load(); }, [load]);
 
-  // Clear KSA-only fields when market switches to Global
   useEffect(() => {
     if (!isSaudi) {
       setBuildingNumber(""); setSecondaryNumber("");
@@ -210,23 +456,19 @@ export default function CustomerForm({ mode, customerId }: { mode: "create" | "e
       customerGroupId: groupId || null,
       accountType,
       tagIds,
-      // Business — CRN and shortAddressCode KSA only
       companyName:                  isBusiness ? (companyName.trim() || null) : null,
       vatTaxId:                     isBusiness ? (vatTaxId.trim()    || null) : null,
       commercialRegistrationNumber: (isBusiness && isSaudi) ? (crNumber.trim()         || null) : null,
       shortAddressCode:             (isBusiness && isSaudi) ? (shortAddressCode.trim() || null) : null,
-      // Location
       country:  country.trim().toUpperCase() || null,
       province: isSaudi ? (province || null) : (provinceText.trim() || null),
       city:     city.trim()  || null,
-      // Address — district KSA only
       addressLine1:    addr1.trim()           || null,
       addressLine2:    addr2.trim()           || null,
       buildingNumber:  isSaudi ? (buildingNumber.trim()  || null) : null,
       secondaryNumber: isSaudi ? (secondaryNumber.trim() || null) : null,
       district:        isSaudi ? (district.trim()        || null) : null,
       postalCode:      postalCode.trim()      || null,
-      // Notes
       notePublic:  publicNote.trim()  || null,
       notePrivate: privateNote.trim() || null,
     };
@@ -263,6 +505,19 @@ export default function CustomerForm({ mode, customerId }: { mode: "create" | "e
 
         {error   && <Alert type="error">{error}</Alert>}
         {success && <Alert type="success">{success}</Alert>}
+
+        {/* ── Status Action Panel — edit mode only ── */}
+        {mode === "edit" && customerId && (
+          <StatusPanel
+            customerId={customerId}
+            currentStatus={customerStatus}
+            onStatusChanged={newStatus => {
+              setCustomerStatus(newStatus);
+              setSuccess(`Account status updated to ${newStatus.replace("_", " ")}.`);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+          />
+        )}
 
         {/* ── 1. Account ── */}
         <Card>
@@ -312,7 +567,7 @@ export default function CustomerForm({ mode, customerId }: { mode: "create" | "e
           </div>
         </Card>
 
-        {/* ── 3. Business Details (business accounts only) ── */}
+        {/* ── 3. Business Details ── */}
         {isBusiness && (
           <Card>
             <CardHeader title="Business Details" />
@@ -323,13 +578,11 @@ export default function CustomerForm({ mode, customerId }: { mode: "create" | "e
               <Field label="VAT / Tax ID">
                 <Input value={vatTaxId} onChange={setVatTaxId} placeholder="Tax ID" />
               </Field>
-              {/* CR / Unified ID — KSA only */}
               {isSaudi && (
                 <Field label="CR / Unified ID / Reg Number">
                   <Input value={crNumber} onChange={setCrNumber} placeholder="CR number" />
                 </Field>
               )}
-              {/* Short Address Code — KSA only */}
               {isSaudi && (
                 <Field label="Short Address Code" hint="Saudi National Address short code e.g. RNAD2323">
                   <Input value={shortAddressCode} onChange={setShortAddressCode} placeholder="e.g. RNAD2323" />
@@ -343,8 +596,6 @@ export default function CustomerForm({ mode, customerId }: { mode: "create" | "e
         <Card>
           <CardHeader title="Location & Address" />
           <div style={{ padding: "18px 18px", display: "flex", flexDirection: "column", gap: 14 }}>
-
-            {/* Province — dropdown for KSA, free text for Global */}
             <Field label="Province / State">
               {isSaudi ? (
                 <Select value={province} onChange={setProvince}>
@@ -354,26 +605,20 @@ export default function CustomerForm({ mode, customerId }: { mode: "create" | "e
                 <Input value={provinceText} onChange={setProvinceText} placeholder="State or province" />
               )}
             </Field>
-
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
               <Field label="City"><Input value={city} onChange={setCity} placeholder="City" /></Field>
-              {/* District — KSA only */}
               {isSaudi && (
                 <Field label="District">
                   <Input value={district} onChange={setDistrict} placeholder="District / Neighbourhood" />
                 </Field>
               )}
             </div>
-
             <Field label="Address Line 1">
               <Input value={addr1} onChange={setAddr1} placeholder="Street, building, etc." />
             </Field>
-            {/* Address Line 2 — relabelled Street Name */}
             <Field label="Street Name">
               <Input value={addr2} onChange={setAddr2} placeholder="Street name" />
             </Field>
-
-            {/* Building Number + Secondary Number — KSA only */}
             {isSaudi && (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                 <Field label="Building Number" hint="Saudi National Address — building number">
@@ -384,12 +629,9 @@ export default function CustomerForm({ mode, customerId }: { mode: "create" | "e
                 </Field>
               </div>
             )}
-
-            {/* Postal Code — all markets */}
             <Field label="Postal Code / Zip">
               <Input value={postalCode} onChange={setPostalCode} placeholder={isSaudi ? "e.g. 12345" : "e.g. 10001"} />
             </Field>
-
           </div>
         </Card>
 
@@ -409,6 +651,10 @@ export default function CustomerForm({ mode, customerId }: { mode: "create" | "e
             </div>
           </div>
         </Card>
+
+        {mode === "edit" && customerId && (
+          <StatusHistory customerId={customerId} />
+        )}
 
         <SaveRow onCancel={() => router.push("/admin/customers")} onSave={save} saving={saving} saveLabel={isCreate ? "Create Customer" : "Save Changes"} />
 

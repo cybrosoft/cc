@@ -1,12 +1,10 @@
 // app/api/admin/sales/shared/list-handler.ts
 // Generic GET handler used by all 7 sales document type routes.
 // Returns paginated, filtered list of documents.
-
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { SalesDocumentType } from "@prisma/client";
-
 const DOC_SELECT = {
   id:       true,
   docNum:   true,
@@ -25,6 +23,7 @@ const DOC_SELECT = {
   validUntil: true,
   paidAt:     true,
   createdAt:  true,
+  officialInvoiceUrl: true,
   customer: {
     select: {
       id: true, fullName: true, companyName: true, email: true, customerNumber: true,
@@ -38,25 +37,20 @@ const DOC_SELECT = {
   },
   _count: { select: { derivedDocs: true, payments: true } },
 } as const;
-
 export async function makeListHandler(docType: SalesDocumentType) {
   return async function GET(req: NextRequest) {
     try {
       const auth = await requireAdmin();
       if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
       const { searchParams } = new URL(req.url);
       const q         = searchParams.get("q")?.trim()        ?? "";
       const status    = searchParams.get("status")?.trim()   ?? "";
       const marketId  = searchParams.get("marketId")?.trim() ?? "";
       const page      = Math.max(1, Number(searchParams.get("page") ?? "1"));
       const pageSize  = Math.min(200, Math.max(1, Number(searchParams.get("pageSize") ?? "50")));
-
       const where: Record<string, unknown> = { type: docType };
-
       if (status)   where.status   = status;
       if (marketId) where.marketId = marketId;
-
       if (q) {
         where.OR = [
           { docNum:            { contains: q, mode: "insensitive" } },
@@ -67,7 +61,6 @@ export async function makeListHandler(docType: SalesDocumentType) {
           { customer: { companyName: { contains: q, mode: "insensitive" } } },
         ];
       }
-
       const [total, docs] = await Promise.all([
         prisma.salesDocument.count({ where }),
         prisma.salesDocument.findMany({
@@ -78,7 +71,6 @@ export async function makeListHandler(docType: SalesDocumentType) {
           take:    pageSize,
         }),
       ]);
-
       return NextResponse.json({
         ok: true,
         docs,

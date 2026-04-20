@@ -3,7 +3,6 @@
 // Reuses cached S3 key if available, generates fresh via Puppeteer if not.
 // Blocks DRAFT and WRITTEN_OFF documents entirely.
 export const runtime = "nodejs";
-
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { prisma } from "@/lib/prisma";
@@ -63,22 +62,38 @@ async function generatePdfBuffer(docId: string): Promise<Buffer> {
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await getSessionUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    const { id } = await context.params;
+
     const doc = await prisma.salesDocument.findFirst({
       where: {
-        id:         params.id,
-        customerId: user.id,                          // ownership check
-        status:     { notIn: ["DRAFT", "WRITTEN_OFF"] }, // never expose drafts
+        id,
+        customerId: user.id,
+        status:     { notIn: ["DRAFT", "WRITTEN_OFF"] },
       },
-      select: { id: true, docNum: true, type: true, pdfKey: true },
+      select: {
+        id: true, docNum: true, type: true, pdfKey: true,
+        officialInvoiceUrl: true,
+        market: { select: { key: true } },
+      },
     });
 
     if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    // Saudi INVOICE/CREDIT_NOTE with uploaded official PDF → signed URL redirect
+    if (
+      doc.market.key === "SAUDI" &&
+      ["INVOICE", "CREDIT_NOTE"].includes(doc.type) &&
+      doc.officialInvoiceUrl
+    ) {
+      const url = await signedUrl(doc.officialInvoiceUrl);
+      return NextResponse.redirect(url);
+    }
 
     // Serve from S3 cache if available
     if (doc.pdfKey) {

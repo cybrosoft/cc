@@ -11,6 +11,13 @@ function readBoolean(o: Record<string, unknown>, k: string): boolean | null { co
 
 const P = "#318774";
 
+const SAUDI_PROVINCES = [
+  "Riyadh Province","Makkah al-Mukarramah Province","Al-Madinah Al-Munawwarah Province",
+  "Eastern Province (Ash Sharqiyah)","Aseer Province","Tabuk Province","Hail Province",
+  "Al-Qassim Province","Jazan Province","Najran Province",
+  "Al-Bahah Province","Al-Jawf Province","Northern Borders Province",
+];
+
 // ── Country list with ISO codes for flag images ───────────────────────────────
 type CountryOption = { label: string; iso: string; route: "sa" | "global"; dividerAfter?: boolean };
 
@@ -370,7 +377,7 @@ export default function SignupPage() {
   const pathname = usePathname();
   const isSaudi  = pathname.startsWith("/sa");
 
-  const [step,           setStep]          = useState<"email" | "otp" | "exists">("email");
+  const [step,           setStep]          = useState<"email" | "otp" | "exists" | "profile">("email");
   const [email,          setEmail]         = useState("");
   const [code,           setCode]          = useState("");
   const [loading,        setLoading]       = useState(false);
@@ -388,6 +395,16 @@ export default function SignupPage() {
       if (saved) setSelectedMarket(saved);
     } catch (err) { console.log("[signup] sessionStorage error:", err); }
   }, []);
+
+  // Profile form state
+  const [profileData, setProfileData] = useState({
+    fullName: "", mobile: "", accountType: "PERSONAL" as "PERSONAL" | "BUSINESS",
+    companyName: "", vatTaxId: "", crn: "", shortAddressCode: "",
+    province: "", addressLine1: "", addressLine2: "",
+    buildingNumber: "", secondaryNumber: "", district: "", city: "", postalCode: "",
+    tcAccepted: false, privacyAccepted: false,
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
 
   // Derived: is the currently selected market Saudi?
   const selectedIsSaudi = COUNTRIES.find(c => c.label === selectedMarket)?.route === "sa";
@@ -448,15 +465,45 @@ export default function SignupPage() {
         setMsg({ text: "Invalid or expired code. Please try again.", ok: false });
         return;
       }
-      window.location.href = readString(raw, "redirectTo") ?? (selectedIsSaudi ? "/sa/dashboard" : "/dashboard");
+      // New user — show profile completion form before entering dashboard
+      const isNew = isRecord(raw) && raw.userExists !== true && !raw.requiresTotp;
+      if (isNew) {
+        setStep("profile"); setMsg(null);
+      } else {
+        window.location.href = readString(raw, "redirectTo") ?? (selectedIsSaudi ? "/sa/dashboard" : "/dashboard");
+      }
     } finally { setLoading(false); }
+  }
+
+  async function submitProfile(e: React.FormEvent) {
+    e.preventDefault();
+    if (!profileData.fullName.trim())  { setMsg({ text: "Full name is required.", ok: false }); return; }
+    if (!profileData.mobile.trim())    { setMsg({ text: "Mobile number is required.", ok: false }); return; }
+    if (!profileData.tcAccepted)       { setMsg({ text: "Please accept the Terms of Service.", ok: false }); return; }
+    if (!profileData.privacyAccepted)  { setMsg({ text: "Please accept the Privacy Policy.", ok: false }); return; }
+    setProfileSaving(true); setMsg(null);
+    try {
+      const res = await fetch("/api/customer/onboarding", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(profileData),
+      });
+      const d = await res.json().catch(() => null);
+      if (!res.ok) { setMsg({ text: d?.error ?? "Failed to save. Please try again.", ok: false }); return; }
+      window.location.href = selectedIsSaudi ? "/sa/dashboard" : "/dashboard";
+    } catch { setMsg({ text: "Network error. Please try again.", ok: false }); }
+    finally   { setProfileSaving(false); }
+  }
+
+  function setPD(field: string, value: string | boolean) {
+    setProfileData(prev => ({ ...prev, [field]: value }));
+    setMsg(null);
   }
 
   // Market-aware links — /sa prefix when on Saudi path
   const loginHref  = selectedIsSaudi ? "/sa/login" : "/login";
 
   const rightContent = (
-    <div style={{ width: "100%", maxWidth: 380 }}>
+    <div style={{ width: "100%", maxWidth: step === "profile" ? 560 : 380 }}>
 
       {/* Mobile logo */}
       <div className="mobile-logo" style={{ marginBottom: 32 }}>
@@ -465,14 +512,16 @@ export default function SignupPage() {
 
       <div style={{ marginBottom: 28 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: "#111827", margin: "0 0 6px", letterSpacing: "-0.02em" }}>
-          {step === "email"  ? "Create your account"   :
-           step === "otp"    ? "Check your email"       :
-                               "Account already exists"}
+          {step === "email"   ? "Create your account"    :
+           step === "otp"     ? "Check your email"        :
+           step === "profile" ? "Complete your profile"   :
+                                "Account already exists"}
         </h1>
         <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>
-          {step === "email"  ? "Sign up to get started with Cybrosoft Console" :
-           step === "otp"    ? <><strong style={{ color: "#374151" }}>{email}</strong> — enter the code we sent</> :
-                               <>We found an existing account for <strong style={{ color: "#374151" }}>{email}</strong></>}
+          {step === "email"   ? "Sign up to get started with Cybrosoft Console" :
+           step === "otp"     ? <><strong style={{ color: "#374151" }}>{email}</strong> — enter the code we sent</> :
+           step === "profile" ? "Just a few details to set up your account." :
+                                <>We found an existing account for <strong style={{ color: "#374151" }}>{email}</strong></>}
         </p>
       </div>
 
@@ -539,6 +588,173 @@ export default function SignupPage() {
         </form>
       )}
 
+      {step === "profile" && (
+        <form onSubmit={submitProfile} style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+
+          {/* Account type */}
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 6 }}>Account Type</label>
+            <div style={{ display: "flex", gap: 12 }}>
+              {(["PERSONAL", "BUSINESS"] as const).map(t => (
+                <label key={t} style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 13, color: "#374151" }}>
+                  <input type="radio" name="accountType" value={t} checked={profileData.accountType === t}
+                    onChange={() => setPD("accountType", t)}
+                    style={{ accentColor: P, width: 15, height: 15, cursor: "pointer" }} />
+                  {t === "PERSONAL" ? "Personal" : "Business"}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Personal */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+            <div>
+              <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 5 }}>Full Name <span style={{ color: "#ef4444" }}>*</span></label>
+              <input value={profileData.fullName} onChange={e => setPD("fullName", e.target.value)}
+                placeholder="Your full name" style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", boxSizing: "border-box" as const, fontFamily: "inherit" }}
+                onFocus={e => (e.target.style.borderColor = P)} onBlur={e => (e.target.style.borderColor = "#d1d5db")} />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 5 }}>Mobile <span style={{ color: "#ef4444" }}>*</span></label>
+              <input value={profileData.mobile} onChange={e => setPD("mobile", e.target.value)}
+                placeholder="+966 5x xxx xxxx" style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", boxSizing: "border-box" as const, fontFamily: "inherit" }}
+                onFocus={e => (e.target.style.borderColor = P)} onBlur={e => (e.target.style.borderColor = "#d1d5db")} />
+            </div>
+          </div>
+
+          {/* Company (business only) */}
+          {profileData.accountType === "BUSINESS" && (
+            <div style={{ marginBottom: 14, padding: "12px 14px", background: "#f9fafb", border: "1px solid #e5e7eb" }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 10, textTransform: "uppercase" as const, letterSpacing: "0.04em" }}>Company Details</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 5 }}>Company Name <span style={{ color: "#ef4444" }}>*</span></label>
+                  <input value={profileData.companyName} onChange={e => setPD("companyName", e.target.value)}
+                    placeholder="Your company name" style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", boxSizing: "border-box" as const, fontFamily: "inherit" }}
+                    onFocus={e => (e.target.style.borderColor = P)} onBlur={e => (e.target.style.borderColor = "#d1d5db")} />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 5 }}>VAT / Tax ID</label>
+                  <input value={profileData.vatTaxId} onChange={e => setPD("vatTaxId", e.target.value)}
+                    placeholder="e.g. 300000000000003" style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", boxSizing: "border-box" as const, fontFamily: "inherit" }}
+                    onFocus={e => (e.target.style.borderColor = P)} onBlur={e => (e.target.style.borderColor = "#d1d5db")} />
+                </div>
+                {selectedIsSaudi && <>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 5 }}>CR / Unified ID</label>
+                    <input value={profileData.crn} onChange={e => setPD("crn", e.target.value)}
+                      placeholder="e.g. 1010000000" style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", boxSizing: "border-box" as const, fontFamily: "inherit" }}
+                      onFocus={e => (e.target.style.borderColor = P)} onBlur={e => (e.target.style.borderColor = "#d1d5db")} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 5 }}>Short Address Code</label>
+                    <input value={profileData.shortAddressCode} onChange={e => setPD("shortAddressCode", e.target.value)}
+                      placeholder="e.g. RNAD2323" style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", boxSizing: "border-box" as const, fontFamily: "inherit" }}
+                      onFocus={e => (e.target.style.borderColor = P)} onBlur={e => (e.target.style.borderColor = "#d1d5db")} />
+                  </div>
+                </>}
+              </div>
+            </div>
+          )}
+
+          {/* Address */}
+          <div style={{ marginBottom: 14, padding: "12px 14px", background: "#f9fafb", border: "1px solid #e5e7eb" }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 10, textTransform: "uppercase" as const, letterSpacing: "0.04em" }}>Address <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af" }}>(optional)</span></div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div style={{ gridColumn: "1 / -1" }}>
+                {selectedIsSaudi ? (
+                  <>
+                    <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 5 }}>Province</label>
+                    <select value={profileData.province} onChange={e => setPD("province", e.target.value)}
+                      style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #d1d5db", background: "#fff", outline: "none", boxSizing: "border-box" as const, fontFamily: "inherit" }}>
+                      <option value="">— Select province —</option>
+                      {SAUDI_PROVINCES.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </>
+                ) : (
+                  <>
+                    <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 5 }}>Province / State</label>
+                    <input value={profileData.province} onChange={e => setPD("province", e.target.value)}
+                      placeholder="State or province" style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", boxSizing: "border-box" as const, fontFamily: "inherit" }}
+                      onFocus={e => (e.target.style.borderColor = P)} onBlur={e => (e.target.style.borderColor = "#d1d5db")} />
+                  </>
+                )}
+              </div>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 5 }}>Address Line 1</label>
+                <input value={profileData.addressLine1} onChange={e => setPD("addressLine1", e.target.value)}
+                  placeholder="Street address" style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", boxSizing: "border-box" as const, fontFamily: "inherit" }}
+                  onFocus={e => (e.target.style.borderColor = P)} onBlur={e => (e.target.style.borderColor = "#d1d5db")} />
+              </div>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 5 }}>Street Name</label>
+                <input value={profileData.addressLine2} onChange={e => setPD("addressLine2", e.target.value)}
+                  placeholder="Street name" style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", boxSizing: "border-box" as const, fontFamily: "inherit" }}
+                  onFocus={e => (e.target.style.borderColor = P)} onBlur={e => (e.target.style.borderColor = "#d1d5db")} />
+              </div>
+              {selectedIsSaudi && <>
+                <div>
+                  <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 5 }}>Building No.</label>
+                  <input value={profileData.buildingNumber} onChange={e => setPD("buildingNumber", e.target.value)}
+                    placeholder="e.g. 1234" style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", boxSizing: "border-box" as const, fontFamily: "inherit" }}
+                    onFocus={e => (e.target.style.borderColor = P)} onBlur={e => (e.target.style.borderColor = "#d1d5db")} />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 5 }}>Secondary No.</label>
+                  <input value={profileData.secondaryNumber} onChange={e => setPD("secondaryNumber", e.target.value)}
+                    placeholder="e.g. 5678" style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", boxSizing: "border-box" as const, fontFamily: "inherit" }}
+                    onFocus={e => (e.target.style.borderColor = P)} onBlur={e => (e.target.style.borderColor = "#d1d5db")} />
+                </div>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 5 }}>District</label>
+                  <input value={profileData.district} onChange={e => setPD("district", e.target.value)}
+                    placeholder="District name" style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", boxSizing: "border-box" as const, fontFamily: "inherit" }}
+                    onFocus={e => (e.target.style.borderColor = P)} onBlur={e => (e.target.style.borderColor = "#d1d5db")} />
+                </div>
+              </>}
+              <div>
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 5 }}>City</label>
+                <input value={profileData.city} onChange={e => setPD("city", e.target.value)}
+                  placeholder="City" style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", boxSizing: "border-box" as const, fontFamily: "inherit" }}
+                  onFocus={e => (e.target.style.borderColor = P)} onBlur={e => (e.target.style.borderColor = "#d1d5db")} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 5 }}>Postal Code</label>
+                <input value={profileData.postalCode} onChange={e => setPD("postalCode", e.target.value)}
+                  placeholder={selectedIsSaudi ? "e.g. 12345" : "e.g. 10001"} style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", boxSizing: "border-box" as const, fontFamily: "inherit" }}
+                  onFocus={e => (e.target.style.borderColor = P)} onBlur={e => (e.target.style.borderColor = "#d1d5db")} />
+              </div>
+            </div>
+          </div>
+
+          {/* T&C */}
+          <div style={{ marginBottom: 18, display: "flex", flexDirection: "column" as const, gap: 8 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: "#374151" }}>
+              <input type="checkbox" checked={profileData.tcAccepted} onChange={e => setPD("tcAccepted", e.target.checked)}
+                style={{ width: 15, height: 15, accentColor: P, cursor: "pointer", flexShrink: 0 }} />
+              I agree to the{" "}
+              <a href="/terms" target="_blank" style={{ color: P, textDecoration: "underline" }}>Terms of Service</a>
+              <span style={{ color: "#ef4444", marginLeft: 2 }}>*</span>
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: "#374151" }}>
+              <input type="checkbox" checked={profileData.privacyAccepted} onChange={e => setPD("privacyAccepted", e.target.checked)}
+                style={{ width: 15, height: 15, accentColor: P, cursor: "pointer", flexShrink: 0 }} />
+              I agree to the{" "}
+              <a href="/privacy" target="_blank" style={{ color: P, textDecoration: "underline" }}>Privacy Policy</a>
+              <span style={{ color: "#ef4444", marginLeft: 2 }}>*</span>
+            </label>
+          </div>
+
+          <button type="submit" disabled={profileSaving} style={{
+            width: "100%", padding: "11px", fontSize: 14, fontWeight: 600,
+            background: profileSaving ? "#86c4ba" : P, color: "#fff", border: "none",
+            cursor: profileSaving ? "not-allowed" : "pointer", fontFamily: "inherit",
+          }}>
+            {profileSaving ? "Saving…" : "Complete Setup & Enter Dashboard →"}
+          </button>
+        </form>
+      )}
+
       {step === "exists" && (
         <div style={{ display: "flex", flexDirection: "column" as const, gap: 12 }}>
           <div style={{ padding: "14px 16px", background: "#f9fafb", border: "1px solid #e5e7eb", fontSize: 13, color: "#374151", lineHeight: 1.6 }}>
@@ -594,8 +810,8 @@ export default function SignupPage() {
           <LeftPanel />
         </div>
         <div className="auth-right" style={{
-          flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-          padding: "48px 32px", background: "#fff",
+          flex: 1, display: "flex", alignItems: step === "profile" ? "flex-start" : "center", justifyContent: "center",
+          padding: "48px 32px", background: "#fff", overflowY: "auto",
         }}>
           {rightContent}
         </div>

@@ -1,4 +1,4 @@
-// FILE: app/api/auth/signup/route.ts
+// app/api/auth/signup/route.ts
 // Updated for Step 10 minimal signup flow:
 // - Accepts marketKey ("saudi" | "global") instead of marketId
 // - fullName, mobile, tcAccepted no longer required at signup (collected in Onboarding Wizard)
@@ -24,7 +24,6 @@ function normalizeEmail(email: string): string {
 }
 
 function getPendingSignupExpiry(): Date {
-  // 30 minutes — enough time to complete OTP + onboarding
   return new Date(Date.now() + 30 * 60 * 1000);
 }
 
@@ -38,7 +37,6 @@ export async function POST(req: Request) {
 
     const normalizedEmail = normalizeEmail(String(readString(raw, "email") ?? ""));
 
-    // Accept marketKey ("saudi" | "global") — uppercase to match DB keys (SAUDI, GLOBAL)
     const marketKey = readString(raw, "marketKey")?.trim().toUpperCase() || null;
     const marketId  = readString(raw, "marketId")?.trim() || null;
 
@@ -50,7 +48,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Market is required." }, { status: 400 });
     }
 
-    // Resolve market record
     const market = await prisma.market.findFirst({
       where: marketKey
         ? { key: marketKey, isActive: true }
@@ -62,7 +59,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Market not found." }, { status: 400 });
     }
 
-    // Check if user already exists
     const existingUser = await prisma.user.findUnique({
       where:  { email: normalizedEmail },
       select: { id: true },
@@ -72,35 +68,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, userExists: true });
     }
 
-    // Create or update pending signup — only email + marketId required now
-    // All other fields (name, mobile, address, T&C) collected in Onboarding Wizard
     await prisma.pendingSignup.upsert({
       where:  { email: normalizedEmail },
-      create: {
-        email:     normalizedEmail,
-        marketId:  market.id,
-        expiresAt: getPendingSignupExpiry(),
-      },
-      update: {
-        marketId:  market.id,
-        expiresAt: getPendingSignupExpiry(),
-      },
+      create: { email: normalizedEmail, marketId: market.id, expiresAt: getPendingSignupExpiry() },
+      update: { marketId: market.id, expiresAt: getPendingSignupExpiry() },
     });
 
-    // Generate and send OTP
     const code     = generateOtp();
     const codeHash = hashOtp(normalizedEmail, code);
 
     await prisma.loginOtp.create({
-      data: {
-        email:        normalizedEmail,
-        codeHash,
-        expiresAt:    getOtpExpiry(),
-        attemptCount: 0,
-      },
+      data: { email: normalizedEmail, codeHash, expiresAt: getOtpExpiry(), attemptCount: 0 },
     });
 
-    await sendOtpEmail(normalizedEmail, code);
+    // Pass market key so correct sender name is used per market
+    await sendOtpEmail(normalizedEmail, code, market.key);
 
     return NextResponse.json({ ok: true, userExists: false });
 

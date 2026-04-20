@@ -1,12 +1,9 @@
 // app/api/admin/settings/route.ts
-// Generic key-value settings store using PortalSetting model.
-// GET  → return all settings as { key: value } map
-// POST → upsert one or many { key, value } pairs
-
 export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { invalidateEmailCache } from "@/lib/email/email-config";
 
 export async function GET() {
   try {
@@ -25,7 +22,6 @@ export async function POST(req: NextRequest) {
     await requireAdmin();
     const body = await req.json();
 
-    // Accept either { key, value } or { settings: { key: value, ... } }
     const pairs: { key: string; value: string }[] = [];
 
     if (body.settings && typeof body.settings === "object") {
@@ -49,6 +45,9 @@ export async function POST(req: NextRequest) {
         })
       )
     );
+
+    // Invalidate email config cache so new from names take effect immediately
+    invalidateEmailCache();
 
     return NextResponse.json({ ok: true, updated: pairs.length });
   } catch (e: any) {

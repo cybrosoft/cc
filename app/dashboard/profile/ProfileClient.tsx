@@ -236,7 +236,7 @@ function TotpSection({ totpEnabled: initialEnabled }: { totpEnabled: boolean }) 
                 }}>{secret}</code>
                 <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 8px" }}>Works with:</p>
                 <p style={{ fontSize: 12, color: "#374151", margin: 0, lineHeight: 1.6 }}>
-                  Google Authenticator · Microsoft Authenticator · Authy · Apple Passwords · 1Password · any TOTP app
+                  Google Authenticator · Microsoft Authenticator · Authy · Apple Passwords · 1Password · Bitwarden · Dashlane · LastPass Authenticator · Duo Mobile · Aegis · andOTP · Raivo OTP · any TOTP app
                 </p>
               </div>
             </div>

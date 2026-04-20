@@ -72,11 +72,13 @@ export async function POST(req: Request) {
         where:  { email },
         select: {
           id: true, role: true, status: true, totpEnabled: true,
+          fullName: true, mobile: true, accountType: true, companyName: true,
           market: { select: { key: true } },
         },
       });
 
       let isNewUser = false;
+      let newUserId: string | null = null;
 
       if (!user) {
         const pending = await tx.pendingSignup.findUnique({
@@ -90,46 +92,35 @@ export async function POST(req: Request) {
           data: { email, role: Role.CUSTOMER, marketId: pending.marketId, status: "PENDING" },
           select: {
             id: true, role: true, status: true, totpEnabled: true,
+            fullName: true, mobile: true, accountType: true, companyName: true,
             market: { select: { key: true } },
           },
         });
-        try {
-          await tx.userStatusLog.create({
-            data: {
-              userId: user.id, status: "PENDING" as never,
-              note: "Account created — awaiting admin review.", isAutomatic: true,
-            },
-          });
-        } catch { /* non-fatal */ }
+        // NOTE: userStatusLog.create is intentionally NOT inside the transaction.
+        // It caused "Transaction not found" errors due to the tx taking too long.
+        // It is created below, after the transaction completes.
+        newUserId = user.id;
         await tx.pendingSignup.delete({ where: { email } });
         isNewUser = true;
       }
 
       if (user.status === "REJECTED")  return { ok: false as const, error: "ACCOUNT_REJECTED"  as const };
-      if (user.status === "SUSPENDED") return { ok: false as const, error: "ACCOUNT_SUSPENDED" as const };
+      // SUSPENDED: allow login — they can access dashboard + billing
 
       // ── TOTP check ───────────────────────────────────────────────────────────
-      // If user has TOTP enabled, consume the email OTP but don't create session yet.
-      // Store a short-lived pending-auth token in a cookie so the TOTP challenge
-      // endpoint can complete the login.
       if (user.totpEnabled && !isNewUser) {
         await tx.loginOtp.update({
           where: { id: matched.id },
           data:  { consumedAt: now },
         });
-
         const pendingToken = crypto.randomBytes(32).toString("hex");
-        // Store pending token in DB temporarily — reuse Session table with a marker
-        // We store as a special session that expires in 5 minutes and is not valid
-        // for auth until TOTP is confirmed. We use a "pending:" prefix on the token.
         await tx.session.create({
           data: {
             userId:    user.id,
             token:     "pending:" + pendingToken,
-            expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 min
+            expiresAt: new Date(Date.now() + 5 * 60 * 1000),
           },
         });
-
         return { ok: true as const, requiresTotp: true as const, pendingToken };
       }
       // ── End TOTP check ───────────────────────────────────────────────────────
@@ -148,15 +139,44 @@ export async function POST(req: Request) {
       if (user.role === Role.ADMIN || user.role === Role.STAFF) {
         redirectTo = "/admin";
       } else {
-        redirectTo = getDashboardUrl(user.market.key);
+        const isSaudi = user.market.key?.toLowerCase() === "saudi";
+        // If status PENDING and required fields missing → redirect to onboarding
+        const isBiz = user.accountType === "BUSINESS";
+        const profileIncomplete =
+          user.status === "PENDING" && (
+            !user.fullName    ||
+            !user.mobile      ||
+            !user.accountType ||
+            (isBiz && !user.companyName)
+          );
+        if (profileIncomplete) {
+          redirectTo = isSaudi ? "/sa/signup?onboarding=1" : "/signup?onboarding=1";
+        } else {
+          redirectTo = getDashboardUrl(user.market.key);
+        }
       }
 
-      return { ok: true as const, sid: session.id, redirectTo, isNewUser };
+      return { ok: true as const, sid: session.id, redirectTo, isNewUser, newUserId };
     });
+
+    // ── Post-transaction: log PENDING status for new users ───────────────────
+    // Done outside the transaction to avoid timeout issues.
+    if (result.ok && "newUserId" in result && result.newUserId) {
+      try {
+        await prisma.userStatusLog.create({
+          data: {
+            userId:      result.newUserId,
+            status:      "PENDING" as never,
+            note:        "Account created — awaiting admin review.",
+            isAutomatic: true,
+          },
+        });
+      } catch { /* non-fatal — status log failure must never break login */ }
+    }
 
     if (!result.ok) {
       const statusMap: Record<string, number> = {
-        SIGNUP_EXPIRED: 400, ACCOUNT_REJECTED: 403, ACCOUNT_SUSPENDED: 403,
+        SIGNUP_EXPIRED: 400, ACCOUNT_REJECTED: 403,
       };
       return NextResponse.json<VerifyResp>(
         { ok: false, error: result.error },
@@ -170,7 +190,7 @@ export async function POST(req: Request) {
       res.cookies.set("totp_pending", result.pendingToken, {
         httpOnly: true, sameSite: "lax",
         secure: process.env.NODE_ENV === "production",
-        path: "/", maxAge: 5 * 60, // 5 minutes
+        path: "/", maxAge: 5 * 60,
       });
       return res;
     }

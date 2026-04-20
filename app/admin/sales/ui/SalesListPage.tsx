@@ -77,6 +77,7 @@ export default function SalesListPage({ docType }: Props) {
   const [sendDropOpen,  setSendDropOpen]  = useState(false);
   const [sendModalMode, setSendModalMode] = useState<"reminder" | "custom" | null>(null);
   const [showPayment,   setShowPayment]   = useState(false);
+  const [pdfDownloading, setPdfDownloading] = useState(false);
   const sendDropRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -105,16 +106,17 @@ export default function SalesListPage({ docType }: Props) {
       const res  = await fetch(`${ENDPOINT[docType]}?${params}`);
       const data = await res.json();
       const rows: SalesDocRow[] = (data.docs ?? []).map((d: any) => ({
-        id:             d.id,
-        docNum:         d.docNum,
-        type:           d.type,
-        status:         d.status,
-        currency:       d.currency,
-        total:          d.total,
-        issueDate:      d.issueDate,
-        dueDate:        d.dueDate ?? null,
-        createdAt:      d.createdAt ?? d.issueDate,
-        emailSentCount: d.emailSentCount ?? 0,
+        id:                 d.id,
+        docNum:             d.docNum,
+        type:               d.type,
+        status:             d.status,
+        currency:           d.currency,
+        total:              d.total,
+        issueDate:          d.issueDate,
+        dueDate:            d.dueDate ?? null,
+        createdAt:          d.createdAt ?? d.issueDate,
+        emailSentCount:     d.emailSentCount ?? 0,
+        officialInvoiceUrl: d.officialInvoiceUrl ?? null,
         customer: {
           fullName:       d.customer?.fullName ?? null,
           companyName:    d.customer?.companyName ?? null,
@@ -161,9 +163,32 @@ export default function SalesListPage({ docType }: Props) {
       .catch(() => {});
   }, [selectedId]);
 
-  const hasFilters     = q || status || marketKey;
-  const selected       = docs.find(d => d.id === selectedId) ?? allDocs.find(d => d.id === selectedId) ?? null;
+  const hasFilters      = q || status || marketKey;
+  const selected        = docs.find(d => d.id === selectedId) ?? allDocs.find(d => d.id === selectedId) ?? null;
   const hasSentSelected = ((selected as any)?.emailSentCount ?? 0) > 0 || (emailState[selected?.id ?? ""]?.count ?? 0) > 0;
+
+  // Saudi official invoice logic for selected doc
+  const selectedIsSaudi        = selected?.market.key === "SAUDI";
+  const selectedIsOfficialType = ["INVOICE", "CREDIT_NOTE"].includes(selected?.type ?? "");
+  const selectedNeedsOfficial  = selectedIsSaudi && selectedIsOfficialType;
+  const selectedHasOfficial    = !!((selected as any)?.officialInvoiceUrl);
+  const sendBlocked            = selectedNeedsOfficial && !selectedHasOfficial;
+  const downloadLabel          = selectedNeedsOfficial ? "ZATCA e-Invoice Download" : "Download PDF";
+
+  async function downloadPdf(docId: string, docNum: string) {
+    setPdfDownloading(true);
+    try {
+      const res = await fetch(`/api/admin/sales/${docId}/pdf`);
+      if (!res.ok) throw new Error("Failed");
+      const blob = await res.blob();
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href; a.download = `${docNum}.pdf`;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(href);
+    } catch { alert("PDF download failed"); }
+    setPdfDownloading(false);
+  }
 
   async function sendEmailDirect(docId: string, mode: "default" | "resend" = "default") {
     setSendDropOpen(false);
@@ -199,7 +224,6 @@ export default function SalesListPage({ docType }: Props) {
     }
   }
 
-  // Keep old signature for toast button
   function sendEmail(docId: string, e: React.MouseEvent) {
     e.stopPropagation();
     sendEmailDirect(docId);
@@ -353,21 +377,26 @@ export default function SalesListPage({ docType }: Props) {
                   )}
 
                   {/* Status */}
-                  <button onClick={() => setShowStatus(true)}
-                    style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", fontSize: 11, fontWeight: 600, background: "#fff", color: CLR.text, border: "1px solid #d1d5db", cursor: "pointer", fontFamily: "inherit" }}>
+                  <button
+                    onClick={() => { if (sendBlocked) { alert("Upload the official invoice before changing status"); return; } setShowStatus(true); }}
+                    title={sendBlocked ? "Upload official invoice first" : undefined}
+                    style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", fontSize: 11, fontWeight: 600, background: "#fff", color: sendBlocked ? "#9ca3af" : CLR.text, border: `1px solid ${sendBlocked ? "#e5e7eb" : "#d1d5db"}`, cursor: sendBlocked ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                     Status
                   </button>
 
                   {/* Send dropdown */}
                   <div ref={sendDropRef} style={{ position: "relative" }}>
-                    <button onClick={() => setSendDropOpen(v => !v)} disabled={emailState[selected.id]?.sending}
-                      style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", fontSize: 11, fontWeight: 600, background: hasSentSelected ? "#fffbeb" : CLR.primary, color: hasSentSelected ? "#92400e" : "#fff", border: hasSentSelected ? "1px solid #fcd34d" : "none", cursor: "pointer", fontFamily: "inherit" }}>
+                    <button
+                      onClick={() => { if (sendBlocked) return; setSendDropOpen(v => !v); }}
+                      disabled={emailState[selected.id]?.sending}
+                      title={sendBlocked ? "Upload official invoice before sending" : undefined}
+                      style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", fontSize: 11, fontWeight: 600, background: sendBlocked ? "#f3f4f6" : hasSentSelected ? "#fffbeb" : CLR.primary, color: sendBlocked ? "#9ca3af" : hasSentSelected ? "#92400e" : "#fff", border: sendBlocked ? "1px solid #e5e7eb" : hasSentSelected ? "1px solid #fcd34d" : "none", cursor: sendBlocked ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                       {emailState[selected.id]?.sending ? "Sending…" : "Send Mail"}
                       <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg>
                     </button>
-                    {sendDropOpen && (
+                    {sendDropOpen && !sendBlocked && (
                       <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 300, background: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 4px 16px rgba(0,0,0,0.10)", minWidth: 210 }}>
                         <DropdownItem icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>} label="Send" hint="Default template" onClick={() => sendEmailDirect(selected.id)} />
                         <DropdownItem icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>} label="Send Custom" hint="Edit subject, body, CC/BCC" onClick={() => { setSendDropOpen(false); setSendModalMode("custom"); }} />
@@ -393,21 +422,29 @@ export default function SalesListPage({ docType }: Props) {
                   )}
 
                   {/* Download PDF */}
-                  <button onClick={() => window.open(`/api/admin/sales/${selected.id}/pdf`, "_blank")}
-                    style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", fontSize: 11, fontWeight: 600, background: "#fff", color: CLR.text, border: "1px solid #d1d5db", cursor: "pointer", fontFamily: "inherit" }}>
+                  <button
+                    onClick={() => { if (sendBlocked) return; downloadPdf(selected.id, selected.docNum); }}
+                    disabled={pdfDownloading || sendBlocked}
+                    style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", fontSize: 11, fontWeight: 600, background: "#fff", color: CLR.text, border: "1px solid #d1d5db", cursor: (pdfDownloading || sendBlocked) ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: (pdfDownloading || sendBlocked) ? 0.4 : 1 }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Download PDF
+                    {pdfDownloading ? "Downloading…" : downloadLabel}
                   </button>
                 </div>
 
-                {/* Iframe */}
+                {/* Iframe — only render when src is ready */}
                 <div style={{ flex: 1, overflow: "hidden" }}>
-                  <iframe
-                    key={selected.id}
-                    src={iframeSrc}
-                    style={{ width: "100%", height: "100%", border: "none", display: "block" }}
-                    title={selected.docNum}
-                  />
+                  {iframeSrc ? (
+                    <iframe
+                      key={selected.id}
+                      src={iframeSrc}
+                      style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+                      title={selected.docNum}
+                    />
+                  ) : (
+                    <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: CLR.faint, fontSize: 13 }}>
+                      Loading preview…
+                    </div>
+                  )}
                 </div>
               </>
             )}
@@ -468,10 +505,10 @@ export default function SalesListPage({ docType }: Props) {
           docNum={convertDoc.docNum}
           docType={convertDoc.type}
           onClose={() => { setConvertId(null); setConvertDoc(null); }}
-          onConverted={newId => {
+          onConverted={redirectTo => {
             setConvertId(null); setConvertDoc(null);
             fetchDocs();
-            router.push(`/admin/sales/${newId}`);
+            router.push(redirectTo);
           }}
         />
       )}

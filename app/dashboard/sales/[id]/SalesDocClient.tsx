@@ -23,6 +23,7 @@ interface Doc {
   subject: string | null; notes: string | null;
   termsAndConditions: string | null; referenceNumber: string | null;
   rfqTitle: string | null; pdfKey: string | null; language: string;
+  officialInvoiceUrl: string | null;
   issueDate: string; dueDate: string | null; validUntil: string | null;
   paidAt: string | null; createdAt: string;
   market: {
@@ -86,7 +87,6 @@ function backLink(type: string) {
   }
 }
 
-// ── Address block ─────────────────────────────────────────────────────────────
 function AddrLine({ v }: { v: string | null | undefined }) {
   if (!v) return null;
   return <div style={{ fontSize: 12.5, color: "#6b7280", lineHeight: 1.6 }}>{v}</div>;
@@ -94,18 +94,12 @@ function AddrLine({ v }: { v: string | null | undefined }) {
 
 function FromAddress({ li, marketName }: { li: Record<string, string> | null; marketName: string }) {
   if (!li) return <div style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>{marketName}</div>;
-
   const taxLabel  = li.taxLabel ?? "VAT";
-  // Address Line 1, Address Line 2, District on one line
   const addrLine1 = joinParts(li.address1, li.address2, li.district);
-  // City, State / Province / Region, Postal / ZIP Code on one line
   const addrLine2 = joinParts(li.city, li.state, li.postalCode);
-
   return (
     <>
-      <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", marginBottom: 4 }}>
-        {li.companyName ?? marketName}
-      </div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", marginBottom: 4 }}>{li.companyName ?? marketName}</div>
       <AddrLine v={addrLine1} />
       <AddrLine v={addrLine2} />
       <AddrLine v={li.country} />
@@ -119,18 +113,13 @@ function FromAddress({ li, marketName }: { li: Record<string, string> | null; ma
 
 function ToAddress({ c, taxLabel }: { c: Doc["customer"]; taxLabel: string }) {
   const isPersonal = c.accountType === "PERSONAL";
-  // Address Line 1, Address Line 2 on one line
   const addrLine1  = joinParts(c.addressLine1, c.addressLine2);
-  // District, City, Province / Region on one line
   const addrLine2  = joinParts(c.district, c.city, c.province);
-
   return (
     <>
-      {/* Company Name */}
       {c.companyName && (
         <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", marginBottom: 2 }}>{c.companyName}</div>
       )}
-      {/* Personal Full Name — only for PERSONAL accounts */}
       {isPersonal && c.fullName && (
         <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", marginBottom: 2 }}>{c.fullName}</div>
       )}
@@ -157,14 +146,44 @@ function dateItems(doc: Doc) {
 }
 
 export function SalesDocClient({ doc }: { doc: Doc }) {
-  const [accepting,  setAccepting]  = useState(false);
-  const [acceptDone, setAcceptDone] = useState(doc.status === "ACCEPTED");
-  const [acceptErr,  setAcceptErr]  = useState<string | null>(null);
+  const [accepting,      setAccepting]      = useState(false);
+  const [acceptDone,     setAcceptDone]     = useState(doc.status === "ACCEPTED");
+  const [acceptErr,      setAcceptErr]      = useState<string | null>(null);
+  const [pdfDownloading, setPdfDownloading] = useState(false);
+
+  const isSaudi        = doc.market.key === "SAUDI";
+  const isOfficialType = ["INVOICE", "CREDIT_NOTE"].includes(doc.type);
+  const needsOfficialPdf = isSaudi && isOfficialType;
+  const hasOfficialPdf   = !!doc.officialInvoiceUrl;
+
+  // Market-aware labels
+  const typeLabel     = needsOfficialPdf
+    ? (doc.type === "INVOICE" ? "Invoice Memo" : "Credit Note Memo")
+    : (TYPE_LABELS[doc.type] ?? doc.type);
+  const downloadLabel = needsOfficialPdf ? "ZATCA e-Invoice Download" : "Download PDF";
+
+  // Saudi: only show download if official PDF is attached
+  const canDownload = needsOfficialPdf ? hasOfficialPdf : true;
 
   const canAccept    = doc.type === "QUOTATION" && ["ISSUED","SENT","REVISED"].includes(doc.status) && !acceptDone;
   const back         = backLink(doc.type);
   const showBalance  = doc.type === "INVOICE" || doc.type === "CREDIT_NOTE";
   const showPayments = showBalance && doc.payments.length > 0;
+
+  async function downloadPdf() {
+    setPdfDownloading(true);
+    try {
+      const res = await fetch(`/api/customer/sales/${doc.id}/pdf`);
+      if (!res.ok) throw new Error("Failed");
+      const blob = await res.blob();
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href; a.download = `${doc.docNum}.pdf`;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(href);
+    } catch { alert("PDF download failed"); }
+    setPdfDownloading(false);
+  }
 
   async function handleAccept() {
     if (!confirm(`Accept ${doc.docNum}?`)) return;
@@ -205,7 +224,7 @@ export function SalesDocClient({ doc }: { doc: Doc }) {
             <div style={{ padding:"20px 24px", borderBottom:"1px solid #e5e7eb", display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:16, flexWrap:"wrap" }}>
               <div>
                 <div style={{ fontSize:12, fontWeight:600, color:"#9ca3af", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:6 }}>
-                  {TYPE_LABELS[doc.type] ?? doc.type}
+                  {typeLabel}
                 </div>
                 <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
                   <h1 style={{ margin:0, fontSize:20, fontWeight:700, color:"#111827", fontFamily:"monospace", letterSpacing:"-0.01em" }}>{doc.docNum}</h1>
@@ -229,11 +248,21 @@ export function SalesDocClient({ doc }: { doc: Doc }) {
                     Accepted
                   </div>
                 )}
-                <a href={`/api/customer/sales/${doc.id}/pdf`} target="_blank" rel="noreferrer"
-                  style={{ display:"flex", alignItems:"center", gap:6, height:36, padding:"0 14px", background:"#fff", border:"1px solid #e5e7eb", fontSize:13, color:"#374151", textDecoration:"none" }}>
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M1 11v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  Download PDF
-                </a>
+                {/* Download button — conditional */}
+                {canDownload ? (
+                  <button
+                    onClick={downloadPdf}
+                    disabled={pdfDownloading}
+                    style={{ display:"flex", alignItems:"center", gap:6, height:36, padding:"0 14px", background:"#fff", border:"1px solid #e5e7eb", fontSize:13, color:"#374151", cursor:pdfDownloading?"not-allowed":"pointer", fontFamily:"inherit", opacity:pdfDownloading?0.6:1 }}>
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M1 11v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    {pdfDownloading ? "Downloading…" : downloadLabel}
+                  </button>
+                ) : needsOfficialPdf && !hasOfficialPdf ? (
+                  <div style={{ display:"flex", alignItems:"center", gap:6, height:36, padding:"0 14px", background:"#fffbeb", border:"1px solid #fcd34d", fontSize:12, color:"#b45309", fontWeight:500 }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    Invoice being processed
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -347,7 +376,7 @@ export function SalesDocClient({ doc }: { doc: Doc }) {
               </div>
             )}
 
-            {/* Notes — separate section */}
+            {/* Notes */}
             {doc.notes && (
               <div style={{ padding:"18px 24px", borderBottom:"1px solid #e5e7eb" }}>
                 <div style={{ fontSize:11, fontWeight:600, color:"#9ca3af", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>Notes</div>
@@ -355,7 +384,7 @@ export function SalesDocClient({ doc }: { doc: Doc }) {
               </div>
             )}
 
-            {/* Terms & Conditions — separate section after notes */}
+            {/* Terms & Conditions */}
             {doc.termsAndConditions && (
               <div style={{ padding:"18px 24px", borderBottom:"1px solid #e5e7eb" }}>
                 <div style={{ fontSize:11, fontWeight:600, color:"#9ca3af", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>Terms & Conditions</div>

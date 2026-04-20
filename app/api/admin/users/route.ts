@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
       mobile:         true,
       accountType:    true,
       role:           true,
+      status:         true,
       marketId:       true,
       market:         { select: { id: true, key: true, name: true } },
       customerGroupId: true,
@@ -59,12 +60,14 @@ export async function GET(req: NextRequest) {
       notePublic:        true,
       notePrivate:       true,
       tags:              { select: { id: true, key: true, name: true } },
-      _count:            { select: { subscriptions: true, servers: true } },
       createdAt:         true,
+      _count: { select: { subscriptions: true, servers: true } },
     },
     orderBy: { customerNumber: "desc" },
   });
 
+  // Return shape that the customers list page expects
+  // Wrapping in { ok: true, data: users } — check your page.tsx and adjust if needed
   return NextResponse.json({ ok: true, data: users });
 }
 

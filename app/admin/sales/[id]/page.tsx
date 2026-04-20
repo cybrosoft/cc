@@ -38,6 +38,7 @@ interface FullDoc {
   emailSentAt?: string | null; emailSentCount?: number | null;
   reminderEnabled?: boolean | null; reminderCount?: number | null;
   manualSent?: boolean | null; zatcaQrCode?: string | null; rfqFileUrl?: string | null;
+  officialInvoiceUrl?: string | null;
   customer: {
     id: string; fullName?: string | null; email: string; mobile?: string | null;
     customerNumber?: number | null; companyName?: string | null; vatTaxId?: string | null;
@@ -70,18 +71,23 @@ export default function SalesDocDetailPage() {
   const id           = params?.id as string;
   const isEmbed      = searchParams?.get("embed") === "1";
 
-  const [doc,        setDoc]        = useState<FullDoc | null>(null);
-  const [loading,    setLoading]    = useState(true);
-  const [sendMsg,    setSendMsg]    = useState<{ ok: boolean; text: string } | null>(null);
+  const [doc,           setDoc]           = useState<FullDoc | null>(null);
+  const [loading,       setLoading]       = useState(true);
+  const [sendMsg,       setSendMsg]       = useState<{ ok: boolean; text: string } | null>(null);
   const [sendDropOpen,  setSendDropOpen]  = useState(false);
   const [sendModalMode, setSendModalMode] = useState<"reminder" | "custom" | null>(null);
   const [sendingDirect, setSendingDirect] = useState(false);
   const [showStatus,    setShowStatus]    = useState(false);
   const [showConvert,   setShowConvert]   = useState(false);
   const [showPayment,   setShowPayment]   = useState(false);
-  const [docLogs,     setDocLogs]     = useState<any[]>([]);
-  const [logsLoading, setLogsLoading] = useState(false);
-  const sendDropRef = useRef<HTMLDivElement>(null);
+  const [pdfDownloading,   setPdfDownloading]   = useState(false);
+  const [uploadMsg,        setUploadMsg]        = useState<{ ok: boolean; text: string } | null>(null);
+  const [uploading,        setUploading]        = useState(false);
+  const [deleting,         setDeleting]         = useState(false);
+  const [docLogs,       setDocLogs]       = useState<any[]>([]);
+  const [logsLoading,   setLogsLoading]   = useState(false);
+  const sendDropRef  = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -138,6 +144,53 @@ export default function SalesDocDetailPage() {
     return () => { document.head.removeChild(style); };
   }, [isEmbed]);
 
+  async function downloadPdf() {
+    if (!doc) return;
+    setPdfDownloading(true);
+    try {
+      const res = await fetch(`/api/admin/sales/${id}/pdf`);
+      if (!res.ok) throw new Error("Failed");
+      const blob = await res.blob();
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href; a.download = `${doc.docNum}.pdf`;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(href);
+    } catch { alert("PDF download failed"); }
+    setPdfDownloading(false);
+  }
+
+  async function uploadOfficialInvoice(file: File) {
+    setUploading(true); setUploadMsg(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res  = await fetch(`/api/admin/sales/${id}/official-invoice`, { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setDoc(prev => prev ? { ...prev, officialInvoiceUrl: data.officialInvoiceUrl } : prev);
+      setUploadMsg({ ok: true, text: "Official invoice uploaded successfully" });
+    } catch (e: any) {
+      setUploadMsg({ ok: false, text: e.message });
+    }
+    setUploading(false);
+  }
+
+  async function deleteOfficialInvoice() {
+    if (!confirm("Remove uploaded official invoice?")) return;
+    setDeleting(true); setUploadMsg(null);
+    try {
+      const res  = await fetch(`/api/admin/sales/${id}/official-invoice`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setDoc(prev => prev ? { ...prev, officialInvoiceUrl: null } : prev);
+      setUploadMsg({ ok: true, text: "Official invoice removed" });
+    } catch (e: any) {
+      setUploadMsg({ ok: false, text: e.message });
+    }
+    setDeleting(false);
+  }
+
   async function sendEmailDirect(mode: "default" | "resend") {
     if (!doc) return;
     setSendDropOpen(false); setSendingDirect(true); setSendMsg(null);
@@ -174,13 +227,24 @@ export default function SalesDocDetailPage() {
   const manualSent   = doc.manualSent ?? false;
   const lastSent     = doc.emailSentAt ? (manualSent ? `Marked as sent on ${fmtDateTime(doc.emailSentAt)}` : `Last sent ${fmtDateTime(doc.emailSentAt)}`) : "";
   const isSaudi      = doc.market.key === "SAUDI";
+  const isOfficialType = ["INVOICE", "CREDIT_NOTE"].includes(doc.type);
+  const needsOfficialPdf = isSaudi && isOfficialType;
+  const hasOfficialPdf   = !!doc.officialInvoiceUrl;
   const showBank     = (doc.type === "PROFORMA" || doc.type === "INVOICE") && li.bankDetails?.iban;
   const totalPaid    = doc.payments.reduce((s, p) => s + p.amountCents, 0);
   const balanceDue   = doc.total - totalPaid;
-  const typeLabel    = DOC_TYPE_LABEL[doc.type as keyof typeof DOC_TYPE_LABEL] ?? doc.type;
+
+  // Market-aware labels
+  const typeLabel    = needsOfficialPdf
+    ? (doc.type === "INVOICE" ? "Invoice Memo" : "Credit Note Memo")
+    : (DOC_TYPE_LABEL[doc.type as keyof typeof DOC_TYPE_LABEL] ?? doc.type);
+  const downloadLabel = needsOfficialPdf ? "ZATCA e-Invoice Download" : "Download PDF";
+
   const primaryColor = cp.primaryColor ?? "#318774";
   const isInvoiceUnpaid = doc.type === "INVOICE" && ["ISSUED", "SENT", "PARTIALLY_PAID", "OVERDUE"].includes(doc.status);
   const canSend      = !["VOID"].includes(doc.status);
+  // Block send for Saudi INVOICE/CREDIT_NOTE if no official PDF uploaded
+  const sendBlocked  = needsOfficialPdf && !hasOfficialPdf;
   const canRecordPayment = doc.type === "INVOICE" && ["ISSUED", "SENT", "PARTIALLY_PAID", "OVERDUE"].includes(doc.status);
   const taxRateLabel = (() => {
     const t = (li.taxLabel ?? "VAT").trim();
@@ -193,7 +257,6 @@ export default function SalesDocDetailPage() {
       {!isEmbed && <AdminHeader />}
       <main style={{ flex: 1, overflowY: "auto", padding: isEmbed ? "12px 16px" : "24px", background: "#f5f5f5" }}>
 
-      {/* Page title row — hidden in embed */}
       {!isEmbed && (
         <div style={{ marginBottom: 20 }}>
           <p style={{ fontSize: 11, color: "#9ca3af", letterSpacing: ".05em", marginBottom: 10 }}>ADMIN / SALES / {typeLabel.toUpperCase()}</p>
@@ -222,15 +285,18 @@ export default function SalesDocDetailPage() {
             )}
             {canSend && (
               <div ref={sendDropRef} style={{ position: "relative", flexShrink: 0 }}>
-                <button onClick={() => setSendDropOpen(v => !v)} disabled={sendingDirect} title={lastSent || undefined}
-                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 18px", fontSize: 12, fontWeight: 600, lineHeight: 1, background: hasSentEmail ? "#fffbeb" : primaryColor, color: hasSentEmail ? "#92400e" : "#fff", border: hasSentEmail ? "1px solid #fcd34d" : `1px solid ${primaryColor}`, cursor: sendingDirect ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: sendingDirect ? 0.7 : 1 }}>
-                  <Icon name="mail" size={13} color={hasSentEmail ? "#92400e" : "#fff"} />
+                <button
+                  onClick={() => { if (sendBlocked) return; setSendDropOpen(v => !v); }}
+                  disabled={sendingDirect}
+                  title={sendBlocked ? "Upload official invoice before sending" : (lastSent || undefined)}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 18px", fontSize: 12, fontWeight: 600, lineHeight: 1, background: sendBlocked ? "#f3f4f6" : hasSentEmail ? "#fffbeb" : primaryColor, color: sendBlocked ? "#9ca3af" : hasSentEmail ? "#92400e" : "#fff", border: sendBlocked ? "1px solid #e5e7eb" : hasSentEmail ? "1px solid #fcd34d" : `1px solid ${primaryColor}`, cursor: sendBlocked ? "not-allowed" : sendingDirect ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: sendingDirect ? 0.7 : 1 }}>
+                  <Icon name="mail" size={13} color={sendBlocked ? "#9ca3af" : hasSentEmail ? "#92400e" : "#fff"} />
                   {sendingDirect ? "Sending…" : "Send"}
                   {hasSentEmail && sentCount > 1 && <span style={{ fontSize: 10, opacity: 0.7 }}>({sentCount})</span>}
-                  <span style={{ width: 1, height: 14, background: hasSentEmail ? "rgba(180,83,9,0.3)" : "rgba(255,255,255,0.3)", margin: "0 2px" }} />
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={hasSentEmail ? "#92400e" : "#fff"} strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg>
+                  <span style={{ width: 1, height: 14, background: sendBlocked ? "#e5e7eb" : hasSentEmail ? "rgba(180,83,9,0.3)" : "rgba(255,255,255,0.3)", margin: "0 2px" }} />
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={sendBlocked ? "#9ca3af" : hasSentEmail ? "#92400e" : "#fff"} strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg>
                 </button>
-                {sendDropOpen && (
+                {sendDropOpen && !sendBlocked && (
                   <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 200, background: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 4px 16px rgba(0,0,0,0.10)", minWidth: 210 }}>
                     <DropItem icon="mail"  label="Send"        hint="Default template"           onClick={() => sendEmailDirect("default")} />
                     {isInvoiceUnpaid && <DropItem icon="bell" label="Send Reminder" hint={doc.reminderEnabled ? `Active · ${doc.reminderCount ?? 0}/4 sent` : "Weekly, up to 4 times"} onClick={() => { setSendDropOpen(false); setSendModalMode("reminder"); }} active={!!doc.reminderEnabled} />}
@@ -241,11 +307,12 @@ export default function SalesDocDetailPage() {
                 )}
               </div>
             )}
-            <button onClick={async () => {
-              const res  = await fetch(`/api/admin/sales/${id}/pdf`);
-              // PDF route redirects to signed URL — open in new tab
-              window.open(`/api/admin/sales/${id}/pdf`, "_blank");
-            }} style={{ padding: "7px 18px", fontSize: 12, fontWeight: 600, lineHeight: 1, background: "#fff", color: CLR.text, border: "1px solid #d1d5db", cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Download PDF</button>
+            <button
+              onClick={downloadPdf}
+              disabled={pdfDownloading}
+              style={{ padding: "7px 18px", fontSize: 12, fontWeight: 600, lineHeight: 1, background: "#fff", color: CLR.text, border: "1px solid #d1d5db", cursor: pdfDownloading ? "not-allowed" : "pointer", fontFamily: "inherit", flexShrink: 0, opacity: pdfDownloading ? 0.6 : 1 }}>
+              {pdfDownloading ? "Downloading…" : downloadLabel}
+            </button>
           </div>
         </div>
       )}
@@ -253,6 +320,77 @@ export default function SalesDocDetailPage() {
       {sendMsg && (
         <div style={{ marginBottom: 16, padding: "10px 16px", background: sendMsg.ok ? "#f0fdf4" : "#fef2f2", border: `1px solid ${sendMsg.ok ? "#86efac" : "#fecaca"}`, color: sendMsg.ok ? "#15803d" : "#dc2626", fontSize: 13, fontWeight: 600 }}>
           {sendMsg.ok ? "✓ " : "✗ "}{sendMsg.text}
+        </div>
+      )}
+
+      {/* Official Invoice Upload Panel — Saudi INVOICE & CREDIT_NOTE only */}
+      {needsOfficialPdf && !isEmbed && (
+        <div className="no-print" style={{ maxWidth: 860, margin: "0 auto 16px" }}>
+          <div style={{ background: "#fff", border: `1px solid ${hasOfficialPdf ? "#86efac" : "#fcd34d"}`, padding: "14px 20px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+            {/* Status indicator */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+              {hasOfficialPdf ? (
+                <>
+                  <span style={{ fontSize: 16 }}>✓</span>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#15803d" }}>Official Invoice Attached</div>
+                    <div style={{ fontSize: 11, color: "#6b7280", marginTop: 1 }}>ZATCA-compliant PDF uploaded — ready to send</div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span style={{ fontSize: 16 }}>⚠</span>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#b45309" }}>No Official Invoice Attached</div>
+                    <div style={{ fontSize: 11, color: "#6b7280", marginTop: 1 }}>Upload the Zoho-generated ZATCA PDF before sending to customer</div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+              {hasOfficialPdf && (
+                <>
+                  <button
+                    onClick={async () => {
+                      const res  = await fetch(`/api/admin/sales/${id}/official-invoice/view`);
+                      const data = await res.json();
+                      if (data.url) window.open(data.url, "_blank");
+                    }}
+                    style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", fontSize: 11, fontWeight: 600, color: CLR.primary, border: `1px solid ${CLR.primary}33`, background: CLR.primaryBg, cursor: "pointer", fontFamily: "inherit" }}>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    View
+                  </button>
+                  <button onClick={deleteOfficialInvoice} disabled={deleting}
+                    style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", fontSize: 11, fontWeight: 600, color: "#dc2626", border: "1px solid #fecaca", background: "#fef2f2", cursor: deleting ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: deleting ? 0.6 : 1 }}>
+                    {deleting ? "Removing…" : "Remove"}
+                  </button>
+                </>
+              )}
+              {/* Upload button */}
+              <label style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 14px", fontSize: 11, fontWeight: 600, background: hasOfficialPdf ? "#fff" : "#b45309", color: hasOfficialPdf ? "#374151" : "#fff", border: hasOfficialPdf ? "1px solid #d1d5db" : "none", cursor: uploading ? "not-allowed" : "pointer", opacity: uploading ? 0.6 : 1 }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                {uploading ? "Uploading…" : hasOfficialPdf ? "Replace" : "Upload Zoho PDF"}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/pdf"
+                  style={{ display: "none" }}
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (file) uploadOfficialInvoice(file);
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+          {uploadMsg && (
+            <div style={{ padding: "8px 16px", fontSize: 12, fontWeight: 600, background: uploadMsg.ok ? "#f0fdf4" : "#fef2f2", border: `1px solid ${uploadMsg.ok ? "#86efac" : "#fecaca"}`, borderTop: "none", color: uploadMsg.ok ? "#15803d" : "#dc2626" }}>
+              {uploadMsg.ok ? "✓ " : "✗ "}{uploadMsg.text}
+            </div>
+          )}
         </div>
       )}
 
@@ -452,7 +590,7 @@ export default function SalesDocDetailPage() {
         </div>
       </div>
 
-      {/* Status History — hidden in embed */}
+      {/* Status History */}
       {!isEmbed && (
         <div className="no-print" style={{ maxWidth: 860, margin: "0 auto 24px" }}>
           <div style={{ background: "#fff", border: "1px solid #e5e7eb", padding: "16px 20px" }}>
@@ -521,8 +659,6 @@ export default function SalesDocDetailPage() {
   );
 }
 
-// ── Record Payment Modal ──────────────────────────────────────────────────────
-
 function RecordPaymentModal({ doc, onClose, onSaved }: { doc: any; onClose: () => void; onSaved: () => void }) {
   const [method,    setMethod]    = useState("BANK_TRANSFER");
   const [amount,    setAmount]    = useState((doc.total / 100).toFixed(2));
@@ -540,16 +676,7 @@ function RecordPaymentModal({ doc, onClose, onSaved }: { doc: any; onClose: () =
     try {
       const res = await fetch("/api/admin/sales/billing", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          documentId:  doc.id,
-          marketId:    doc.market.id,
-          method,
-          amountCents: Math.round(Number(amount) * 100),
-          currency:    doc.currency,
-          reference:   reference || null,
-          notes:       notes     || null,
-          paidAt,
-        }),
+        body: JSON.stringify({ documentId: doc.id, marketId: doc.market.id, method, amountCents: Math.round(Number(amount) * 100), currency: doc.currency, reference: reference || null, notes: notes || null, paidAt }),
       });
       if (!res.ok) throw new Error((await res.json()).error);
       onSaved();
@@ -594,8 +721,6 @@ function RecordPaymentModal({ doc, onClose, onSaved }: { doc: any; onClose: () =
     </div>
   );
 }
-
-// ── DropItem ──────────────────────────────────────────────────────────────────
 
 function DropItem({ icon, label, hint, onClick, active }: { icon: string; label: string; hint?: string; onClick: () => void; active?: boolean }) {
   const [hov, setHov] = useState(false);

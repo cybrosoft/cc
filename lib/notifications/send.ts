@@ -1,21 +1,11 @@
 // lib/notifications/send.ts
 // Central orchestrator for all notification sending.
 // Handles channel selection, DND, preferences, templates, retry logic.
-// Used by: API routes, cron job, event triggers in other routes.
-//
-// Usage:
-//   import { sendNotification } from "@/lib/notifications/send";
-//   await sendNotification({
-//     userId:    "clxxx",
-//     eventType: "INVOICE_ISSUED",
-//     variables: { docNum: "CY-INV-5250", amount: "SAR 500.00", ... },
-//     link:      "/dashboard/invoices/CY-INV-5250",
-//   });
 
 import { prisma } from "@/lib/prisma";
-import { sendInApp }   from "./channels/inapp";
-import { sendEmail }   from "./channels/email";
-import { sendSMS }     from "./channels/sms";
+import { sendInApp }      from "./channels/inapp";
+import { sendEmail }      from "./channels/email";
+import { sendSMS }        from "./channels/sms";
 import { renderTemplate } from "./templates";
 
 // ── Event types ───────────────────────────────────────────────────────────────
@@ -38,10 +28,9 @@ export type EventType = typeof EVENT_TYPES[keyof typeof EVENT_TYPES];
 export interface SendNotificationParams {
   userId:       string;
   eventType:    EventType | string;
-  variables:    Record<string, string>; // template variable substitutions
-  link?:        string;                 // deep link in customer portal
-  broadcastId?: string;                 // set when part of a broadcast
-  // Override channels (bypasses user preference — use for critical alerts)
+  variables:    Record<string, string>;
+  link?:        string;
+  broadcastId?: string;
   forceEmail?:  boolean;
   forceSms?:    boolean;
   forceInapp?:  boolean;
@@ -52,7 +41,6 @@ export interface SendNotificationParams {
 export async function sendNotification(params: SendNotificationParams): Promise<void> {
   const { userId, eventType, variables, link, broadcastId } = params;
 
-  // 1. Load user with notification preferences + market
   const user = await prisma.user.findUnique({
     where:  { id: userId },
     select: {
@@ -64,12 +52,10 @@ export async function sendNotification(params: SendNotificationParams): Promise<
   });
   if (!user) return;
 
-  // 2. Load template for this event type
   const template = await prisma.notificationTemplate.findUnique({
     where: { eventType },
   });
 
-  // Fall back to plain text if no template
   const title = renderTemplate(
     template?.emailSubject ?? variables.title ?? eventType,
     variables
@@ -78,35 +64,34 @@ export async function sendNotification(params: SendNotificationParams): Promise<
     template?.emailBody ?? `<p>${variables.body ?? title}</p>`,
     variables
   );
-  const smsBody = renderTemplate(
-    template?.smsBody ?? title,
-    variables
-  );
+  const smsBody   = renderTemplate(template?.smsBody ?? title, variables);
   const inappBody = variables.body ?? title;
 
-  // 3. Resolve which channels to use
-  const prefs      = resolvePreferences(user.notifPrefs, eventType, template);
-  const useInapp   = params.forceInapp  ?? prefs.inapp;
-  const useEmail   = params.forceEmail  ?? prefs.email;
-  const useSms     = params.forceSms    ?? (prefs.sms && !!user.mobile);
+  const prefs    = resolvePreferences(user.notifPrefs, eventType, template);
+  const useInapp = params.forceInapp ?? prefs.inapp;
+  const useEmail = params.forceEmail ?? prefs.email;
+  const useSms   = params.forceSms   ?? (prefs.sms && !!user.mobile);
 
-  // 4. DND check for SMS (never block in-app or email)
   const smsBlocked = useSms && isDNDActive(user.timezone, user.dndStart, user.dndEnd);
 
-  // 5. Send each channel — independent try/catch so one failure doesn't block others
   const results = await Promise.allSettled([
     useInapp
       ? sendInApp({ userId, title, body: inappBody, eventType, link, broadcastId })
       : Promise.resolve(),
     useEmail
-      ? sendEmail({ user, subject: title, htmlBody: emailBody, eventType, link })
+      ? sendEmail({
+          user: { ...user, marketKey: user.market?.key ?? null },
+          subject: title,
+          htmlBody: emailBody,
+          eventType,
+          link,
+        })
       : Promise.resolve(),
     (useSms && !smsBlocked)
       ? sendSMS({ user, body: smsBody, eventType })
       : Promise.resolve(),
   ]);
 
-  // 6. Log failures to notification record
   const failures = results
     .map((r, i) => r.status === "rejected" ? `channel[${i}]: ${r.reason}` : null)
     .filter(Boolean);
@@ -120,12 +105,12 @@ export async function sendNotification(params: SendNotificationParams): Promise<
 
 export interface BroadcastParams {
   broadcastId:   string;
-  broadcastType: string;    // "ESSENTIAL" | "MARKETING"
+  broadcastType: string;
   title:         string;
   body:          string;
   emailSubject?: string;
   smsBody?:      string;
-  channels:      string[];  // ["inapp", "email", "sms"]
+  channels:      string[];
   userIds:       string[];
 }
 
@@ -140,12 +125,11 @@ export async function sendBroadcast(params: BroadcastParams): Promise<{ sent: nu
           id: true, email: true, fullName: true, mobile: true,
           timezone: true, dndStart: true, dndEnd: true,
           notifPrefs: true,
+          market: { select: { key: true } },
         },
       });
       if (!user) continue;
 
-      // Per-channel marketing opt-out check
-      // ESSENTIAL bypasses this — always sends to all requested channels
       const marketingPrefs = (user.notifPrefs as Record<string, unknown>) ?? {};
       function canSend(channel: string): boolean {
         if (params.broadcastType !== "MARKETING") return true;
@@ -154,11 +138,24 @@ export async function sendBroadcast(params: BroadcastParams): Promise<{ sent: nu
 
       await Promise.allSettled([
         (params.channels.includes("inapp") && canSend("inapp"))
-          ? sendInApp({ userId, title: params.title, body: params.body, eventType: "BROADCAST", broadcastId: params.broadcastId })
+          ? sendInApp({
+              userId,
+              title:       params.title,
+              body:        params.body,
+              eventType:   "BROADCAST",
+              broadcastId: params.broadcastId,
+            })
           : Promise.resolve(),
+
         (params.channels.includes("email") && canSend("email"))
-          ? sendEmail({ user, subject: params.emailSubject ?? params.title, htmlBody: `<p>${params.body}</p>`, eventType: "BROADCAST" })
+          ? sendEmail({
+              user:     { ...user, marketKey: user.market?.key ?? null },
+              subject:  params.emailSubject ?? params.title,
+              htmlBody: `<p>${params.body}</p>`,
+              eventType: "BROADCAST",
+            })
           : Promise.resolve(),
+
         (params.channels.includes("sms") && canSend("sms") && !!user.mobile && !isDNDActive(user.timezone, user.dndStart, user.dndEnd))
           ? sendSMS({ user, body: params.smsBody ?? params.body, eventType: "BROADCAST" })
           : Promise.resolve(),
@@ -170,7 +167,6 @@ export async function sendBroadcast(params: BroadcastParams): Promise<{ sent: nu
     }
   }
 
-  // Update broadcast record
   await prisma.notificationBroadcast.update({
     where: { id: params.broadcastId },
     data:  { sentCount: sent, failCount: failed, sentAt: new Date() },
@@ -198,12 +194,10 @@ function resolvePreferences(
     inapp: template?.defaultInapp ?? true,
   };
 
-  // If admin locked channels, always use defaults
   if (template?.lockChannels) return defaults;
 
-  // Try user preferences
   if (notifPrefs && typeof notifPrefs === "object") {
-    const prefs = notifPrefs as Record<string, Record<string, boolean>>;
+    const prefs      = notifPrefs as Record<string, Record<string, boolean>>;
     const eventPrefs = prefs[eventType];
     if (eventPrefs) {
       return {
@@ -234,7 +228,6 @@ function isDNDActive(
     );
 
     if (dndStart <= dndEnd) {
-      // e.g. 22 → 8 wraps midnight: split into two ranges
       return hour >= dndStart || hour < dndEnd;
     }
     return hour >= dndStart && hour < dndEnd;

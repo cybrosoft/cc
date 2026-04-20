@@ -1,4 +1,4 @@
-// FILE: app/api/auth/otp/request/route.ts
+// app/api/auth/otp/request/route.ts
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
@@ -15,39 +15,36 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => ({}))) as { email?: unknown };
     const normalizedEmail = normalizeEmail(String(body?.email ?? ""));
 
-    // Always generic OK to avoid enumeration
+    // Always return generic OK to avoid email enumeration
     const ok = () => NextResponse.json({ ok: true });
 
     if (!normalizedEmail) return ok();
 
-    // Only allow existing users (your original behavior)
+    // Only allow existing users
     const user = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
-      select: { id: true },
+      where:  { email: normalizedEmail },
+      select: { id: true, market: { select: { key: true } } },
     });
 
-    if (!user) {
-      // prevent enumeration
-      return ok();
-    }
+    if (!user) return ok();
 
-    const code = generateOtp();
+    const code     = generateOtp();
     const codeHash = hashOtp(normalizedEmail, code);
 
     await prisma.loginOtp.create({
       data: {
-        email: normalizedEmail,
+        email:        normalizedEmail,
         codeHash,
-        expiresAt: getOtpExpiry(),
-        attemptCount: 0, // ✅ REQUIRED (fix)
+        expiresAt:    getOtpExpiry(),
+        attemptCount: 0,
       },
     });
 
-    await sendOtpEmail(normalizedEmail, code);
+    // Pass market key so correct sender name is used per market
+    await sendOtpEmail(normalizedEmail, code, user.market?.key ?? undefined);
 
     return ok();
   } catch (e: unknown) {
-    // still return ok to avoid leaking whether email exists
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[api/auth/otp/request] error:", msg);
     return NextResponse.json({ ok: true });

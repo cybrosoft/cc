@@ -6,9 +6,10 @@ const PUBLIC_PREFIXES = [
   "/signup",
   "/sa/login",
   "/sa/signup",
-  "/api/auth/",   // covers otp/request, otp/verify, google, microsoft, logout
+  "/api/auth/",
   "/_next/",
   "/favicon",
+  "/print/",   // token-protected print pages — Puppeteer has no session cookie
 ];
 
 function isPublic(pathname: string): boolean {
@@ -27,23 +28,23 @@ function isSaudiPath(pathname: string): boolean {
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Allow static files
   if (pathname.includes(".")) return NextResponse.next();
 
-  // Allow all public routes + all auth API routes
-  if (isPublic(pathname)) return NextResponse.next();
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-pathname", pathname);
 
-  // Root → /login
+  if (isPublic(pathname)) {
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+
   if (pathname === "/") {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // /sa root → /sa/login
   if (pathname === "/sa" || pathname === "/sa/") {
     return NextResponse.redirect(new URL("/sa/login", req.url));
   }
 
-  // Protected routes — require session cookie
   if (!hasSessionCookie(req)) {
     const loginPath = isSaudiPath(pathname) ? "/sa/login" : "/login";
     const url = new URL(loginPath, req.url);
@@ -51,7 +52,7 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  return NextResponse.next();
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {

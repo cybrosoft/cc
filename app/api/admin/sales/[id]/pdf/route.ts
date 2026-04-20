@@ -5,9 +5,8 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/require-admin";
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { generatePrintToken } from "@/lib/sales/print-token";
 
 const s3 = new S3Client({
@@ -22,7 +21,6 @@ const s3 = new S3Client({
 
 const BUCKET = process.env.SUPABASE_S3_BUCKET ?? "uploads";
 
-// ── Helper: generate signed URL from S3 key ───────────────────────────────────
 async function signedUrl(key: string): Promise<string> {
   return getSignedUrl(
     s3,
@@ -31,7 +29,6 @@ async function signedUrl(key: string): Promise<string> {
   );
 }
 
-// ── Helper: generate PDF buffer via Puppeteer ─────────────────────────────────
 async function generatePdfBuffer(docId: string): Promise<Buffer> {
   const baseUrl  = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
   const token    = generatePrintToken(docId);
@@ -51,32 +48,22 @@ async function generatePdfBuffer(docId: string): Promise<Buffer> {
 
   try {
     const page = await browser.newPage();
-
     await page.goto(printUrl, { waitUntil: "networkidle0", timeout: 30000 });
-
-    // Wait for document content
     await page.waitForSelector("body", { timeout: 10000 });
-
-    // Small settle delay for fonts/images
     await new Promise(r => setTimeout(r, 800));
-
     await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
-
     const pdf = await page.pdf({
       format:          "A4",
-      printBackground: true,
       printBackground: true,
       margin: { top: "0mm", bottom: "0mm", left: "0mm", right: "0mm" },
       scale: 1,
     });
-
     return Buffer.from(pdf);
   } finally {
     await browser.close();
   }
 }
 
-// ── GET /api/admin/sales/[id]/pdf ─────────────────────────────────────────────
 export async function GET(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -89,20 +76,33 @@ export async function GET(
 
     const doc = await prisma.salesDocument.findUnique({
       where:  { id },
-      select: { id: true, docNum: true, type: true, pdfKey: true },
+      select: {
+        id: true, docNum: true, type: true, pdfKey: true,
+        officialInvoiceUrl: true,
+        market: { select: { key: true } },
+      },
     });
     if (!doc) return NextResponse.json({ error: "Document not found" }, { status: 404 });
 
-    // ── Serve from cache if available ────────────────────────────────────────
+    // Saudi INVOICE/CREDIT_NOTE with uploaded official PDF → signed URL redirect
+    if (
+      doc.market.key === "SAUDI" &&
+      ["INVOICE", "CREDIT_NOTE"].includes(doc.type) &&
+      doc.officialInvoiceUrl
+    ) {
+      const url = await signedUrl(doc.officialInvoiceUrl);
+      return NextResponse.redirect(url);
+    }
+
+    // Serve from S3 cache if available
     if (doc.pdfKey) {
       const url = await signedUrl(doc.pdfKey);
       return NextResponse.redirect(url);
     }
 
-    // ── Generate fresh PDF ───────────────────────────────────────────────────
+    // Generate fresh PDF
     const pdfBuffer = await generatePdfBuffer(id);
 
-    // Upload to S3
     const key = `sales-docs/${doc.docNum}.pdf`;
     await s3.send(new PutObjectCommand({
       Bucket:      BUCKET,
@@ -111,13 +111,11 @@ export async function GET(
       ContentType: "application/pdf",
     }));
 
-    // Save key to DB
     await prisma.salesDocument.update({
       where: { id },
       data:  { pdfKey: key },
     });
 
-    // Return signed URL redirect
     const url = await signedUrl(key);
     return NextResponse.redirect(url);
 
@@ -127,7 +125,6 @@ export async function GET(
   }
 }
 
-// ── DELETE /api/admin/sales/[id]/pdf — invalidate cache ───────────────────────
 export async function DELETE(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -145,9 +142,7 @@ export async function DELETE(
     if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     if (doc.pdfKey) {
-      // Delete from S3
       await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: doc.pdfKey })).catch(() => {});
-      // Clear key in DB
       await prisma.salesDocument.update({
         where: { id },
         data:  { pdfKey: null },

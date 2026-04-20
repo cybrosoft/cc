@@ -137,7 +137,6 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (reason === "rejected")  setMsg({ text: "Your application was not approved. Please contact support.", ok: false });
-    if (reason === "suspended") setMsg({ text: "Your account has been suspended. Please contact support.", ok: false });
     if (errorParam)             setMsg({ text: decodeURIComponent(errorParam), ok: false });
   }, [reason, errorParam]);
 
@@ -147,11 +146,19 @@ export default function LoginPage() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (emailFromQuery) {
-      setEmail(emailFromQuery);
+    if (!emailFromQuery) return;
+    setEmail(emailFromQuery);
+    // Auto-request OTP so the user doesn't have to click Continue manually
+    fetch("/api/auth/otp/request", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: emailFromQuery }),
+    }).then(() => {
       setStep("otp");
-      setMsg({ text: "Enter the OTP code sent to your email.", ok: true });
-    }
+      setMsg({ text: "A sign-in code has been sent to your email.", ok: true });
+    }).catch(() => {
+      setStep("otp");
+      setMsg({ text: "A sign-in code has been sent to your email.", ok: true });
+    });
   }, [emailFromQuery]);
 
   async function requestOtp(e: React.FormEvent) {
@@ -180,7 +187,6 @@ export default function LoginPage() {
         const errCode = isRecord(raw) ? readString(raw, "error") : null;
         let errMsg = "Invalid or expired code. Please try again.";
         if (errCode === "ACCOUNT_REJECTED")  errMsg = "Your application was not approved. Please contact support.";
-        if (errCode === "ACCOUNT_SUSPENDED") errMsg = "Your account has been suspended. Please contact support.";
         if (errCode === "SIGNUP_EXPIRED")    errMsg = "Your signup session expired. Please sign up again.";
         setMsg({ text: errMsg, ok: false });
         return;
@@ -330,7 +336,11 @@ export default function LoginPage() {
               onFocus={e => (e.target.style.borderColor = P)}
               onBlur={e  => (e.target.style.borderColor = "#e5e7eb")} />
             <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "#9ca3af" }}>
-              Open your authenticator app (Google Authenticator, Microsoft Authenticator, etc.) and enter the current 6-digit code.
+              Open your authenticator app and enter the current 6-digit code.
+            </p>
+            <p style={{ margin: "8px 0 0", fontSize: 11.5, color: "#9ca3af" }}>
+              Having issues?{" "}
+              <a href="#" style={{ color: "#6b7280", textDecoration: "underline" }}>Get help signing in</a>
             </p>
           </div>
           <button type="submit" disabled={loading || code.length !== 6} style={primaryBtn(loading)}>

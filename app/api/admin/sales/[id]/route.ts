@@ -64,7 +64,9 @@ export async function GET(
 
     if (!doc) return NextResponse.json({ error: "Document not found" }, { status: 404 });
 
+    // Return full doc — officialInvoiceUrl included automatically via Prisma
     return NextResponse.json({ ok: true, doc });
+
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

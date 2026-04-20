@@ -1,5 +1,6 @@
-// app/admin/system/settings/SettingsClient.tsx
 "use client";
+// app/admin/system/settings/SettingsClient.tsx
+
 import React, { useState } from "react";
 import { CLR } from "@/components/ui/admin-ui";
 import { Icon } from "@/components/ui/Icon";
@@ -7,10 +8,12 @@ import CompanyProfilesTab from "./tabs/CompanyProfilesTab";
 import PortalSettingsTab  from "./tabs/PortalSettingsTab";
 import NumberSeriesTab    from "./tabs/NumberSeriesTab";
 import TagBehavioursTab   from "./tabs/TagBehavioursTab";
+import EmailSettingsTab   from "./tabs/EmailSettingsTab";
 
 const TABS = [
   { id: "company",      label: "Company Profiles", icon: "building"     },
   { id: "portal",       label: "Portal Settings",  icon: "globe"        },
+  { id: "email",        label: "Email Settings",   icon: "notifications" },
   { id: "numberseries", label: "Number Series",    icon: "numberseries" },
   { id: "tagbehaviour", label: "Tag Behaviours",   icon: "tag"          },
 ];
@@ -50,6 +53,7 @@ export default function SettingsClient() {
       <div style={{ flex: 1, minWidth: 0 }}>
         {active === "company"      && <CompanyProfilesTab />}
         {active === "portal"       && <PortalSettingsTab />}
+        {active === "email"        && <EmailSettingsTab />}
         {active === "numberseries" && <NumberSeriesTab />}
         {active === "tagbehaviour" && <TagBehavioursTab />}
       </div>

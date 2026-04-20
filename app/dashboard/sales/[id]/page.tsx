@@ -90,6 +90,7 @@ export default async function SalesDocPage({
     referenceNumber:    doc.referenceNumber    ?? null,
     rfqTitle:           doc.rfqTitle           ?? null,
     pdfKey:             doc.pdfKey             ?? null,
+    officialInvoiceUrl: doc.officialInvoiceUrl ?? null,
     language:           doc.language,
     issueDate:          doc.issueDate.toISOString(),
     dueDate:            doc.dueDate?.toISOString()    ?? null,

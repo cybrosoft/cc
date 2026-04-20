@@ -4,8 +4,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { colors } from "@/lib/ui/tokens";
+import { useActionGuard } from "@/lib/auth/action-guard";
 
-// ── Row limits ────────────────────────────────────────────────────────────────
 const LIMIT = {
   servers:  { lg: 6, sm: 4 },
   subs:     { lg: 6, sm: 4 },
@@ -13,11 +13,10 @@ const LIMIT = {
   notifs:   { lg: 4, sm: 3 },
 };
 
-// ── Types ─────────────────────────────────────────────────────────────────────
 interface DashboardUser {
   id: string; email: string; name?: string | null; companyName?: string | null;
   customerNumber?: string | null; market?: string | null; currency?: string | null;
-  customerGroup?: string | null;
+  customerGroup?: string | null; userStatus?: string;
 }
 interface Stats {
   activeSubscriptions: number; pendingInvoices: number; overdueInvoices: number;
@@ -43,7 +42,6 @@ interface NotifRow {
   isRead: boolean; type: string; createdAt: string;
 }
 
-// ── Map ───────────────────────────────────────────────────────────────────────
 const REGION_COLOR: Record<string, string> = {
   me: "#16a34a", eu: "#2563eb", ap: "#7c3aed", am: "#0891b2",
 };
@@ -73,13 +71,11 @@ const MAP_REGIONS = [
   ]},
 ];
 
-// ── Constants ─────────────────────────────────────────────────────────────────
 const DOC_LABELS: Record<string, string> = {
   INVOICE: "Invoice", QUOTATION: "Quotation", PO: "Purchase Order",
   DELIVERY_NOTE: "Delivery Note", PROFORMA: "Proforma", CREDIT_NOTE: "Credit Note", RFQ: "RFQ",
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function fmt(amount: number, currency = "USD") {
   return new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(amount);
 }
@@ -100,7 +96,6 @@ function fmtDateShort(dateStr: string | null) {
   return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
 function StatusText({ status, size = 12 }: { status: string; size?: number }) {
   const colorMap: Record<string, string> = {
     ACTIVE: colors.primary, PAID: colors.primary,
@@ -131,11 +126,7 @@ function SectionHeader({ title, href, linkLabel }: { title: string; href?: strin
 }
 
 function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
-  return (
-    <div className="cy-card" style={{ height: "100%", ...style }}>
-      {children}
-    </div>
-  );
+  return <div className="cy-card" style={{ height: "100%", ...style }}>{children}</div>;
 }
 
 function THead({ cols, flex }: { cols: string[]; flex?: (number | string)[] }) {
@@ -148,28 +139,6 @@ function THead({ cols, flex }: { cols: string[]; flex?: (number | string)[] }) {
   );
 }
 
-function StatCard({ label, value, href, loading, accent, icon }: {
-  label: string; value: number; href: string; loading: boolean;
-  accent?: "success" | "warning" | "danger" | "default"; icon: React.ReactNode;
-}) {
-  const a = {
-    success: { iconBg: "#e8f5f0", iconColor: colors.primary, valColor: colors.primary },
-    warning: { iconBg: "#fff8e6", iconColor: "#b45309",       valColor: "#b45309" },
-    danger:  { iconBg: "#fdf0ef", iconColor: "#dc2626",       valColor: "#dc2626" },
-    default: { iconBg: "#f3f4f6", iconColor: "#6b7280",       valColor: "#111827" },
-  }[accent ?? "default"];
-  return (
-    <Link href={href} className="cy-stat-card" style={{ display: "flex", alignItems: "center", background: "#fff", border: "1px solid #e5e7eb", textDecoration: "none" }}>
-      <div className="cy-stat-icon" style={{ flexShrink: 0, background: a.iconBg, color: a.iconColor, display: "flex", alignItems: "center", justifyContent: "center" }}>{icon}</div>
-      <div>
-        <div className="cy-stat-val" style={{ fontWeight: 700, lineHeight: 1, color: a.valColor, letterSpacing: "-0.02em" }}>{loading ? <Skeleton w={36} h={22} /> : value}</div>
-        <div className="cy-stat-lbl" style={{ color: "#6b7280", marginTop: 3 }}>{label}</div>
-      </div>
-    </Link>
-  );
-}
-
-// ── Map component ─────────────────────────────────────────────────────────────
 function ServerMap({ servers }: { servers: ServerRow[] }) {
   const [hoveredRegion, setHoveredRegion] = useState<string | null>(null);
   const activeSet = new Set(servers.map(s => (s.location ?? "").toLowerCase()));
@@ -215,19 +184,19 @@ function ServerMap({ servers }: { servers: ServerRow[] }) {
   );
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
 export function DashboardHomeClient({ user }: { user: DashboardUser }) {
-  const [stats,           setStats]           = useState<Stats | null>(null);
-  const [servers,         setServers]         = useState<ServerRow[]>([]);
-  const [subs,            setSubs]            = useState<SubRow[]>([]);
-  const [activity,        setActivity]        = useState<ActivityRow[]>([]);
-  const [notifs,          setNotifs]          = useState<NotifRow[]>([]);
-  const [loading,         setLoading]         = useState(true);
-  const [isMobile,        setIsMobile]        = useState(false);
-  const [lastLogin,       setLastLogin]       = useState<string | null>(null);
-  const [unreadNotifCount,setUnreadNotifCount]= useState(0);
+  const [stats,            setStats]           = useState<Stats | null>(null);
+  const [servers,          setServers]         = useState<ServerRow[]>([]);
+  const [subs,             setSubs]            = useState<SubRow[]>([]);
+  const [activity,         setActivity]        = useState<ActivityRow[]>([]);
+  const [notifs,           setNotifs]          = useState<NotifRow[]>([]);
+  const [loading,          setLoading]         = useState(true);
+  const [isMobile,         setIsMobile]        = useState(false);
+  const [lastLogin,        setLastLogin]       = useState<string | null>(null);
+  const [unreadNotifCount, setUnreadNotifCount]= useState(0);
 
-  // Detect mobile
+  const userStatus = user.userStatus ?? "ACTIVE";
+
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 899px)");
     setIsMobile(mq.matches);
@@ -251,6 +220,8 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
       .finally(() => setLoading(false));
   }, []);
 
+  const { guardHref, toast } = useActionGuard(user.userStatus ?? "ACTIVE");
+
   const currency  = user.currency ?? (user.market === "saudi" ? "SAR" : "USD");
   const greetName = user.companyName || user.name?.split(" ")[0] || null;
   const lim       = isMobile ? "sm" : "lg";
@@ -262,56 +233,41 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
 
   return (
     <>
+      {toast}
+
       <style>{`
         .cy-dash-wrap { padding: 24px; overflow: hidden; }
         @media (max-width: 1023px) { .cy-dash-wrap { padding: 12px; } }
-
         .cy-stats-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
         @media (max-width: 900px) { .cy-stats-grid { grid-template-columns: repeat(2,1fr); gap: 8px; } }
-
         .cy-row-half { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; align-items: stretch; }
         @media (max-width: 900px) { .cy-row-half { grid-template-columns: minmax(0,1fr); gap: 12px; } }
-
         .cy-col-full { display: flex; flex-direction: column; height: 100%; min-width: 0; overflow: hidden; }
-
         .cy-quick-acts { display: flex; flex-direction: column; gap: 8px; height: 100%; }
         @media (max-width: 900px) { .cy-quick-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; height: auto; } }
-
-        .cy-stat-card:hover    { border-color: #a8d5c9 !important; box-shadow: 0 2px 8px rgba(49,135,116,0.07); }
-        .cy-stat-card          { padding: 15px 16px; gap: 13px; }
-        .cy-stat-icon          { width: 40px; height: 40px; border-radius: 8px; }
-        .cy-stat-val           { font-size: 24px; }
-        .cy-stat-lbl           { font-size: 12px; }
+        .cy-stat-card:hover { border-color: #a8d5c9 !important; box-shadow: 0 2px 8px rgba(49,135,116,0.07); }
+        .cy-stat-card { padding: 15px 16px; gap: 13px; }
+        .cy-stat-icon { width: 40px; height: 40px; border-radius: 8px; }
+        .cy-stat-val { font-size: 24px; }
+        .cy-stat-lbl { font-size: 12px; }
         @media (max-width: 900px) {
-          .cy-stat-card        { padding: 10px 13px !important; gap: 10px !important; }
-          .cy-stat-icon        { width: 32px !important; height: 32px !important; border-radius: 7px !important; }
-          .cy-stat-val         { font-size: 18px !important; }
-          .cy-stat-lbl         { font-size: 11.5px !important; }
+          .cy-stat-card { padding: 10px 13px !important; gap: 10px !important; }
+          .cy-stat-icon { width: 32px !important; height: 32px !important; border-radius: 7px !important; }
+          .cy-stat-val { font-size: 18px !important; }
+          .cy-stat-lbl { font-size: 11.5px !important; }
         }
-        .cy-table-row:hover    { background: #f5faf8 !important; }
-        .cy-table-row          { color: inherit; display: block; width: 100%; }
-        .cy-quick-act:hover    { border-color: #a8d5c9 !important; background: #fafefa !important; }
-        .cy-notif-row:hover    { background: #f5faf8 !important; }
+        .cy-table-row:hover { background: #f5faf8 !important; }
+        .cy-table-row { color: inherit; display: block; width: 100%; }
+        .cy-quick-act:hover { border-color: #a8d5c9 !important; background: #fafefa !important; }
+        .cy-notif-row:hover { background: #f5faf8 !important; }
         .cy-activity-row:hover { background: #f5faf8 !important; }
-
         .cy-card { background: #fff; border: 1px solid #e5e7eb; overflow: hidden; width: 100%; box-sizing: border-box; }
-
-        .cy-act-link  { display: flex; align-items: center; gap: 12px; padding: 11px 14px; text-decoration: none; overflow: hidden; width: 100%; box-sizing: border-box; }
+        .cy-act-link { display: flex; align-items: center; gap: 12px; padding: 11px 14px; text-decoration: none; overflow: hidden; width: 100%; box-sizing: border-box; }
         .cy-notif-lnk { display: block; text-decoration: none; overflow: hidden; width: 100%; }
         .cy-hdr-actions { display: flex; gap: 8px; flex-shrink: 0; }
         @media (max-width: 560px) { .cy-hdr-actions { display: none; } }
-
-        @keyframes cy-shimmer {
-          0%   { background-position: -400px 0; }
-          100% { background-position:  400px 0; }
-        }
-        .cy-shimmer {
-          background: linear-gradient(90deg, #f0f0f0 25%, #e4e4e4 50%, #f0f0f0 75%);
-          background-size: 800px 100%;
-          animation: cy-shimmer 1.4s ease-in-out infinite;
-          border-radius: 4px;
-          display: inline-block;
-        }
+        @keyframes cy-shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+        .cy-shimmer { background: linear-gradient(90deg, #f0f0f0 25%, #e4e4e4 50%, #f0f0f0 75%); background-size: 800px 100%; animation: cy-shimmer 1.4s ease-in-out infinite; border-radius: 4px; display: inline-block; }
       `}</style>
 
       <div className="cy-dash-wrap">
@@ -320,9 +276,7 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 20 }}>
           <div style={{ minWidth: 0 }}>
             <h1 className="cy-page-title" style={{ margin: "0 0 3px" }}>
-              {greetName
-                ? `Welcome, ${greetName.length > 25 ? greetName.slice(0, 23) + ".." : greetName}`
-                : "Dashboard"}
+              {greetName ? `Welcome, ${greetName.length > 25 ? greetName.slice(0, 23) + ".." : greetName}` : "Dashboard"}
             </h1>
             <p style={{ margin: 0, fontSize: 13, color: "#9ca3af" }}>
               {lastLogin
@@ -331,21 +285,43 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
             </p>
           </div>
           <div className="cy-hdr-actions">
-            <Link href="/dashboard/rfq" style={{ display: "flex", alignItems: "center", height: 34, padding: "0 14px", background: "#fff", border: "1px solid #e5e7eb", fontSize: 13, fontWeight: 500, color: "#374151", textDecoration: "none" }}>Submit RFQ</Link>
-            <Link href="/dashboard/catalogue" style={{ display: "flex", alignItems: "center", height: 34, padding: "0 14px", background: colors.primary, fontSize: 13, fontWeight: 500, color: "#fff", textDecoration: "none" }}>+ New Service</Link>
+            {/* Submit RFQ — always allowed */}
+            <Link href="/dashboard/rfq" style={{ display: "flex", alignItems: "center", height: 34, padding: "0 14px", background: "#fff", border: "1px solid #e5e7eb", fontSize: 13, fontWeight: 500, color: "#374151", textDecoration: "none" }}>
+              Submit RFQ
+            </Link>
+            {/* New Service — restricted for PENDING/INFO_REQUIRED */}
+            <Link href="/dashboard/catalogue" onClick={e => guardHref(e, "/dashboard/catalogue")}
+              style={{ display: "flex", alignItems: "center", height: 34, padding: "0 14px", background: colors.primary, fontSize: 13, fontWeight: 500, color: "#fff", textDecoration: "none" }}>
+              + New Service
+            </Link>
           </div>
         </div>
 
-        {/* Row 1: Stats */}
+        {/* Stats */}
         <div className="cy-stats-grid" style={{ marginBottom: 20 }}>
-          <StatCard label="Active Services"    href="/dashboard/subscriptions" value={stats?.activeSubscriptions ?? 0}    loading={loading} accent="success"
-            icon={<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="1.5" y="1.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="10.5" y="1.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="1.5" y="10.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="10.5" y="10.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/></svg>} />
-          <StatCard label="Active Servers"     href="/dashboard/servers"       value={stats?.servers ?? 0}                loading={loading}
-            icon={<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="1.5" y="2.5" width="15" height="5" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="1.5" y="10.5" width="15" height="5" rx="1" stroke="currentColor" strokeWidth="1.5"/><circle cx="4.5" cy="5" r="0.8" fill="currentColor"/><circle cx="4.5" cy="13" r="0.8" fill="currentColor"/></svg>} />
-          <StatCard label="Pending Invoices"   href="/dashboard/invoices"      value={stats?.pendingInvoices ?? 0}        loading={loading} accent={stats?.overdueInvoices ? "danger" : stats?.pendingInvoices ? "warning" : "default"}
-            icon={<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2.5" y="1.5" width="13" height="15" rx="1" stroke="currentColor" strokeWidth="1.5"/><path d="M6 6h6M6 9h5M6 12h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>} />
-          <StatCard label="Expiring (30 days)" href="/dashboard/subscriptions" value={stats?.expiringSubscriptions ?? 0} loading={loading} accent={stats?.expiringSubscriptions ? "warning" : "default"}
-            icon={<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="7" stroke="currentColor" strokeWidth="1.5"/><path d="M9 5.5v4l2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>} />
+          {[
+            { label: "Active Services",    href: "/dashboard/subscriptions", value: stats?.activeSubscriptions ?? 0, accent: "success" as const, icon: <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="1.5" y="1.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="10.5" y="1.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="1.5" y="10.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="10.5" y="10.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/></svg> },
+            { label: "Active Servers",     href: "/dashboard/servers",       value: stats?.servers ?? 0,                accent: "default" as const, icon: <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="1.5" y="2.5" width="15" height="5" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="1.5" y="10.5" width="15" height="5" rx="1" stroke="currentColor" strokeWidth="1.5"/><circle cx="4.5" cy="5" r="0.8" fill="currentColor"/><circle cx="4.5" cy="13" r="0.8" fill="currentColor"/></svg> },
+            { label: "Pending Invoices",   href: "/dashboard/invoices",      value: stats?.pendingInvoices ?? 0,        accent: (stats?.overdueInvoices ? "danger" : stats?.pendingInvoices ? "warning" : "default") as "danger"|"warning"|"default", icon: <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2.5" y="1.5" width="13" height="15" rx="1" stroke="currentColor" strokeWidth="1.5"/><path d="M6 6h6M6 9h5M6 12h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
+            { label: "Expiring (30 days)", href: "/dashboard/subscriptions", value: stats?.expiringSubscriptions ?? 0, accent: (stats?.expiringSubscriptions ? "warning" : "default") as "warning"|"default", icon: <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="7" stroke="currentColor" strokeWidth="1.5"/><path d="M9 5.5v4l2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg> },
+          ].map(card => {
+            const accentMap = {
+              success: { iconBg: "#e8f5f0", iconColor: colors.primary, valColor: colors.primary },
+              warning: { iconBg: "#fff8e6", iconColor: "#b45309", valColor: "#b45309" },
+              danger:  { iconBg: "#fdf0ef", iconColor: "#dc2626", valColor: "#dc2626" },
+              default: { iconBg: "#f3f4f6", iconColor: "#6b7280", valColor: "#111827" },
+            }[card.accent];
+            return (
+              <Link key={card.label} href={card.href} onClick={e => guardHref(e, card.href)}
+                className="cy-stat-card" style={{ display: "flex", alignItems: "center", background: "#fff", border: "1px solid #e5e7eb", textDecoration: "none" }}>
+                <div className="cy-stat-icon" style={{ flexShrink: 0, background: accentMap.iconBg, color: accentMap.iconColor, display: "flex", alignItems: "center", justifyContent: "center" }}>{card.icon}</div>
+                <div>
+                  <div className="cy-stat-val" style={{ fontWeight: 700, lineHeight: 1, color: accentMap.valColor, letterSpacing: "-0.02em" }}>{loading ? <Skeleton w={36} h={22} /> : card.value}</div>
+                  <div className="cy-stat-lbl" style={{ color: "#6b7280", marginTop: 3 }}>{card.label}</div>
+                </div>
+              </Link>
+            );
+          })}
         </div>
 
         {/* Row 2: Servers + Quick actions */}
@@ -353,7 +329,6 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
           <div className="cy-col-full">
             <SectionHeader title="My Servers" href="/dashboard/servers" linkLabel="All servers" />
             <Card>
-              {/* Desktop header */}
               {!isMobile && <THead cols={["ID / Key", "IPv4", "Specs", "Location", "Status"]} flex={[1.5, 1.5, 1.5, 1.5, 1]} />}
               {loading
                 ? Array.from({ length: isMobile ? LIMIT.servers.sm : LIMIT.servers.lg }).map((_, i) => (
@@ -369,7 +344,8 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
                       </div>
                       <div style={{ fontSize: 13, fontWeight: 500, color: "#374151", marginBottom: 4 }}>No servers yet</div>
                       <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 12 }}>Deploy your first cloud server</div>
-                      <Link href="/dashboard/catalogue" style={{ display: "inline-flex", alignItems: "center", height: 30, padding: "0 14px", background: colors.primary, color: "#fff", fontSize: 12, fontWeight: 500, textDecoration: "none", borderRadius: 6 }}>Browse catalogue</Link>
+                      <Link href="/dashboard/catalogue" onClick={e => guardHref(e, "/dashboard/catalogue")}
+                        style={{ display: "inline-flex", alignItems: "center", height: 30, padding: "0 14px", background: colors.primary, color: "#fff", fontSize: 12, fontWeight: 500, textDecoration: "none", borderRadius: 6 }}>Browse catalogue</Link>
                     </div>
                   )
                   : visibleServers.map((s, idx) => {
@@ -379,7 +355,7 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
                       const border = last ? "none" : "1px solid #f3f4f6";
                       if (isMobile) {
                         return (
-                          <Link key={s.id} href={`/dashboard/servers/${s.id}`} className="cy-table-row"
+                          <Link key={s.id} href={`/dashboard/servers/${s.id}`} onClick={e => guardHref(e, `/dashboard/servers/${s.id}`)} className="cy-table-row"
                             style={{ display: "flex", flexDirection: "column", padding: "10px 14px", borderBottom: border, textDecoration: "none", gap: 4 }}>
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                               <span style={{ fontSize: 13, fontWeight: 500, color: "#111827", textTransform: "uppercase", letterSpacing: "0.03em" }}>{code}</span>
@@ -394,7 +370,7 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
                         );
                       }
                       return (
-                        <Link key={s.id} href={`/dashboard/servers/${s.id}`} className="cy-table-row"
+                        <Link key={s.id} href={`/dashboard/servers/${s.id}`} onClick={e => guardHref(e, `/dashboard/servers/${s.id}`)} className="cy-table-row"
                           style={{ display: "flex", alignItems: "center", padding: "9px 14px", borderBottom: border, textDecoration: "none" }}>
                           <div style={{ flex: 1.5, minWidth: 0, paddingRight: 8 }}>
                             <div style={{ fontSize: 12.5, fontWeight: 500, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.03em" }}>{code}</div>
@@ -414,21 +390,30 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
           <div className="cy-col-full">
             <SectionHeader title="Quick actions" />
             <div className="cy-quick-acts">
-              {[
-                { href: "/dashboard/catalogue",  label: "Buy a Service",  sub: "Browse cloud plans",   p: true,  icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M1 8h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg> },
-                { href: "/dashboard/invoices",   label: "View Invoices",  sub: "Pay or download",      p: false, icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="1" width="12" height="14" rx="1" stroke="currentColor" strokeWidth="1.5"/><path d="M5 5h6M5 8h5M5 11h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
-                { href: "/dashboard/rfq",        label: "Submit RFQ",     sub: "Request a quote",      p: false, icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M14 2H10a1 1 0 00-.707.293L2.293 9.293a1 1 0 000 1.414l3 3a1 1 0 001.414 0L13.707 6.707A1 1 0 0014 6V2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><circle cx="11.5" cy="4.5" r="0.75" fill="currentColor"/></svg> },
-                { href: "/dashboard/quotations", label: "Quotations",     sub: "View & accept quotes", p: false, icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="1.5" width="13" height="13" rx="1" stroke="currentColor" strokeWidth="1.5"/><path d="M4 6h8M4 9h6M4 12h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
-                { href: "/dashboard/statement",  label: "Statement",      sub: "Account ledger",       p: false, icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="1.5" width="13" height="13" rx="1" stroke="currentColor" strokeWidth="1.5"/><path d="M4 4h4M4 7h8M4 10h8M4 13h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
-              ].map(a => (
-                <Link key={a.href} href={a.href} className="cy-quick-act" style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, background: "#fff", border: "1px solid #e5e7eb", padding: "10px 13px", textDecoration: "none", transition: "border-color 0.15s, background 0.15s", boxSizing: "border-box" }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 7, flexShrink: 0, background: a.p ? "#e8f5f0" : "#f3f4f6", color: a.p ? colors.primary : "#6b7280", display: "flex", alignItems: "center", justifyContent: "center" }}>{a.icon}</div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.label}</div>
-                    <div style={{ fontSize: 11.5, color: "#9ca3af", marginTop: 1 }}>{a.sub}</div>
-                  </div>
-                </Link>
-              ))}
+              {(() => {
+                const isTotpOn = user.totpEnabled ?? false;
+                type QA = { href: string; label: string; sub: string; p: boolean; restricted: boolean; icon: React.ReactNode };
+                const acts: QA[] = [
+                  // First: 2FA if not enabled, RFQ if enabled
+                  isTotpOn
+                    ? { href: "/dashboard/rfq",              label: "Submit RFQ",   sub: "Request a quote",       p: false, restricted: false, icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M14 2H10a1 1 0 00-.707.293L2.293 9.293a1 1 0 000 1.414l3 3a1 1 0 001.414 0L13.707 6.707A1 1 0 0014 6V2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><circle cx="11.5" cy="4.5" r="0.75" fill="currentColor"/></svg> }
+                    : { href: "/dashboard/profile#security", label: "Enable 2FA",   sub: "Secure your account",   p: true,  restricted: false, icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1L2 4v4c0 3.31 2.67 6.4 6 7 3.33-.6 6-3.69 6-7V4L8 1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg> },
+                  { href: "/dashboard/catalogue",  label: "Buy a Service",  sub: "Browse cloud plans",   p: false, restricted: true,  icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M1 8h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg> },
+                  { href: "/dashboard/invoices",   label: "View Invoices",  sub: "Pay or download",      p: false, restricted: true,  icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="1" width="12" height="14" rx="1" stroke="currentColor" strokeWidth="1.5"/><path d="M5 5h6M5 8h5M5 11h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
+                  { href: "/dashboard/quotations", label: "Quotations",     sub: "View & accept quotes", p: false, restricted: true,  icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="1.5" width="13" height="13" rx="1" stroke="currentColor" strokeWidth="1.5"/><path d="M4 6h8M4 9h6M4 12h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
+                  { href: "/dashboard/statement",  label: "Statement",      sub: "Account ledger",       p: false, restricted: true,  icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="1.5" width="13" height="13" rx="1" stroke="currentColor" strokeWidth="1.5"/><path d="M4 4h4M4 7h8M4 10h8M4 13h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
+                ];
+                return acts.map(a => (
+                  <Link key={a.href} href={a.href} onClick={a.restricted ? e => guardHref(e, a.href) : undefined}
+                    className="cy-quick-act" style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, background: a.label === "Enable 2FA" ? "#fafefa" : "#fff", border: a.label === "Enable 2FA" ? "1px solid #a8d5c9" : "1px solid #e5e7eb", padding: "10px 13px", textDecoration: "none", transition: "border-color 0.15s, background 0.15s", boxSizing: "border-box" }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 7, flexShrink: 0, background: a.p ? "#e8f5f0" : "#f3f4f6", color: a.p ? colors.primary : "#6b7280", display: "flex", alignItems: "center", justifyContent: "center" }}>{a.icon}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.label}</div>
+                      <div style={{ fontSize: 11.5, color: "#9ca3af", marginTop: 1 }}>{a.sub}</div>
+                    </div>
+                  </Link>
+                ));
+              })()}
             </div>
           </div>
         </div>
@@ -438,7 +423,6 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
           <div className="cy-col-full">
             <SectionHeader title="My Subscriptions" href="/dashboard/subscriptions" />
             <Card>
-              {/* Desktop header */}
               {!isMobile && <THead cols={["Service", "Start", "Expires", "Status"]} flex={[2, 1, 1, 1]} />}
               {loading
                 ? Array.from({ length: isMobile ? LIMIT.subs.sm : LIMIT.subs.lg }).map((_, i) => (
@@ -454,7 +438,8 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
                       </div>
                       <div style={{ fontSize: 13, fontWeight: 500, color: "#374151", marginBottom: 4 }}>No active services</div>
                       <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 12 }}>Subscribe to your first cloud service</div>
-                      <Link href="/dashboard/catalogue" style={{ display: "inline-flex", alignItems: "center", height: 30, padding: "0 14px", background: colors.primary, color: "#fff", fontSize: 12, fontWeight: 500, textDecoration: "none", borderRadius: 6 }}>Browse catalogue</Link>
+                      <Link href="/dashboard/catalogue" onClick={e => guardHref(e, "/dashboard/catalogue")}
+                        style={{ display: "inline-flex", alignItems: "center", height: 30, padding: "0 14px", background: colors.primary, color: "#fff", fontSize: 12, fontWeight: 500, textDecoration: "none", borderRadius: 6 }}>Browse catalogue</Link>
                     </div>
                   )
                   : visibleSubs.map((s, idx) => {
@@ -462,29 +447,23 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
                       const border = last ? "none" : "1px solid #f3f4f6";
                       if (isMobile) {
                         return (
-                          <Link key={s.id} href={`/dashboard/subscriptions/${s.id}`} className="cy-table-row"
+                          <Link key={s.id} href={`/dashboard/subscriptions/${s.id}`} onClick={e => guardHref(e, `/dashboard/subscriptions/${s.id}`)} className="cy-table-row"
                             style={{ display: "flex", flexDirection: "column", padding: "10px 14px", borderBottom: border, textDecoration: "none", gap: 4 }}>
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                              <span style={{ fontSize: 12.5, fontWeight: 500, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "50%" }} title={s.productName}>
-                                {s.productName}
-                              </span>
+                              <span style={{ fontSize: 12.5, fontWeight: 500, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "50%" }} title={s.productName}>{s.productName}</span>
                               <StatusText status={s.status} size={11} />
                             </div>
                             <div style={{ display: "flex", gap: 6, fontSize: 11, color: "#9ca3af" }}>
-                              <span>{s.billingPeriod}</span>
-                              <span>·</span>
-                              <span>Exp: {fmtDateShort(s.currentPeriodEnd)}</span>
+                              <span>{s.billingPeriod}</span><span>·</span><span>Exp: {fmtDateShort(s.currentPeriodEnd)}</span>
                             </div>
                           </Link>
                         );
                       }
                       return (
-                        <Link key={s.id} href={`/dashboard/subscriptions/${s.id}`} className="cy-table-row"
+                        <Link key={s.id} href={`/dashboard/subscriptions/${s.id}`} onClick={e => guardHref(e, `/dashboard/subscriptions/${s.id}`)} className="cy-table-row"
                           style={{ display: "flex", alignItems: "center", padding: "9px 14px", borderBottom: border, textDecoration: "none" }}>
                           <div style={{ flex: 2, minWidth: 0, paddingRight: 12 }}>
-                            <div style={{ fontSize: 12.5, fontWeight: 500, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.productName}>
-                              {s.productName}
-                            </div>
+                            <div style={{ fontSize: 12.5, fontWeight: 500, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.productName}>{s.productName}</div>
                             <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 1 }}>{s.billingPeriod}</div>
                           </div>
                           <span style={{ flex: 1, fontSize: 12, color: "#6b7280", paddingRight: 8, whiteSpace: "nowrap" }}>{fmtDate(s.currentPeriodStart)}</span>
@@ -529,7 +508,7 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
                       const c    = tc[a.type] ?? {bg:"#f3f4f6",color:"#6b7280"};
                       const last = idx === visibleActivity.length - 1;
                       return (
-                        <Link key={a.id} href={a.href} className="cy-activity-row cy-act-link"
+                        <Link key={a.id} href={a.href} onClick={e => guardHref(e, a.href)} className="cy-activity-row cy-act-link"
                           style={{ borderBottom: last ? "none" : "1px solid #f3f4f6", transition: "background 0.12s" }}>
                           <div style={{ width: 34, height: 34, borderRadius: 6, flexShrink: 0, background: c.bg, color: c.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9.5, fontWeight: 700, letterSpacing: "0.04em" }}>
                             {(DOC_LABELS[a.type] ?? a.type).slice(0,3).toUpperCase()}
@@ -595,7 +574,6 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
             </Card>
           </div>
         </div>
-
       </div>
     </>
   );
