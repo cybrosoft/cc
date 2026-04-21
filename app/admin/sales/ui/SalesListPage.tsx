@@ -126,46 +126,32 @@ export default function SalesListPage({ docType }: Props) {
         market:    { key: d.market?.key ?? "", name: d.market?.name ?? "" },
         originDoc: d.originDoc ?? null,
       }));
-      setAllDocs(rows.sort((a, b) => new Date((b as any).createdAt).getTime() - new Date((a as any).createdAt).getTime()));
-      if (rows.length > 0 && !selectedId) setSelectedId(rows[0].id);
-    } catch { /**/ }
+      setAllDocs(rows);
+    } catch { /* silent */ }
     setLoading(false);
   }, [docType]);
 
+  useEffect(() => { fetchDocs(); }, [fetchDocs]);
+
+  // Debounced filter
+  const [filtered, setFiltered] = useState<SalesDocRow[]>([]);
   useEffect(() => {
     if (debRef.current) clearTimeout(debRef.current);
-    debRef.current = setTimeout(() => { fetchDocs(); }, 0);
-  }, [fetchDocs]);
+    debRef.current = setTimeout(() => {
+      const qLow = q.toLowerCase();
+      setFiltered(allDocs.filter(d => {
+        if (status    && d.status !== status)       return false;
+        if (marketKey && d.market.key !== marketKey) return false;
+        if (q) {
+          const hay = [d.docNum, d.customer.email, d.customer.fullName ?? "", d.customer.companyName ?? ""].join(" ").toLowerCase();
+          if (!hay.includes(qLow)) return false;
+        }
+        return true;
+      }));
+    }, 120);
+  }, [allDocs, q, status, marketKey]);
 
-  // Client-side filter
-  const docs = allDocs.filter(d => {
-    if (status    && d.status     !== status)    return false;
-    if (marketKey && d.market.key !== marketKey) return false;
-    if (q) {
-      const ql = q.toLowerCase();
-      const match =
-        d.docNum.toLowerCase().includes(ql) ||
-        (d.customer.companyName ?? "").toLowerCase().includes(ql) ||
-        (d.customer.fullName ?? "").toLowerCase().includes(ql) ||
-        d.customer.email.toLowerCase().includes(ql) ||
-        String(d.customer.customerNumber ?? "").includes(ql);
-      if (!match) return false;
-    }
-    return true;
-  });
-
-  // Fetch print token when selected doc changes
-  useEffect(() => {
-    if (!selectedId) { setIframeSrc(""); return; }
-    fetch(`/api/admin/sales/${selectedId}/print-token`)
-      .then(r => r.json())
-      .then(d => { if (d.ok) setIframeSrc(`/print/sales/${selectedId}?token=${d.token}`); })
-      .catch(() => {});
-  }, [selectedId]);
-
-  const hasFilters      = q || status || marketKey;
-  const selected        = docs.find(d => d.id === selectedId) ?? allDocs.find(d => d.id === selectedId) ?? null;
-  const hasSentSelected = ((selected as any)?.emailSentCount ?? 0) > 0 || (emailState[selected?.id ?? ""]?.count ?? 0) > 0;
+  const selected = allDocs.find(d => d.id === selectedId) ?? null;
 
   // Saudi official invoice logic for selected doc
   const selectedIsSaudi        = selected?.market.key === "SAUDI";
@@ -246,6 +232,17 @@ export default function SalesListPage({ docType }: Props) {
     }
   }
 
+  // Update iframe src when selected changes
+  useEffect(() => {
+    if (!selectedId) { setIframeSrc(""); return; }
+    setIframeSrc(`/admin/sales/${selectedId}?embed=1`);
+  }, [selectedId]);
+
+  const hasSentSelected = (emailState[selected?.id ?? ""]?.count ?? 0) > 0 ||
+    (selected?.emailSentCount ?? 0) > 0;
+
+  const statuses = VALID_STATUSES[docType] ?? [];
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "#f5f5f5" }}>
 
@@ -254,10 +251,12 @@ export default function SalesListPage({ docType }: Props) {
         <p style={{ fontSize: 11, color: "#9ca3af", letterSpacing: ".05em", marginBottom: 3 }}>{crumb}</p>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
           <h1 style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em", color: "#111827", margin: 0 }}>{label}</h1>
-          <button onClick={() => setShowCreate(true)}
-            style={{ padding: "7px 16px", fontSize: 12, fontWeight: 600, background: CLR.primary, color: "#fff", border: "none", cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
-            + New {docType === "RFQ" ? "Lead" : label.replace(/s$/, "")}
-          </button>
+          {docType !== "CREDIT_NOTE" && (
+            <button onClick={() => setShowCreate(true)}
+              style={{ padding: "7px 16px", fontSize: 12, fontWeight: 600, background: CLR.primary, color: "#fff", border: "none", cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
+              + New {docType === "RFQ" ? "Lead" : label.replace(/s$/, "")}
+            </button>
+          )}
         </div>
       </div>
 
@@ -269,83 +268,94 @@ export default function SalesListPage({ docType }: Props) {
             style={{ padding: "3px 10px", fontSize: 11, fontWeight: 600, background: CLR.primary, color: "#fff", border: "none", cursor: "pointer", fontFamily: "inherit" }}>
             {emailState[toast.id]?.sending ? "Sending…" : "Send Email"}
           </button>
-          <button onClick={() => openDetail(toast.id)}
-            style={{ padding: "3px 10px", fontSize: 11, fontWeight: 600, background: "#fff", color: "#15803d", border: "1px solid #86efac", cursor: "pointer", fontFamily: "inherit" }}>
-            Open
-          </button>
-          <button onClick={() => setToast(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "#15803d", marginLeft: "auto" }}>✕</button>
+          <button onClick={() => setToast(null)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "#6b7280", fontSize: 16 }}>×</button>
         </div>
       )}
 
-      {/* Two-column body */}
-      <div style={{ display: "flex", flex: 1, overflow: "hidden", minHeight: 0 }}>
+      {/* Main layout */}
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
 
-        {/* LEFT PANE */}
-        <div style={{
-          width: isMobile ? "100%" : 300, minWidth: isMobile ? "100%" : 300,
-          display: "flex", flexDirection: "column",
-          borderRight: "1px solid #e5e7eb", background: "#fff", overflow: "hidden", flexShrink: 0,
-        }}>
-          <div style={{ padding: "10px 10px 8px", borderBottom: "1px solid #e5e7eb", flexShrink: 0 }}>
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search doc #, customer…"
-              style={{ width: "100%", padding: "7px 10px", fontSize: 12, border: "1px solid #d1d5db", fontFamily: "inherit", outline: "none", boxSizing: "border-box" as const, marginBottom: 6 }} />
-            <div style={{ display: "flex", gap: 5 }}>
+        {/* List panel */}
+        <div style={{ width: isMobile ? "100%" : 380, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid #e5e7eb", overflow: "hidden" }}>
+
+          {/* Filters */}
+          <div style={{ padding: "10px 14px", borderBottom: "1px solid #e5e7eb", background: "#fff", flexShrink: 0 }}>
+            <input value={q} onChange={e => setQ(e.target.value)}
+              placeholder="Search doc # or customer…"
+              style={{ width: "100%", padding: "7px 10px", fontSize: 12, border: "1px solid #d1d5db", fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 6 }} />
+            <div style={{ display: "flex", gap: 6 }}>
               <select value={status} onChange={e => setStatus(e.target.value)}
-                style={{ flex: 1, padding: "5px 6px", fontSize: 11, border: "1px solid #d1d5db", background: "#fff", fontFamily: "inherit", outline: "none" }}>
+                style={{ flex: 1, padding: "6px 8px", fontSize: 12, border: "1px solid #d1d5db", fontFamily: "inherit", background: "#fff" }}>
                 <option value="">All Statuses</option>
-                {(VALID_STATUSES[docType] ?? []).map(s => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
+                {statuses.map(s => <option key={s}>{s}</option>)}
               </select>
               <select value={marketKey} onChange={e => setMarketKey(e.target.value)}
-                style={{ flex: 1, padding: "5px 6px", fontSize: 11, border: "1px solid #d1d5db", background: "#fff", fontFamily: "inherit", outline: "none" }}>
+                style={{ flex: 1, padding: "6px 8px", fontSize: 12, border: "1px solid #d1d5db", fontFamily: "inherit", background: "#fff" }}>
                 <option value="">All Markets</option>
-                <option value="SAUDI">Saudi</option>
-                <option value="GLOBAL">Global</option>
+                <option value="SAUDI">Saudi (SAR)</option>
+                <option value="GLOBAL">Global (USD)</option>
               </select>
-              {hasFilters && (
-                <button onClick={() => { setQ(""); setStatus(""); setMarketKey(""); }}
-                  style={{ padding: "5px 7px", fontSize: 11, background: "#fff", color: CLR.muted, border: "1px solid #d1d5db", cursor: "pointer", fontFamily: "inherit" }}>✕</button>
-              )}
             </div>
-            <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 5 }}>
-              {loading ? "Loading…" : `${docs.length}${docs.length !== allDocs.length ? ` of ${allDocs.length}` : ""} doc${allDocs.length !== 1 ? "s" : ""}`}
-            </p>
           </div>
 
+          {/* Doc list */}
           <div style={{ flex: 1, overflowY: "auto" }}>
             {loading ? (
-              <div style={{ padding: 24, textAlign: "center", color: CLR.faint, fontSize: 12 }}>Loading…</div>
-            ) : docs.length === 0 ? (
-              <div style={{ padding: 24, textAlign: "center", color: CLR.faint, fontSize: 12 }}>No documents found</div>
-            ) : docs.map(d => {
-              const isSelected = d.id === selectedId;
-              const es = emailState[d.id];
-              const hasSent = ((d as any).emailSentCount ?? 0) > 0 || (es?.count ?? 0) > 0;
-              return (
-                <div key={d.id} onClick={() => openDetail(d.id)}
-                  style={{ padding: "10px 12px", cursor: "pointer", borderBottom: "1px solid #f3f4f6", background: isSelected ? CLR.primaryBg : "#fff", borderLeft: `3px solid ${isSelected ? CLR.primary : "transparent"}`, transition: "background 0.1s" }}
-                  onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "#f9fafb"; }}
-                  onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = "#fff"; }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: isSelected ? CLR.primary : "#111827", fontFamily: "monospace" }}>{d.docNum}</span>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "#374151", flexShrink: 0 }}>{fmtAmount(d.total, d.currency)}</span>
-                  </div>
-                  <div style={{ fontSize: 12, color: "#374151", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const, marginBottom: 4 }}>
-                    {d.customer.companyName ?? d.customer.fullName ?? d.customer.email}
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" as const }}>
-                    <span style={{ fontSize: 10, color: CLR.faint }}>{fmtDate(d.issueDate)}</span>
-                    <SalesStatusBadge status={d.status} />
-                    {hasSent && <span style={{ fontSize: 9, padding: "1px 5px", background: "#fffbeb", border: "1px solid #fcd34d", color: "#92400e" }}>Sent</span>}
-                  </div>
+              Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} style={{ padding: "12px 14px", borderBottom: "1px solid #f3f4f6", display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ height: 12, width: "60%", background: "#f0f0f0", borderRadius: 3 }} />
+                  <div style={{ height: 10, width: "40%", background: "#f5f5f5", borderRadius: 3 }} />
                 </div>
-              );
-            })}
+              ))
+            ) : filtered.length === 0 ? (
+              <div style={{ padding: 32, textAlign: "center", fontSize: 13, color: CLR.faint }}>
+                No {label.toLowerCase()} found
+              </div>
+            ) : (
+              filtered.map(doc => {
+                const isSelected = doc.id === selectedId;
+                const es = emailState[doc.id];
+                const sentCount = es?.count ?? doc.emailSentCount ?? 0;
+                return (
+                  <div key={doc.id}
+                    onClick={() => openDetail(doc.id)}
+                    style={{
+                      padding: "11px 14px", borderBottom: "1px solid #f3f4f6", cursor: "pointer",
+                      background: isSelected ? CLR.primaryBg : "#fff",
+                      borderLeft: isSelected ? `3px solid ${CLR.primary}` : "3px solid transparent",
+                    }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: 3 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, fontFamily: "monospace", color: "#111827" }}>{doc.docNum}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        {sentCount > 0 && (
+                          <span title={`Sent ${sentCount}×`} style={{ fontSize: 10, color: CLR.primary, fontWeight: 700 }}>✉ {sentCount}</span>
+                        )}
+                        <SalesStatusBadge status={doc.status} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 11, color: CLR.muted, marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {doc.customer.companyName ?? doc.customer.fullName ?? doc.customer.email}
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 11, color: CLR.faint }}>{fmtDate(doc.issueDate)}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>{fmtAmount(doc.total, doc.currency)}</span>
+                    </div>
+                    {es?.error && <div style={{ fontSize: 10, color: "#dc2626", marginTop: 3 }}>✗ {es.error}</div>}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* List footer */}
+          <div style={{ padding: "6px 14px", borderTop: "1px solid #e5e7eb", background: "#f9fafb", fontSize: 11, color: CLR.faint, flexShrink: 0 }}>
+            {loading ? "Loading…" : `${filtered.length} of ${allDocs.length} ${label.toLowerCase()}`}
           </div>
         </div>
 
-        {/* RIGHT PANE */}
+        {/* Detail / preview panel (desktop only) */}
         {!isMobile && (
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {!selected ? (
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: CLR.faint, fontSize: 13 }}>
                 Select a document to preview
@@ -381,25 +391,25 @@ export default function SalesListPage({ docType }: Props) {
                     onClick={() => { if (sendBlocked) { alert("Upload the official invoice before changing status"); return; } setShowStatus(true); }}
                     title={sendBlocked ? "Upload official invoice first" : undefined}
                     style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", fontSize: 11, fontWeight: 600, background: "#fff", color: sendBlocked ? "#9ca3af" : CLR.text, border: `1px solid ${sendBlocked ? "#e5e7eb" : "#d1d5db"}`, cursor: sendBlocked ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                     Status
                   </button>
 
-                  {/* Send dropdown */}
+                  {/* Send */}
                   <div ref={sendDropRef} style={{ position: "relative" }}>
                     <button
                       onClick={() => { if (sendBlocked) return; setSendDropOpen(v => !v); }}
-                      disabled={emailState[selected.id]?.sending}
                       title={sendBlocked ? "Upload official invoice before sending" : undefined}
-                      style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", fontSize: 11, fontWeight: 600, background: sendBlocked ? "#f3f4f6" : hasSentSelected ? "#fffbeb" : CLR.primary, color: sendBlocked ? "#9ca3af" : hasSentSelected ? "#92400e" : "#fff", border: sendBlocked ? "1px solid #e5e7eb" : hasSentSelected ? "1px solid #fcd34d" : "none", cursor: sendBlocked ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                      {emailState[selected.id]?.sending ? "Sending…" : "Send Mail"}
-                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg>
+                      style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", fontSize: 11, fontWeight: 600, background: sendBlocked ? "#f3f4f6" : CLR.primary, color: sendBlocked ? "#9ca3af" : "#fff", border: sendBlocked ? "1px solid #e5e7eb" : "none", cursor: sendBlocked ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                      Send
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
-                    {sendDropOpen && !sendBlocked && (
-                      <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 300, background: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 4px 16px rgba(0,0,0,0.10)", minWidth: 210 }}>
-                        <DropdownItem icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>} label="Send" hint="Default template" onClick={() => sendEmailDirect(selected.id)} />
-                        <DropdownItem icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>} label="Send Custom" hint="Edit subject, body, CC/BCC" onClick={() => { setSendDropOpen(false); setSendModalMode("custom"); }} />
+                    {sendDropOpen && (
+                      <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, background: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 4px 12px rgba(0,0,0,0.1)", zIndex: 50, minWidth: 200 }}>
+                        <DropdownItem icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>} label="Send Now" hint="Default email template" onClick={() => sendEmailDirect(selected.id)} />
+                        <div style={{ height: 1, background: "#f3f4f6" }} />
+                        <DropdownItem icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>} label="Custom Send" hint="Edit subject, body, CC/BCC" onClick={() => { setSendDropOpen(false); setSendModalMode("custom"); }} />
                         {!hasSentSelected && (
                           <><div style={{ height: 1, background: "#f3f4f6" }} />
                           <DropdownItem icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>} label="Mark as Sent" hint="Record without emailing" onClick={() => markAsSent(selected.id)} /></>
@@ -536,20 +546,31 @@ function RecordPaymentModal({ docId, docNum, currency, total, marketId, onClose,
     try {
       const res = await fetch("/api/admin/sales/billing", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documentId: docId, marketId, method, amountCents: Math.round(Number(amount) * 100), currency, reference: reference || null, notes: notes || null, paidAt }),
+        body: JSON.stringify({
+          documentId: docId, marketId, method,
+          amountCents: Math.round(Number(amount) * 100),
+          currency, reference: reference || null,
+          notes: notes || null, paidAt,
+        }),
       });
-      if (!res.ok) throw new Error((await res.json()).error);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed");
       onSaved();
     } catch (e: any) { setError(e.message); }
     setLoading(false);
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={onClose}>
-      <div style={{ background: "#fff", width: "100%", maxWidth: 440, padding: 24 }} onClick={e => e.stopPropagation()}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 20, color: "#111827" }}>Record Payment — {docNum}</h2>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "#fff", width: 420, maxWidth: "95vw", padding: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Record Payment — {docNum}</h2>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#9ca3af" }}>×</button>
+        </div>
+        {error && <div style={{ marginBottom: 12, padding: "8px 12px", background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 13 }}>{error}</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div><label style={lbl}>PAYMENT METHOD</label>
+          <div>
+            <label style={lbl}>Payment Method</label>
             <select value={method} onChange={e => setMethod(e.target.value)} style={inp}>
               <option value="BANK_TRANSFER">Bank Transfer</option>
               <option value="STRIPE">Stripe</option>
@@ -557,25 +578,29 @@ function RecordPaymentModal({ docId, docNum, currency, total, marketId, onClose,
               <option value="OTHER">Other</option>
             </select>
           </div>
-          <div><label style={lbl}>AMOUNT ({currency})</label>
-            <input type="number" value={amount} min={0} step={0.01} onChange={e => setAmount(e.target.value)} style={inp} />
+          <div>
+            <label style={lbl}>Amount ({currency})</label>
+            <input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} style={inp} />
           </div>
-          <div><label style={lbl}>REFERENCE / TRANSACTION ID</label>
-            <input value={reference} onChange={e => setReference(e.target.value)} placeholder="Bank ref, Stripe charge ID…" style={inp} />
-          </div>
-          <div><label style={lbl}>PAYMENT DATE</label>
+          <div>
+            <label style={lbl}>Date</label>
             <input type="date" value={paidAt} onChange={e => setPaidAt(e.target.value)} style={inp} />
           </div>
-          <div><label style={lbl}>NOTES</label>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} style={{ ...inp, resize: "vertical" as const }} />
+          <div>
+            <label style={lbl}>Reference</label>
+            <input value={reference} onChange={e => setReference(e.target.value)} placeholder="Bank ref, transaction ID…" style={inp} />
           </div>
-          {error && <p style={{ fontSize: 12, color: "#dc2626" }}>{error}</p>}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 6 }}>
-            <button onClick={onClose} disabled={loading} style={{ padding: "7px 16px", fontSize: 12, fontWeight: 600, background: "#fff", color: "#374151", border: "1px solid #d1d5db", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
-            <button onClick={submit} disabled={loading} style={{ padding: "7px 16px", fontSize: 12, fontWeight: 600, background: CLR.primary, color: "#fff", border: "none", cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: loading ? 0.7 : 1 }}>
-              {loading ? "Saving…" : "Record Payment"}
-            </button>
+          <div>
+            <label style={lbl}>Notes</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} style={{ ...inp, resize: "vertical" }} />
           </div>
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
+          <button onClick={onClose} style={{ padding: "8px 16px", fontSize: 13, background: "#fff", border: "1px solid #d1d5db", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+          <button onClick={submit} disabled={loading}
+            style={{ padding: "8px 16px", fontSize: 13, fontWeight: 600, background: CLR.primary, color: "#fff", border: "none", cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: loading ? 0.7 : 1 }}>
+            {loading ? "Saving…" : "Record Payment"}
+          </button>
         </div>
       </div>
     </div>

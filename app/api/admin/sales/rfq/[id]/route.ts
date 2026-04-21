@@ -5,7 +5,6 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 
 type Params = { params: Promise<{ id: string }> };
 
-// GET /api/admin/sales/rfq/[id]
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
     await requireAdmin();
@@ -28,7 +27,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 }
 
-// PATCH /api/admin/sales/rfq/[id]
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
     await requireAdmin();
@@ -37,25 +35,22 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const doc = await prisma.salesDocument.update({
       where: { id },
       data: {
-        // Standard fields
-        ...(body.status             !== undefined ? { status:             body.status }                                          : {}),
-        ...(body.notes              !== undefined ? { notes:              body.notes }                                           : {}),
-        ...(body.internalNote       !== undefined ? { internalNote:       body.internalNote }                                    : {}),
-        ...(body.rfqTitle           !== undefined ? { rfqTitle:           body.rfqTitle }                                        : {}),
-        ...(body.rfqFileUrl         !== undefined ? { rfqFileUrl:         body.rfqFileUrl }                                      : {}),
-        ...(body.subject            !== undefined ? { subject:            body.subject }                                         : {}),
-        ...(body.referenceNumber    !== undefined ? { referenceNumber:    body.referenceNumber }                                 : {}),
-        ...(body.termsAndConditions !== undefined ? { termsAndConditions: body.termsAndConditions }                              : {}),
-        ...(body.dueDate            !== undefined ? { dueDate:            body.dueDate   ? new Date(body.dueDate)   : null }    : {}),
-        ...(body.issueDate          !== undefined ? { issueDate:          body.issueDate ? new Date(body.issueDate) : null }    : {}),
-        // CRM / Lead fields
-        ...(body.leadSource        !== undefined ? { leadSource:        body.leadSource        || null } : {}),
-        ...(body.leadPriority      !== undefined ? { leadPriority:      body.leadPriority      || null } : {}),
-        ...(body.assignedToId      !== undefined ? { assignedToId:      body.assignedToId      || null } : {}),
-        ...(body.lostReason        !== undefined ? { lostReason:        body.lostReason        || null } : {}),
-        ...(body.expectedCloseDate !== undefined ? { expectedCloseDate: body.expectedCloseDate ? new Date(body.expectedCloseDate) : null } : {}),
-        ...(body.followUpDate      !== undefined ? { followUpDate:      body.followUpDate      ? new Date(body.followUpDate)      : null } : {}),
-        // Line items
+        ...(body.status             !== undefined ? { status:             body.status }                                         : {}),
+        ...(body.notes              !== undefined ? { notes:              body.notes }                                          : {}),
+        ...(body.internalNote       !== undefined ? { internalNote:       body.internalNote }                                   : {}),
+        ...(body.rfqTitle           !== undefined ? { rfqTitle:           body.rfqTitle }                                       : {}),
+        ...(body.rfqFileUrl         !== undefined ? { rfqFileUrl:         body.rfqFileUrl }                                     : {}),
+        ...(body.subject            !== undefined ? { subject:            body.subject }                                        : {}),
+        ...(body.referenceNumber    !== undefined ? { referenceNumber:    body.referenceNumber }                                : {}),
+        ...(body.termsAndConditions !== undefined ? { termsAndConditions: body.termsAndConditions }                             : {}),
+        ...(body.dueDate            !== undefined ? { dueDate:            body.dueDate    ? new Date(body.dueDate)    : null }  : {}),
+        ...(body.issueDate          !== undefined ? { issueDate:          body.issueDate  ? new Date(body.issueDate)  : null }  : {}),
+        ...(body.leadSource         !== undefined ? { leadSource:         body.leadSource }                                     : {}),
+        ...(body.leadPriority       !== undefined ? { leadPriority:       body.leadPriority }                                   : {}),
+        ...(body.assignedToId       !== undefined ? { assignedToId:       body.assignedToId }                                   : {}),
+        ...(body.expectedCloseDate  !== undefined ? { expectedCloseDate:  body.expectedCloseDate ? new Date(body.expectedCloseDate) : null } : {}),
+        ...(body.followUpDate       !== undefined ? { followUpDate:       body.followUpDate      ? new Date(body.followUpDate)      : null } : {}),
+        ...(body.lostReason         !== undefined ? { lostReason:         body.lostReason }                                     : {}),
         ...(body.lines !== undefined ? {
           lines: {
             deleteMany: {},
@@ -82,15 +77,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 }
 
-// DELETE /api/admin/sales/rfq/[id]
 export async function DELETE(_req: NextRequest, { params }: Params) {
   try {
     await requireAdmin();
     const { id } = await params;
-    const doc = await prisma.salesDocument.update({
-      where: { id },
-      data:  { status: "VOID" },
-    });
+    const doc = await prisma.salesDocument.update({ where: { id }, data: { status: "VOID" } });
     return NextResponse.json({ doc });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: e.status ?? 500 });

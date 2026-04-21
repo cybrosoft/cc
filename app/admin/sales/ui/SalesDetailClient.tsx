@@ -10,6 +10,7 @@ import {
   SendEmailModal, StatusChangeModal,
   type LineItem, type EligibleProduct,
 } from "./sales-ui";
+import { AttachmentsPanel } from "./AttachmentsPanel";
 
 const ENDPOINT_FOR_TYPE: Record<string, string> = {
   RFQ:           "/api/admin/sales/rfq",
@@ -21,39 +22,16 @@ const ENDPOINT_FOR_TYPE: Record<string, string> = {
   CREDIT_NOTE:   "/api/admin/sales/returns",
 };
 
-const DETAIL_BASE: Record<string, string> = {
-  RFQ:           "/admin/crm/leads",
-  QUOTATION:     "/admin/sales/quotations",
-  PO:            "/admin/sales/po",
-  DELIVERY_NOTE: "/admin/sales/delivery-notes",
-  PROFORMA:      "/admin/sales/proforma",
-  INVOICE:       "/admin/sales/invoices",
-  CREDIT_NOTE:   "/admin/sales/returns",
-};
-
 const LOCKED_STATUSES = ["PAID", "VOID", "WRITTEN_OFF", "APPLIED", "CANCELLED"];
 const WARN_STATUSES   = ["ISSUED", "SENT", "REVISED", "QUOTED", "PARTIALLY_PAID"];
 
 interface Props { docId: string; docType: string; backHref: string }
 
-const card: React.CSSProperties = {
-  background: "#fff", border: "1px solid #e5e7eb", padding: "16px 20px",
-};
-const sectionLabel: React.CSSProperties = {
-  fontSize: 11, fontWeight: 700, color: "#9ca3af",
-  textTransform: "uppercase" as const, letterSpacing: "0.05em", marginBottom: 12,
-};
-const fieldLabel: React.CSSProperties = {
-  fontSize: 11, fontWeight: 600, color: "#9ca3af",
-  textTransform: "uppercase" as const, letterSpacing: "0.04em", marginBottom: 4,
-};
+const card: React.CSSProperties = { background: "#fff", border: "1px solid #e5e7eb", padding: "16px 20px" };
+const sectionLabel: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase" as const, letterSpacing: "0.05em", marginBottom: 12 };
+const fieldLabel: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase" as const, letterSpacing: "0.04em", marginBottom: 4 };
 const fieldValue: React.CSSProperties = { fontSize: 13, color: "#111827", fontWeight: 500 };
-const inputStyle: React.CSSProperties = {
-  width: "100%", padding: "7px 10px", fontSize: 13,
-  border: "1px solid #d1d5db", outline: "none",
-  fontFamily: "inherit", color: "#111827", background: "#fff",
-  boxSizing: "border-box" as const,
-};
+const inputStyle: React.CSSProperties = { width: "100%", padding: "7px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", fontFamily: "inherit", color: "#111827", background: "#fff", boxSizing: "border-box" as const };
 
 export default function SalesDetailClient({ docId, docType, backHref }: Props) {
   const router       = useRouter();
@@ -64,17 +42,16 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
   const [saving,  setSaving]  = useState(false);
   const [error,   setError]   = useState("");
 
-  const [editing,      setEditing]      = useState(false);
-  const [lines,        setLines]        = useState<LineItem[]>([]);
-  const [subject,      setSubject]      = useState("");
-  const [refNumber,    setRefNumber]    = useState("");
-  const [notes,        setNotes]        = useState("");
-  const [internalNote, setInternalNote] = useState("");
-  const [dueDate,      setDueDate]      = useState("");
-  const [issueDate,    setIssueDate]    = useState("");
-  const [terms,        setTerms]        = useState("");
-  const [newFile,      setNewFile]      = useState<File | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [editing,          setEditing]          = useState(false);
+  const [lines,            setLines]            = useState<LineItem[]>([]);
+  const [subject,          setSubject]          = useState("");
+  const [refNumber,        setRefNumber]        = useState("");
+  const [notes,            setNotes]            = useState("");
+  const [internalNote,     setInternalNote]     = useState("");
+  const [dueDate,          setDueDate]          = useState("");
+  const [issueDate,        setIssueDate]        = useState("");
+  const [terms,            setTerms]            = useState("");
+  const [attachmentsValue, setAttachmentsValue] = useState<string | null>(null);
 
   // Official invoice upload state
   const [uploading,   setUploading]   = useState(false);
@@ -91,24 +68,25 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
   const [lostReason,        setLostReason]        = useState("");
 
   // CRM Activities
-  const [activities,     setActivities]     = useState<any[]>([]);
-  const [actLoading,     setActLoading]     = useState(false);
-  const [showActForm,    setShowActForm]    = useState(false);
-  const [actType,        setActType]        = useState("NOTE");
-  const [actTitle,       setActTitle]       = useState("");
-  const [actDesc,        setActDesc]        = useState("");
-  const [actDue,         setActDue]         = useState("");
-  const [actSaving,      setActSaving]      = useState(false);
-  const [actError,       setActError]       = useState("");
+  const [activities,  setActivities]  = useState<any[]>([]);
+  const [actLoading,  setActLoading]  = useState(false);
+  const [showActForm, setShowActForm] = useState(false);
+  const [actType,     setActType]     = useState("NOTE");
+  const [actTitle,    setActTitle]    = useState("");
+  const [actDesc,     setActDesc]     = useState("");
+  const [actDue,      setActDue]      = useState("");
+  const [actSaving,   setActSaving]   = useState(false);
+  const [actError,    setActError]    = useState("");
 
   // Status / change log
-  const [docLogs,        setDocLogs]        = useState<any[]>([]);
-  const [logsLoading,    setLogsLoading]    = useState(false);
+  const [docLogs,     setDocLogs]     = useState<any[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
 
   // Admin users for assignee dropdown
-  const [adminUsers,     setAdminUsers]     = useState<{ id: string; fullName: string | null; email: string }[]>([]);
+  const [adminUsers, setAdminUsers] = useState<{ id: string; fullName: string | null; email: string }[]>([]);
 
   const [eligibleProducts, setEligibleProducts] = useState<EligibleProduct[]>([]);
+  const [allProducts,      setAllProducts]      = useState<EligibleProduct[]>([]);
 
   // Responsive
   const [isMobile, setIsMobile] = useState(false);
@@ -118,7 +96,6 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
-  const [allProducts, setAllProducts] = useState<EligibleProduct[]>([]);
 
   const [showConvert,   setShowConvert]   = useState(false);
   const [showPayment,   setShowPayment]   = useState(false);
@@ -138,9 +115,7 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
-      if (sendDropRef.current && !sendDropRef.current.contains(e.target as Node)) {
-        setSendDropOpen(false);
-      }
+      if (sendDropRef.current && !sendDropRef.current.contains(e.target as Node)) setSendDropOpen(false);
     }
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
@@ -155,56 +130,38 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
         fetch("/api/admin/catalog/pricing").then(r => r.json()).catch(() => ({ data: [] })),
         fetch("/api/admin/catalog/pricing/meta").then(r => r.json()).catch(() => ({ data: { groups: [] } })),
       ]);
-
       if (eligRes.ok) {
-        setEligibleProducts([
-          ...(eligRes.plans    ?? []),
-          ...(eligRes.addons   ?? []),
-          ...(eligRes.services ?? []),
-        ]);
+        setEligibleProducts([...(eligRes.plans ?? []), ...(eligRes.addons ?? []), ...(eligRes.services ?? [])]);
       }
-
       const groups: any[]     = metaRes.data?.groups ?? [];
       const stdGroup           = groups.find((g: any) => g.key === "standard") ?? groups[0];
       const stdGroupId: string = stdGroup?.id ?? "";
       const pricingRows: any[] = pricingRes.data ?? [];
-
       const stdMap = new Map<string, number>();
       for (const row of pricingRows) {
         if (row.customerGroupId === stdGroupId && row.marketId === marketId) {
           stdMap.set(`${row.productId}:${row.billingPeriod}`, row.priceCents);
         }
       }
-
       setAllProducts((catalogRes.data ?? []).filter((p: any) => p.isActive).map((p: any) => {
         const periodsFromProduct: string[] = p.billingPeriods ?? [];
         const periodsFromPricing = pricingRows
           .filter((r: any) => r.productId === p.id && r.customerGroupId === stdGroupId && r.marketId === marketId)
           .map((r: any) => r.billingPeriod);
         const periods = periodsFromProduct.length > 0 ? periodsFromProduct : periodsFromPricing;
-        const prices = periods
-          .map((period: string) => {
-            const cents = stdMap.get(`${p.id}:${period}`);
-            if (cents === undefined) return null;
-            return { billingPeriod: period, priceCents: cents, currency, isOverride: false };
-          })
-          .filter(Boolean) as EligibleProduct["prices"];
-        return {
-          id: p.id, key: p.key, name: p.name,
-          nameAr: p.nameAr ?? null, productDetails: p.productDetails ?? null,
-          detailsAr: p.detailsAr ?? null, type: p.type,
-          billingPeriods: periods, prices, unitLabel: p.unitLabel ?? null,
-        };
+        const prices = periods.map((period: string) => {
+          const cents = stdMap.get(`${p.id}:${period}`);
+          if (cents === undefined) return null;
+          return { billingPeriod: period, priceCents: cents, currency, isOverride: false };
+        }).filter(Boolean) as EligibleProduct["prices"];
+        return { id: p.id, key: p.key, name: p.name, nameAr: p.nameAr ?? null, productDetails: p.productDetails ?? null, detailsAr: p.detailsAr ?? null, type: p.type, billingPeriods: periods, prices, unitLabel: p.unitLabel ?? null };
       }));
-    } catch {}
+    } catch { /**/ }
   }, []);
 
   useEffect(() => {
     if (docType !== "RFQ") return;
-    fetch("/api/admin/users?role=ADMIN&pageSize=100")
-      .then(r => r.json())
-      .then(d => setAdminUsers(d.data ?? []))
-      .catch(() => {});
+    fetch("/api/admin/users?role=ADMIN&pageSize=100").then(r => r.json()).then(d => setAdminUsers(d.data ?? [])).catch(() => {});
   }, [docType]);
 
   const loadActivities = useCallback(async () => {
@@ -268,38 +225,28 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
       isNonInventory: !l.productId,
       showDetails: false,
     })));
-    setSubject(d.subject ?? "");
+    setSubject(d.subject ?? (d.rfqTitle ?? ""));
     setRefNumber(d.referenceNumber ?? "");
     setNotes(d.notes ?? "");
     setInternalNote(d.internalNote ?? "");
     setDueDate(d.dueDate ? d.dueDate.split("T")[0] : "");
     setIssueDate(d.issueDate ? d.issueDate.split("T")[0] : "");
     setTerms(d.termsAndConditions ?? "");
-    setLeadSource(d.leadSource        ?? "");
-    setLeadPriority(d.leadPriority    ?? "");
-    setAssignedToId(d.assignedToId    ?? "");
+    setAttachmentsValue(d.rfqFileUrl ?? null);
+    setLeadSource(d.leadSource ?? "");
+    setLeadPriority(d.leadPriority ?? "");
+    setAssignedToId(d.assignedToId ?? "");
     setExpectedCloseDate(d.expectedCloseDate ? d.expectedCloseDate.split("T")[0] : "");
-    setFollowUpDate(d.followUpDate    ? d.followUpDate.split("T")[0]    : "");
-    setLostReason(d.lostReason        ?? "");
+    setFollowUpDate(d.followUpDate ? d.followUpDate.split("T")[0] : "");
+    setLostReason(d.lostReason ?? "");
   }
 
   function startEdit()  { populateEdit(doc); setEditing(true);  setError(""); }
-  function cancelEdit() { populateEdit(doc); setEditing(false); setError(""); setNewFile(null); }
+  function cancelEdit() { populateEdit(doc); setEditing(false); setError(""); setAttachmentsValue(doc?.rfqFileUrl ?? null); }
 
   async function saveChanges() {
     setSaving(true); setError("");
     try {
-      let rfqFileUrl: string | undefined;
-      if (newFile) {
-        const fd = new FormData();
-        fd.append("file", newFile);
-        fd.append("docType", docType);
-        const uploadRes  = await fetch("/api/admin/sales/upload", { method: "POST", body: fd });
-        const uploadData = await uploadRes.json();
-        if (!uploadRes.ok) throw new Error(uploadData.error ?? "Upload failed");
-        rfqFileUrl = uploadData.url;
-      }
-
       const res = await fetch(`${ENDPOINT_FOR_TYPE[docType]}/${docId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -311,8 +258,9 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
           dueDate:            dueDate      || null,
           issueDate:          issueDate    || null,
           termsAndConditions: terms        || null,
-          ...(rfqFileUrl ? { rfqFileUrl } : {}),
+          rfqFileUrl:         attachmentsValue ?? null,
           ...(docType === "RFQ" ? {
+            rfqTitle:          subject           || null,
             leadSource:        leadSource        || null,
             leadPriority:      leadPriority      || null,
             assignedToId:      assignedToId      || null,
@@ -336,7 +284,6 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
       });
       if (!res.ok) throw new Error((await res.json()).error);
       setEditing(false);
-      setNewFile(null);
       await load();
     } catch (e: any) { setError(e.message); }
     setSaving(false);
@@ -352,9 +299,7 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
       if (!res.ok) throw new Error(data.error);
       setDoc((prev: any) => ({ ...prev, officialInvoiceUrl: data.officialInvoiceUrl }));
       setUploadMsg({ ok: true, text: "Official invoice uploaded successfully" });
-    } catch (e: any) {
-      setUploadMsg({ ok: false, text: e.message });
-    }
+    } catch (e: any) { setUploadMsg({ ok: false, text: e.message }); }
     setUploading(false);
   }
 
@@ -365,72 +310,72 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
       const res  = await fetch(`/api/admin/sales/${docId}/official-invoice`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setDoc((prev: any) => ({ ...prev, officialInvoiceUrl: null }));
+      setDoc((prev: any) => prev ? { ...prev, officialInvoiceUrl: null } : prev);
       setUploadMsg({ ok: true, text: "Official invoice removed" });
-    } catch (e: any) {
-      setUploadMsg({ ok: false, text: e.message });
-    }
+    } catch (e: any) { setUploadMsg({ ok: false, text: e.message }); }
     setDeleting(false);
   }
 
   async function viewOfficialInvoice() {
+    if (!doc?.officialInvoiceUrl) return;
     try {
-      const res  = await fetch(`/api/admin/sales/${docId}/official-invoice/view`);
+      const res  = await fetch(`/api/admin/sales/attachment?key=${encodeURIComponent(doc.officialInvoiceUrl)}`);
       const data = await res.json();
       if (data.url) window.open(data.url, "_blank");
     } catch { /**/ }
   }
 
-  async function sendEmailDirect(mode: "default" | "resend") {
-    setSaving(true); setError("");
-    setSendDropOpen(false);
-    try {
-      const res  = await fetch(`/api/admin/sales/${docId}/send-email`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setDoc((prev: any) => ({ ...prev, emailSentAt: data.emailSentAt, emailSentCount: data.emailSentCount }));
-    } catch (e: any) { setError(e.message); }
-    setSaving(false);
-  }
-
-  function handleConverted(redirectTo: string) { setShowConvert(false); router.push(redirectTo); }
-
   async function recordPayment() {
     setPayLoading(true); setPayError("");
     try {
-      const cents = Math.round(parseFloat(payAmount) * 100);
-      if (!cents || isNaN(cents)) throw new Error("Invalid amount");
-      const res = await fetch(`/api/admin/sales/${docId}/payment`, {
+      const res = await fetch("/api/admin/sales/billing", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          method: payMethod, amountCents: cents, currency: doc.currency,
-          reference: payRef || null, notes: payNotes || null,
-          paidAt: payDate || null, marketId: doc.market.id,
+          documentId: docId, marketId: doc.market?.id,
+          method: payMethod, amountCents: Math.round(Number(payAmount) * 100),
+          currency: doc.currency, reference: payRef || null,
+          notes: payNotes || null, paidAt: payDate,
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error);
-      setShowPayment(false);
-      setPayAmount(""); setPayRef(""); setPayNotes("");
+      setShowPayment(false); setPayAmount(""); setPayRef(""); setPayNotes("");
       await load();
     } catch (e: any) { setPayError(e.message); }
     setPayLoading(false);
   }
 
-  if (loading) return <div style={{ padding: 40, textAlign: "center", color: CLR.faint, fontSize: 13 }}>Loading…</div>;
-  if (!doc)    return <div style={{ padding: 40, textAlign: "center", color: "#dc2626", fontSize: 13 }}>{error || "Document not found."}</div>;
+  async function handleConverted(redirectTo: string) {
+    setShowConvert(false);
+    router.push(redirectTo);
+  }
 
-  const vatPct          = Number(doc.market?.vatPercent ?? doc.vatPercent ?? 0);
-  const totalPaid       = (doc.payments ?? []).reduce((s: number, p: any) => s + p.amountCents, 0);
-  const balanceDue      = doc.total - totalPaid;
-  const isLocked        = LOCKED_STATUSES.includes(doc.status);
-  const isWarning       = WARN_STATUSES.includes(doc.status);
-  const canSend         = !["VOID"].includes(doc.status);
-  const hasBeenSent     = (doc.emailSentCount ?? 0) > 0;
+  async function addActivity() {
+    if (!actTitle.trim()) { setActError("Title required"); return; }
+    setActSaving(true); setActError("");
+    try {
+      const res = await fetch(`/api/admin/crm/leads/${docId}/activities`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: actType, title: actTitle, description: actDesc || null, dueDate: actDue || null }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      setActTitle(""); setActDesc(""); setActDue(""); setShowActForm(false);
+      loadActivities();
+    } catch (e: any) { setActError(e.message); }
+    setActSaving(false);
+  }
+
+  if (loading) return <div style={{ padding: 48, textAlign: "center", fontSize: 13, color: CLR.faint }}>Loading…</div>;
+  if (error && !doc) return <div style={{ padding: 48, textAlign: "center", fontSize: 13, color: "#dc2626" }}>{error}</div>;
+  if (!doc) return <div style={{ padding: 48, textAlign: "center", fontSize: 13, color: "#dc2626" }}>Document not found.</div>;
+
+  const vatPct      = Number(doc.market?.vatPercent ?? doc.vatPercent ?? 0);
+  const totalPaid   = (doc.payments ?? []).reduce((s: number, p: any) => s + p.amountCents, 0);
+  const balanceDue  = doc.total - totalPaid;
+  const isLocked    = LOCKED_STATUSES.includes(doc.status);
+  const canSend     = !["VOID"].includes(doc.status);
+  const hasBeenSent = (doc.emailSentCount ?? 0) > 0;
   const isInvoiceUnpaid = doc.type === "INVOICE" && ["ISSUED", "SENT", "PARTIALLY_PAID", "OVERDUE"].includes(doc.status);
-  const canPay          = ["ISSUED", "SENT", "PARTIALLY_PAID", "OVERDUE"].includes(doc.status);
+  const canPay      = ["ISSUED", "SENT", "PARTIALLY_PAID", "OVERDUE"].includes(doc.status);
 
   // Saudi official invoice logic
   const isSaudi          = doc.market?.key === "SAUDI";
@@ -439,7 +384,6 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
   const hasOfficialPdf   = !!doc.officialInvoiceUrl;
   const sendBlocked      = needsOfficialPdf && !hasOfficialPdf;
 
-  // Market-aware label
   const docLabel = needsOfficialPdf
     ? (doc.type === "INVOICE" ? "Invoice Memo" : "Credit Note Memo")
     : doc.type.replace(/_/g, " ");
@@ -483,14 +427,9 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
               </>
             )}
             <label style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 14px", fontSize: 11, fontWeight: 600, background: hasOfficialPdf ? "#fff" : "#b45309", color: hasOfficialPdf ? "#374151" : "#fff", border: hasOfficialPdf ? "1px solid #d1d5db" : "none", cursor: uploading ? "not-allowed" : "pointer", opacity: uploading ? 0.6 : 1 }}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              {uploading ? "Uploading…" : hasOfficialPdf ? "Replace" : "Upload Zoho PDF"}
+              {uploading ? "Uploading…" : hasOfficialPdf ? "Replace" : "Upload Official Invoice"}
               <input ref={uploadFileRef} type="file" accept="application/pdf" style={{ display: "none" }}
-                onChange={e => {
-                  const file = e.target.files?.[0];
-                  e.target.value = "";
-                  if (file) uploadOfficialInvoice(file);
-                }} />
+                onChange={e => { const f = e.target.files?.[0]; if (f) uploadOfficialInvoice(f); e.target.value = ""; }} />
             </label>
           </div>
           {uploadMsg && (
@@ -505,14 +444,12 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", marginBottom: 20, flexWrap: "wrap", gap: 10, flexDirection: isMobile ? "column" : "row" }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <button
-              onClick={() => window.history.back()}
+            <button onClick={() => window.history.back()}
               style={{ background: "#fff", border: "1px solid #9ca3af", cursor: "pointer", fontSize: 12, color: "#9ca3af", letterSpacing: ".05em", padding: "5px 14px", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4, marginRight: "10px" }}>
               ← Back
             </button>
             <h1 style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em", color: "#111827", margin: 0, fontFamily: "monospace" }}>{doc.docNum}</h1>
             <SalesStatusBadge status={doc.status} />
-            {/* Market-aware doc type label */}
             <span style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" }}>{docLabel}</span>
           </div>
         </div>
@@ -520,18 +457,17 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {/* PDF Download */}
           {!editing && (
-            <button
-              onClick={async () => {
-                if (sendBlocked) return;
-                const res  = await fetch(`/api/admin/sales/${docId}/pdf`);
-                if (!res.ok) { alert("PDF download failed"); return; }
-                const blob = await res.blob();
-                const href = URL.createObjectURL(blob);
-                const a    = document.createElement("a");
-                a.href = href; a.download = `${doc.docNum}.pdf`;
-                document.body.appendChild(a); a.click();
-                document.body.removeChild(a); URL.revokeObjectURL(href);
-              }}
+            <button onClick={async () => {
+              if (sendBlocked) return;
+              const res  = await fetch(`/api/admin/sales/${docId}/pdf`);
+              if (!res.ok) { alert("PDF download failed"); return; }
+              const blob = await res.blob();
+              const href = URL.createObjectURL(blob);
+              const a    = document.createElement("a");
+              a.href = href; a.download = `${doc.docNum}.pdf`;
+              document.body.appendChild(a); a.click();
+              document.body.removeChild(a); URL.revokeObjectURL(href);
+            }}
               disabled={sendBlocked}
               style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", fontSize: 12, fontWeight: 600, background: "#fff", color: "#374151", border: "1px solid #d1d5db", cursor: sendBlocked ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: sendBlocked ? 0.4 : 1 }}>
               <Icon name="download" size={13} color="#6b7280" />
@@ -556,8 +492,7 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
           )}
 
           {!editing && (
-            <button
-              onClick={() => { if (sendBlocked) { alert("Upload the official invoice before changing status"); return; } setShowStatus(true); }}
+            <button onClick={() => { if (sendBlocked) { alert("Upload the official invoice before changing status"); return; } setShowStatus(true); }}
               title={sendBlocked ? "Upload official invoice first" : undefined}
               style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", fontSize: 12, fontWeight: 600, background: "#fff", color: sendBlocked ? "#9ca3af" : "#374151", border: `1px solid ${sendBlocked ? "#e5e7eb" : "#d1d5db"}`, cursor: sendBlocked ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
               <Icon name="chevron" size={13} color={sendBlocked ? "#d1d5db" : "#6b7280"} />
@@ -567,8 +502,7 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
 
           {!editing && canSend && (
             <div ref={sendDropRef} style={{ position: "relative" }}>
-              <button
-                onClick={() => { if (sendBlocked) return; setSendDropOpen(v => !v); }}
+              <button onClick={() => { if (sendBlocked) return; setSendDropOpen(v => !v); }}
                 title={sendBlocked ? "Upload official invoice before sending" : undefined}
                 style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", fontSize: 12, fontWeight: 600, background: sendBlocked ? "#f3f4f6" : CLR.primary, color: sendBlocked ? "#9ca3af" : "#fff", border: sendBlocked ? "1px solid #e5e7eb" : "none", cursor: sendBlocked ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
                 <Icon name="mail" size={13} color={sendBlocked ? "#9ca3af" : "#fff"} />
@@ -578,48 +512,35 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
               </button>
               {sendDropOpen && !sendBlocked && (
                 <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 200, background: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 4px 16px rgba(0,0,0,0.10)", minWidth: 210 }}>
-                  <DropItem icon="mail" label="Send" hint="Default template" onClick={() => sendEmailDirect("default")} />
-                  {isInvoiceUnpaid && <DropItem icon="bell" label="Send Reminder" hint={doc.reminderEnabled ? `Active · ${doc.reminderCount ?? 0}/4 sent` : "Weekly, up to 4 times"} onClick={() => { setSendDropOpen(false); setSendModalMode("reminder"); }} active={doc.reminderEnabled} />}
-                  <DropItem icon="edit" label="Send Custom" hint="Edit subject, body, CC/BCC" onClick={() => { setSendDropOpen(false); setSendModalMode("custom"); }} />
-                  {hasBeenSent && (
-                    <>
-                      <div style={{ height: 1, background: "#f3f4f6" }} />
-                      <DropItem icon="refresh" label="Resend" hint={`Last sent ${fmtDate(doc.emailSentAt)} · ${doc.emailSentCount}×`} onClick={() => sendEmailDirect("resend")} />
-                    </>
-                  )}
+                  <DropItem icon="mail" label="Send" hint="Default template" onClick={() => { setSendDropOpen(false); fetch(`/api/admin/sales/${docId}/send-email`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "default" }) }).then(() => load()); }} />
+                  <DropItem icon="mail" label="Custom Send" hint="Edit subject, body, CC/BCC" onClick={() => { setSendDropOpen(false); setSendModalMode("custom"); }} />
+                  {isInvoiceUnpaid && <DropItem icon="bell" label="Send Reminder" hint="Invoice payment reminder" onClick={() => { setSendDropOpen(false); setSendModalMode("reminder"); }} />}
+                  {!hasBeenSent && <DropItem icon="check" label="Mark as Sent" hint="Record without emailing" onClick={() => { setSendDropOpen(false); fetch(`/api/admin/sales/${docId}/send-email`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "mark_as_sent" }) }).then(() => load()); }} />}
+                  {hasBeenSent && <DropItem icon="refresh" label="Resend" hint="Send again with same template" onClick={() => { setSendDropOpen(false); fetch(`/api/admin/sales/${docId}/send-email`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "resend" }) }).then(() => load()); }} />}
                 </div>
               )}
             </div>
           )}
 
-          {!editing && doc.status !== "VOID" && doc.status !== "CONVERTED" && (
-            <button onClick={() => setShowConvert(true)} style={{ padding: "7px 14px", fontSize: 12, fontWeight: 600, background: "#fffbeb", color: "#b45309", border: "1px solid #fcd34d", cursor: "pointer", fontFamily: "inherit" }}>
-              Convert ↗
+          {!editing && canPay && (
+            <button onClick={() => { setPayAmount((balanceDue / 100).toFixed(2)); setShowPayment(true); }}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", fontSize: 12, fontWeight: 600, background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac", cursor: "pointer", fontFamily: "inherit" }}>
+              Record Payment
             </button>
           )}
 
-          {!editing && canPay && (
-            <button onClick={() => setShowPayment(true)} style={{ padding: "7px 14px", fontSize: 12, fontWeight: 600, background: "#dcfce7", color: "#15803d", border: "1px solid #86efac", cursor: "pointer", fontFamily: "inherit" }}>
-              Record Payment
+          {!editing && (
+            <button onClick={() => setShowConvert(true)}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", fontSize: 12, fontWeight: 600, background: "#fffbeb", color: "#b45309", border: "1px solid #fcd34d", cursor: "pointer", fontFamily: "inherit" }}>
+              Convert
             </button>
           )}
         </div>
       </div>
 
-      {editing && isWarning && (
-        <div style={{ padding: "10px 14px", background: "#fffbeb", border: "1px solid #fcd34d", color: "#92400e", fontSize: 13, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
-          <Icon name="warning" size={14} color="#b45309" />
-          This document has been {doc.status.toLowerCase().replace(/_/g, " ")}. Editing will not update any emails already sent.
-        </div>
-      )}
+      {error && <div style={{ marginBottom: 16, padding: "10px 16px", background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 13 }}>{error}</div>}
 
-      {error && (
-        <div style={{ padding: "10px 14px", background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 13, marginBottom: 16 }}>
-          {error}
-        </div>
-      )}
-
-      {/* Main grid */}
+      {/* Body */}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 300px", gap: 20, alignItems: "start" }}>
 
         {/* LEFT */}
@@ -643,7 +564,7 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
               </div>
               <div>
                 <p style={fieldLabel}>Subject</p>
-                {editing ? <input style={inputStyle} value={subject} onChange={e => setSubject(e.target.value)} placeholder="e.g. Cloud Services — March 2026" /> : <p style={fieldValue}>{doc.subject || "—"}</p>}
+                {editing ? <input style={inputStyle} value={subject} onChange={e => setSubject(e.target.value)} placeholder="e.g. Cloud Services — March 2026" /> : <p style={fieldValue}>{doc.subject || doc.rfqTitle || "—"}</p>}
               </div>
               <div>
                 <p style={fieldLabel}>Reference No.</p>
@@ -670,39 +591,15 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
             />
           </div>
 
-          {/* Attachment */}
+          {/* Attachments */}
           {(doc.rfqFileUrl || editing) && (
             <div style={card}>
-              <p style={sectionLabel}>Attachment</p>
-              {editing ? (
-                <div>
-                  {doc.rfqFileUrl && !newFile && (
-                    <div style={{ marginBottom: 10 }}>
-                      <AttachmentButton fileKey={doc.rfqFileUrl} />
-                      <p style={{ fontSize: 11, color: CLR.muted, marginTop: 4 }}>Upload a new file below to replace it.</p>
-                    </div>
-                  )}
-                  {newFile && (
-                    <div style={{ marginBottom: 10, padding: "8px 12px", background: CLR.primaryBg, border: `1px solid ${CLR.primary}33`, fontSize: 13 }}>
-                      <span style={{ fontWeight: 600, color: CLR.primary }}>{newFile.name}</span>
-                      <span style={{ color: CLR.muted, marginLeft: 8, fontSize: 11 }}>{(newFile.size / 1024).toFixed(1)} KB</span>
-                      <button onClick={() => setNewFile(null)} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 11, marginLeft: 8 }}>Remove</button>
-                    </div>
-                  )}
-                  <div onClick={() => fileRef.current?.click()}
-                    style={{ border: "2px dashed #d1d5db", padding: "14px", textAlign: "center", cursor: "pointer", background: "#fafafa" }}
-                    onMouseEnter={e => (e.currentTarget.style.borderColor = CLR.primary)}
-                    onMouseLeave={e => (e.currentTarget.style.borderColor = "#d1d5db")}>
-                    <p style={{ fontSize: 13, color: CLR.muted }}>Click to {doc.rfqFileUrl ? "replace" : "attach"} a file</p>
-                    <p style={{ fontSize: 11, color: CLR.faint, marginTop: 2 }}>PDF, image, Word, Excel — max 10 MB</p>
-                  </div>
-                  <input ref={fileRef} type="file" style={{ display: "none" }}
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
-                    onChange={e => setNewFile(e.target.files?.[0] ?? null)} />
-                </div>
-              ) : (
-                doc.rfqFileUrl && <AttachmentButton fileKey={doc.rfqFileUrl} />
-              )}
+              <p style={sectionLabel}>Attachments</p>
+              <AttachmentsPanel
+                rawValue={editing ? attachmentsValue : doc.rfqFileUrl}
+                editing={editing}
+                onChange={setAttachmentsValue}
+              />
             </div>
           )}
 
@@ -754,32 +651,20 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
                   {editing ? (
                     <select style={inputStyle} value={leadPriority} onChange={e => setLeadPriority(e.target.value)}>
                       <option value="">— Select —</option>
-                      {["LOW","MEDIUM","HIGH","URGENT"].map(p => (
-                        <option key={p} value={p}>{p.charAt(0) + p.slice(1).toLowerCase()}</option>
+                      {["LOW","MEDIUM","HIGH","URGENT"].map(s => (
+                        <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>
                       ))}
                     </select>
-                  ) : (
-                    <p style={{ ...fieldValue, color: leadPriority === "URGENT" ? "#dc2626" : leadPriority === "HIGH" ? "#b45309" : "#111827" }}>
-                      {leadPriority || "—"}
-                    </p>
-                  )}
+                  ) : <p style={fieldValue}>{leadPriority || "—"}</p>}
                 </div>
                 <div>
                   <p style={fieldLabel}>Assigned To</p>
                   {editing ? (
                     <select style={inputStyle} value={assignedToId} onChange={e => setAssignedToId(e.target.value)}>
                       <option value="">— Unassigned —</option>
-                      {adminUsers.map(u => (
-                        <option key={u.id} value={u.id}>{u.fullName ?? u.email}</option>
-                      ))}
+                      {adminUsers.map(u => <option key={u.id} value={u.id}>{u.fullName ?? u.email}</option>)}
                     </select>
-                  ) : (
-                    <p style={fieldValue}>
-                      {assignedToId
-                        ? (adminUsers.find(u => u.id === assignedToId)?.fullName ?? adminUsers.find(u => u.id === assignedToId)?.email ?? assignedToId)
-                        : "—"}
-                    </p>
-                  )}
+                  ) : <p style={fieldValue}>{doc.assignedTo ? (doc.assignedTo.fullName ?? doc.assignedTo.email) : "—"}</p>}
                 </div>
                 <div>
                   <p style={fieldLabel}>Expected Close</p>
@@ -825,48 +710,28 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
                 <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", padding: 14, marginBottom: 14 }}>
                   <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 10 }}>
                     <div>
-                      <p style={{ ...fieldLabel, marginBottom: 4 }}>Type</p>
+                      <label style={{ ...fieldLabel, display: "block", marginBottom: 4 }}>Type</label>
                       <select style={inputStyle} value={actType} onChange={e => setActType(e.target.value)}>
-                        {["CALL","MEETING","TASK","NOTE"].map(t => (
-                          <option key={t} value={t}>{t.charAt(0) + t.slice(1).toLowerCase()}</option>
-                        ))}
+                        {["NOTE","CALL","MEETING","TASK"].map(t => <option key={t}>{t}</option>)}
                       </select>
                     </div>
                     <div>
-                      <p style={{ ...fieldLabel, marginBottom: 4 }}>Due Date</p>
+                      <label style={{ ...fieldLabel, display: "block", marginBottom: 4 }}>Due Date</label>
                       <input type="date" style={inputStyle} value={actDue} onChange={e => setActDue(e.target.value)} />
                     </div>
                     <div style={{ gridColumn: "1/-1" }}>
-                      <p style={{ ...fieldLabel, marginBottom: 4 }}>Title</p>
+                      <label style={{ ...fieldLabel, display: "block", marginBottom: 4 }}>Title *</label>
                       <input style={inputStyle} value={actTitle} onChange={e => setActTitle(e.target.value)} placeholder="e.g. Follow-up call with customer" />
                     </div>
                     <div style={{ gridColumn: "1/-1" }}>
-                      <p style={{ ...fieldLabel, marginBottom: 4 }}>Notes</p>
-                      <textarea style={{ ...inputStyle, height: 70, resize: "vertical" }} value={actDesc} onChange={e => setActDesc(e.target.value)} placeholder="Optional details…" />
+                      <label style={{ ...fieldLabel, display: "block", marginBottom: 4 }}>Description</label>
+                      <textarea style={{ ...inputStyle, height: 60, resize: "vertical" }} value={actDesc} onChange={e => setActDesc(e.target.value)} placeholder="Optional details…" />
                     </div>
                   </div>
                   {actError && <p style={{ fontSize: 12, color: "#dc2626", marginBottom: 8 }}>{actError}</p>}
-                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                    <button onClick={() => { setShowActForm(false); setActTitle(""); setActDesc(""); setActDue(""); setActError(""); }}
-                      style={{ padding: "6px 12px", fontSize: 12, fontWeight: 600, background: "#fff", color: "#374151", border: "1px solid #d1d5db", cursor: "pointer", fontFamily: "inherit" }}>
-                      Cancel
-                    </button>
-                    <button disabled={actSaving || !actTitle.trim()} onClick={async () => {
-                      setActSaving(true); setActError("");
-                      try {
-                        const res = await fetch(`/api/admin/crm/leads/${docId}/activities`, {
-                          method: "POST", headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ type: actType, title: actTitle, description: actDesc || null, dueDate: actDue || null }),
-                        });
-                        if (!res.ok) throw new Error((await res.json()).error);
-                        setShowActForm(false); setActTitle(""); setActDesc(""); setActDue("");
-                        loadActivities();
-                      } catch (e: any) { setActError(e.message); }
-                      setActSaving(false);
-                    }}
-                      style={{ padding: "6px 14px", fontSize: 12, fontWeight: 600, background: CLR.primary, color: "#fff", border: "none", cursor: actSaving ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
-                      {actSaving ? "Saving…" : "Save Activity"}
-                    </button>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <PrimaryBtn onClick={addActivity} disabled={actSaving}>{actSaving ? "Saving…" : "Add Activity"}</PrimaryBtn>
+                    <GhostBtn onClick={() => { setShowActForm(false); setActError(""); }}>Cancel</GhostBtn>
                   </div>
                 </div>
               )}
@@ -874,18 +739,17 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
               {actLoading ? (
                 <p style={{ fontSize: 12, color: "#9ca3af" }}>Loading…</p>
               ) : activities.length === 0 ? (
-                <p style={{ fontSize: 12, color: "#9ca3af" }}>No activities yet.</p>
+                <p style={{ fontSize: 12, color: "#9ca3af" }}>No activities logged yet.</p>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                   {activities.map((a, i) => (
-                    <div key={a.id} style={{ padding: "10px 0", borderBottom: i < activities.length - 1 ? "1px solid #f3f4f6" : "none", display: "flex", gap: 12 }}>
-                      <div style={{ width: 32, height: 32, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: a.completedAt ? "#f0fdf4" : "#f3f4f6", border: `1px solid ${a.completedAt ? "#86efac" : "#e5e7eb"}`, fontSize: 11, fontWeight: 700, color: a.completedAt ? "#15803d" : "#6b7280" }}>
-                        {a.type === "CALL" ? "📞" : a.type === "MEETING" ? "👥" : a.type === "TASK" ? "✓" : "📝"}
-                      </div>
+                    <div key={a.id} style={{ padding: "10px 0", borderBottom: i < activities.length - 1 ? "1px solid #f3f4f6" : "none", display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: a.completedAt ? "#86efac" : CLR.primary, flexShrink: 0, marginTop: 5 }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                          <p style={{ fontSize: 13, fontWeight: 600, color: a.completedAt ? "#6b7280" : "#111827", textDecoration: a.completedAt ? "line-through" : "none" }}>{a.title}</p>
-                          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 11, padding: "1px 6px", background: "#f3f4f6", color: "#6b7280", border: "1px solid #e5e7eb" }}>{a.type}</span>
+                          <p style={{ fontSize: 13, fontWeight: 500, color: "#111827", margin: 0, textDecoration: a.completedAt ? "line-through" : "none" }}>{a.title}</p>
+                          <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: "auto" }}>
                             {a.dueDate && !a.completedAt && (
                               <span style={{ fontSize: 10, padding: "1px 6px", background: new Date(a.dueDate) < new Date() ? "#fef2f2" : "#f3f4f6", color: new Date(a.dueDate) < new Date() ? "#dc2626" : "#6b7280", border: `1px solid ${new Date(a.dueDate) < new Date() ? "#fecaca" : "#e5e7eb"}` }}>
                                 {new Date(a.dueDate) < new Date() ? "Overdue" : new Date(a.dueDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
@@ -893,13 +757,9 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
                             )}
                             {!a.completedAt && (
                               <button onClick={async () => {
-                                await fetch(`/api/admin/crm/leads/${docId}/activities`, {
-                                  method: "PATCH", headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ id: a.id, completedAt: new Date().toISOString() }),
-                                });
+                                await fetch(`/api/admin/crm/leads/${docId}/activities`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: a.id, completedAt: new Date().toISOString() }) });
                                 loadActivities();
-                              }}
-                                style={{ fontSize: 10, padding: "1px 7px", background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>
+                              }} style={{ fontSize: 10, padding: "1px 7px", background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>
                                 Done
                               </button>
                             )}
@@ -961,36 +821,10 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
               </div>
             )}
           </div>
-
-          {/* Document chain */}
-          {(doc.originDoc || (doc.derivedDocs ?? []).length > 0) && (
-            <div style={card}>
-              <p style={sectionLabel}>Document Chain</p>
-              {doc.originDoc && (
-                <div style={{ marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, color: "#9ca3af" }}>Origin: </span>
-                  <a href={`${DETAIL_BASE[doc.originDoc.type] ?? "/admin/sales"}/${doc.originDoc.id}`}
-                    style={{ fontSize: 13, color: CLR.primary, fontWeight: 600, textDecoration: "none", fontFamily: "monospace" }}>
-                    {doc.originDoc.docNum}
-                  </a>
-                </div>
-              )}
-              {(doc.derivedDocs ?? []).map((d: any) => (
-                <div key={d.id} style={{ marginBottom: 4 }}>
-                  <span style={{ fontSize: 11, color: "#9ca3af" }}>Derived: </span>
-                  <a href={`${DETAIL_BASE[d.type] ?? "/admin/sales"}/${d.id}`}
-                    style={{ fontSize: 13, color: CLR.primary, fontWeight: 600, textDecoration: "none", fontFamily: "monospace" }}>
-                    {d.docNum}
-                  </a>
-                  <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 6 }}>{d.type}</span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* RIGHT */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, order: isMobile ? -1 : 0 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, position: isMobile ? "static" : "sticky", top: 20 }}>
 
           {/* Customer */}
           <div style={card}>
@@ -1088,9 +922,7 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
               </div>
               <div>
                 <label style={{ ...fieldLabel, display: "block", marginBottom: 5 }}>Amount ({doc.currency})</label>
-                <input type="number" step="0.01" min="0" style={inputStyle}
-                  value={payAmount} onChange={e => setPayAmount(e.target.value)}
-                  placeholder={`e.g. ${(balanceDue / 100).toFixed(2)}`} />
+                <input type="number" step="0.01" min="0" style={inputStyle} value={payAmount} onChange={e => setPayAmount(e.target.value)} placeholder={`e.g. ${(balanceDue / 100).toFixed(2)}`} />
               </div>
               <div>
                 <label style={{ ...fieldLabel, display: "block", marginBottom: 5 }}>Payment Date</label>
@@ -1128,13 +960,10 @@ function TRow({ label, value, bold, color }: { label: string; value: string; bol
   );
 }
 
-function DropItem({ icon, label, hint, onClick, active }: {
-  icon: string; label: string; hint?: string; onClick: () => void; active?: boolean;
-}) {
+function DropItem({ icon, label, hint, onClick, active }: { icon: string; label: string; hint?: string; onClick: () => void; active?: boolean }) {
   const [hov, setHov] = useState(false);
   return (
-    <button onClick={onClick}
-      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+    <button onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 14px", background: hov ? "#f9fafb" : "#fff", border: "none", cursor: "pointer", fontFamily: "inherit", textAlign: "left" as const }}>
       <Icon name={icon} size={14} color={active ? CLR.primary : "#6b7280"} />
       <div style={{ flex: 1 }}>
@@ -1143,32 +972,5 @@ function DropItem({ icon, label, hint, onClick, active }: {
       </div>
       {active && <div style={{ width: 6, height: 6, borderRadius: "50%", background: CLR.primary, flexShrink: 0 }} />}
     </button>
-  );
-}
-
-function AttachmentButton({ fileKey }: { fileKey: string }) {
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
-
-  async function open() {
-    setLoading(true); setError("");
-    try {
-      const res  = await fetch(`/api/admin/sales/attachment?key=${encodeURIComponent(fileKey)}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed");
-      window.open(data.url, "_blank");
-    } catch (e: any) { setError(e.message); }
-    setLoading(false);
-  }
-
-  const name = fileKey.split("/").pop() ?? fileKey;
-  return (
-    <div>
-      <button onClick={open} disabled={loading}
-        style={{ fontSize: 13, fontWeight: 600, padding: "7px 14px", background: CLR.primaryBg, color: CLR.primary, border: `1px solid ${CLR.primary}44`, cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
-        {loading ? "Loading…" : `View / Download — ${name} ↗`}
-      </button>
-      {error && <p style={{ fontSize: 12, color: "#dc2626", marginTop: 6 }}>{error}</p>}
-    </div>
   );
 }

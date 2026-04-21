@@ -1,9 +1,8 @@
 "use client";
 // app/dashboard/invoices/InvoicesClient.tsx
 
-import Link from "next/link";
 import { useState } from "react";
-import { colors } from "@/lib/ui/tokens";
+import Link from "next/link";
 
 interface InvoiceRow {
   id:                 string;
@@ -19,6 +18,8 @@ interface InvoiceRow {
   market:             { key: string; name: string };
 }
 
+const colors = { primary: "#318774" };
+
 function fmt(cents: number, currency: string) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(cents / 100);
 }
@@ -27,18 +28,17 @@ function fmtDate(d: string | null) {
   return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-const STATUS_COLORS: Record<string, { bg: string; color: string; border: string }> = {
-  ISSUED:         { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
-  SENT:           { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
-  PAID:           { bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0" },
-  PARTIALLY_PAID: { bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0" },
-  OVERDUE:        { bg: "#fef2f2", color: "#991b1b", border: "#fecaca" },
-  VOID:           { bg: "#f3f4f6", color: "#6b7280", border: "#d1d5db" },
-  APPLIED:        { bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0" },
-};
-
 function StatusBadge({ status }: { status: string }) {
-  const s = STATUS_COLORS[status] ?? { bg: "#f9fafb", color: "#374151", border: "#e5e7eb" };
+  const s =
+    status === "PAID" || status === "APPLIED"
+      ? { bg: "#f0fdf4", color: "#15803d", border: "#86efac" }
+    : status === "OVERDUE"
+      ? { bg: "#fef2f2", color: "#dc2626", border: "#fecaca" }
+    : status === "PARTIALLY_PAID"
+      ? { bg: "#fffbeb", color: "#b45309", border: "#fcd34d" }
+    : status === "VOID"
+      ? { bg: "#f3f4f6", color: "#6b7280", border: "#e5e7eb" }
+    : { bg: "#f9fafb", color: "#374151", border: "#e5e7eb" };
   return (
     <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", background: s.bg, color: s.color, border: `1px solid ${s.border}`, letterSpacing: "0.03em" }}>
       {status.replace(/_/g, " ")}
@@ -46,20 +46,88 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  INVOICE:    "Invoice",
-  CREDIT_NOTE: "Credit Note",
-};
+const COL = "1fr 110px 120px 100px 80px";
+
+function TableHeader() {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: COL, padding: "10px 20px", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>
+      {(["Document", "Date", "Amount", "Status", "PDF"] as const).map((h, i) => (
+        <span key={h} style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", textAlign: i === 4 ? "right" : "left" }}>{h}</span>
+      ))}
+    </div>
+  );
+}
+
+function DocRow({ doc, isLast }: { doc: InvoiceRow; isLast: boolean }) {
+  const isSaudi          = doc.market.key === "SAUDI";
+  const isOfficialType   = ["INVOICE", "CREDIT_NOTE"].includes(doc.type);
+  const needsOfficialPdf = isSaudi && isOfficialType;
+  const hasOfficialPdf   = !!doc.officialInvoiceUrl;
+  const canDownload      = needsOfficialPdf ? hasOfficialPdf : true;
+  const typeLabel        = needsOfficialPdf
+    ? (doc.type === "INVOICE" ? "Invoice Memo" : "Credit Note Memo")
+    : (doc.type === "CREDIT_NOTE" ? "Credit Note" : "Invoice");
+  const balance = doc.total - doc.amountPaid;
+
+  return (
+    <Link href={`/dashboard/sales/${doc.id}`} className="inv-row"
+      style={{ display: "grid", gridTemplateColumns: COL, padding: "14px 20px", borderBottom: isLast ? "none" : "1px solid #f3f4f6", alignItems: "center", textDecoration: "none", color: "inherit" }}>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "#111827", fontFamily: "monospace" }}>{doc.docNum}</div>
+        <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>{typeLabel}</div>
+      </div>
+      <div>
+        <div style={{ fontSize: 12, color: "#374151" }}>{fmtDate(doc.issueDate)}</div>
+        {doc.dueDate && (
+          <div style={{ fontSize: 11, color: doc.status === "OVERDUE" ? "#dc2626" : "#9ca3af", marginTop: 2 }}>
+            Due {fmtDate(doc.dueDate)}
+          </div>
+        )}
+      </div>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{fmt(doc.total, doc.currency)}</div>
+        {balance > 0 && balance < doc.total && (
+          <div style={{ fontSize: 11, color: "#b45309", marginTop: 2 }}>Balance: {fmt(balance, doc.currency)}</div>
+        )}
+      </div>
+      <div><StatusBadge status={doc.status} /></div>
+      <div style={{ textAlign: "right" }}>
+        {canDownload ? (
+          <span style={{ fontSize: 11, color: colors.primary, fontWeight: 600 }}>↓ PDF</span>
+        ) : needsOfficialPdf && !hasOfficialPdf ? (
+          <span style={{ fontSize: 11, color: "#b45309" }}>Pending</span>
+        ) : null}
+      </div>
+    </Link>
+  );
+}
+
+type Filter = "ALL" | "UNPAID" | "PAID" | "OVERDUE" | "CREDIT_NOTES";
 
 export function InvoicesClient({ docs }: { docs: InvoiceRow[] }) {
-  const [filter, setFilter] = useState<"ALL" | "UNPAID" | "PAID" | "OVERDUE">("ALL");
+  const invoices    = docs.filter(d => d.type === "INVOICE");
+  const creditNotes = docs.filter(d => d.type === "CREDIT_NOTE");
 
-  const filtered = docs.filter(d => {
-    if (filter === "UNPAID")  return ["ISSUED", "SENT", "PARTIALLY_PAID"].includes(d.status);
-    if (filter === "PAID")    return ["PAID", "APPLIED"].includes(d.status);
-    if (filter === "OVERDUE") return d.status === "OVERDUE";
-    return true;
-  });
+  const hasCreditNotes = creditNotes.length > 0;
+
+  const [filter, setFilter] = useState<Filter>("ALL");
+
+  const displayedDocs = filter === "CREDIT_NOTES"
+    ? creditNotes
+    : invoices.filter(d => {
+        if (filter === "UNPAID")  return ["ISSUED", "SENT", "PARTIALLY_PAID"].includes(d.status);
+        if (filter === "PAID")    return d.status === "PAID";
+        if (filter === "OVERDUE") return d.status === "OVERDUE";
+        return true;
+      });
+
+  const filters: { key: Filter; label: string }[] = [
+    { key: "ALL",          label: "All" },
+    { key: "UNPAID",       label: "Unpaid" },
+    { key: "PAID",         label: "Paid" },
+    { key: "OVERDUE",      label: "Overdue" },
+    ...(hasCreditNotes ? [{ key: "CREDIT_NOTES" as Filter, label: "Credit Notes" }] : []),
+  ];
 
   return (
     <>
@@ -75,88 +143,33 @@ export function InvoicesClient({ docs }: { docs: InvoiceRow[] }) {
 
           {/* Page header */}
           <div style={{ marginBottom: 20 }}>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: "#111827", margin: "0 0 4px", letterSpacing: "-0.02em" }}>Invoices</h1>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: "#111827", margin: "0 0 4px", letterSpacing: "-0.02em" }}>Invoices &amp; Billing</h1>
             <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Your invoices and credit notes</p>
           </div>
 
           {/* Filter bar */}
           <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
-            {(["ALL", "UNPAID", "PAID", "OVERDUE"] as const).map(f => (
-              <button key={f} className={`inv-filter-btn${filter === f ? " active" : ""}`} onClick={() => setFilter(f)}>
-                {f === "ALL" ? "All" : f.charAt(0) + f.slice(1).toLowerCase()}
+            {filters.map(f => (
+              <button key={f.key} className={`inv-filter-btn${filter === f.key ? " active" : ""}`} onClick={() => setFilter(f.key)}>
+                {f.label}
               </button>
             ))}
           </div>
 
-          {filtered.length === 0 ? (
+          {/* Table */}
+          {displayedDocs.length === 0 ? (
             <div style={{ background: "#fff", border: "1px solid #e5e7eb", padding: "48px 24px", textAlign: "center" }}>
-              <p style={{ fontSize: 14, color: "#6b7280", margin: 0 }}>No invoices found</p>
+              <p style={{ fontSize: 14, color: "#6b7280", margin: 0 }}>No documents found</p>
             </div>
           ) : (
             <div style={{ background: "#fff", border: "1px solid #e5e7eb", overflow: "hidden" }}>
-              {/* Table header */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 110px 120px 100px 80px", gap: 0, padding: "10px 20px", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em" }}>Document</span>
-                <span style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em" }}>Date</span>
-                <span style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em" }}>Amount</span>
-                <span style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em" }}>Status</span>
-                <span style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "right" }}>PDF</span>
-              </div>
-
-              {filtered.map((doc, i) => {
-                const isSaudi          = doc.market.key === "SAUDI";
-                const isOfficialType   = ["INVOICE", "CREDIT_NOTE"].includes(doc.type);
-                const needsOfficialPdf = isSaudi && isOfficialType;
-                const hasOfficialPdf   = !!doc.officialInvoiceUrl;
-                const canDownload      = needsOfficialPdf ? hasOfficialPdf : true;
-                const typeLabel        = needsOfficialPdf
-                  ? (doc.type === "INVOICE" ? "Invoice Memo" : "Credit Note Memo")
-                  : (TYPE_LABELS[doc.type] ?? doc.type);
-                const balance = doc.total - doc.amountPaid;
-
-                return (
-                  <div key={doc.id} className="inv-row"
-                    style={{ display: "grid", gridTemplateColumns: "1fr 110px 120px 100px 80px", gap: 0, padding: "14px 20px", borderBottom: i < filtered.length - 1 ? "1px solid #f3f4f6" : "none", alignItems: "center", background: "#fff", transition: "background 0.1s" }}>
-
-                    {/* Doc info */}
-                    <div>
-                      <Link href={`/dashboard/sales/${doc.id}`}
-                        style={{ fontSize: 14, fontWeight: 700, color: "#111827", fontFamily: "monospace", textDecoration: "none", letterSpacing: "-0.01em" }}>
-                        {doc.docNum}
-                      </Link>
-                      <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 2 }}>{typeLabel}</div>
-                    </div>
-
-                    {/* Date */}
-                    <div style={{ fontSize: 13, color: "#6b7280" }}>{fmtDate(doc.issueDate)}</div>
-
-                    {/* Amount */}
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{fmt(doc.total, doc.currency)}</div>
-                      {balance > 0 && doc.amountPaid > 0 && (
-                        <div style={{ fontSize: 11, color: "#b45309", marginTop: 1 }}>Due: {fmt(balance, doc.currency)}</div>
-                      )}
-                    </div>
-
-                    {/* Status */}
-                    <div><StatusBadge status={doc.status} /></div>
-
-                    {/* PDF */}
-                    <div style={{ textAlign: "right" }}>
-                      {canDownload ? (
-                        <Link href={`/dashboard/sales/${doc.id}`}
-                          style={{ fontSize: 12, fontWeight: 600, color: colors.primary, textDecoration: "none" }}>
-                          View ↗
-                        </Link>
-                      ) : (
-                        <span style={{ fontSize: 11, color: "#9ca3af" }}>Processing</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+              <TableHeader />
+              {displayedDocs.map((doc, i) => (
+                <DocRow key={doc.id} doc={doc} isLast={i === displayedDocs.length - 1} />
+              ))}
             </div>
           )}
+
         </div>
       </div>
     </>
