@@ -17,20 +17,20 @@ export async function POST(req: NextRequest) {
 
     const { customerId, marketId, lines, subject, referenceNumber,
             notes, internalNote, language, issueDate,
-            rfqTitle, rfqFileUrl, originDocId } = body;
+            rfqTitle, rfqFileUrl, originDocId, visibleToCustomer } = body;
 
     if (!customerId) return NextResponse.json({ error: "customerId required" }, { status: 400 });
     if (!marketId)   return NextResponse.json({ error: "marketId required" },   { status: 400 });
 
-    // RFQ can have lines OR just a file attachment — lines not required
     const doc = await createDocument({
       type: "RFQ",
       marketId, customerId,
       createdByAdminId: auth.user.id,
       subject, referenceNumber, notes, internalNote, language,
       issueDate, originDocId,
-      rfqTitle:   rfqTitle   ?? subject ?? null,
-      rfqFileUrl: rfqFileUrl ?? null,
+      rfqTitle:          rfqTitle          ?? subject ?? null,
+      rfqFileUrl:        rfqFileUrl        ?? null,
+      visibleToCustomer: visibleToCustomer === true ? true : false, // default false for admin-created
       lines: lines ?? [],
     });
 

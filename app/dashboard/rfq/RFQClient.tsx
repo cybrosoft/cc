@@ -24,6 +24,7 @@ const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   CONVERTED: { bg: "#f5f0ff", color: "#6d28d9" },
   CLOSED:    { bg: "#f3f4f6", color: "#6b7280" },
   FOLLOW_UP: { bg: "#fff8e6", color: "#854F0B" },
+  REPLIED:   { bg: "#e0f2fe", color: "#0369a1" },
 };
 
 function fmtDate(d: string) {

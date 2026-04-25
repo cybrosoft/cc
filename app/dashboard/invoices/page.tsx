@@ -29,21 +29,26 @@ export default async function InvoicesPage() {
       officialInvoiceUrl: true,
       market: { select: { key: true, name: true } },
       payments: { select: { amountCents: true } },
+      logs: {
+        where: { field: "payment_notification" },
+        select: { id: true },
+      },
     },
   });
 
   const serialized = docs.map(d => ({
-    id:                 d.id,
-    docNum:             d.docNum,
-    type:               String(d.type),
-    status:             String(d.status),
-    currency:           d.currency,
-    total:              d.total,
-    amountPaid:         d.payments.reduce((s, p) => s + p.amountCents, 0),
-    issueDate:          d.issueDate.toISOString(),
-    dueDate:            d.dueDate?.toISOString() ?? null,
-    officialInvoiceUrl: d.officialInvoiceUrl ?? null,
-    market:             { key: d.market.key, name: d.market.name },
+    id:                    d.id,
+    docNum:                d.docNum,
+    type:                  String(d.type),
+    status:                String(d.status),
+    currency:              d.currency,
+    total:                 d.total,
+    amountPaid:            d.payments.reduce((s, p) => s + p.amountCents, 0),
+    issueDate:             d.issueDate.toISOString(),
+    dueDate:               d.dueDate?.toISOString() ?? null,
+    officialInvoiceUrl:    d.officialInvoiceUrl ?? null,
+    market:                { key: d.market.key, name: d.market.name },
+    paymentNotifications:  d.logs.length, // count of customer payment submissions
   }));
 
   return <InvoicesClient docs={serialized} />;

@@ -128,6 +128,7 @@ enum SalesDocumentStatus {
   IN_REVIEW    // admin is actively reviewing
   QUOTED       // admin responded with a quotation
   CLOSED       // closed without action
+  REPLIED      // admin has replied to the customer
   FOLLOW_UP
 
   // Quotation
@@ -797,8 +798,9 @@ model SalesDocument {
   followUpDate      DateTime?
   lostReason        String?
 
-  pdfKey String?
+  pdfKey             String?
   officialInvoiceUrl String? // Saudi INVOICE only — Zoho/ZATCA PDF uploaded by admin
+  visibleToCustomer  Boolean @default(false) // RFQ only — controls customer portal visibility
   activities CRMActivity[]
 
   // Invoice reminder — weekly automated reminders, up to 4 times
@@ -822,6 +824,7 @@ model SalesDocument {
   @@index([emailSentAt])
   @@index([validUntil])
   @@index([reminderEnabled])
+  @@index([visibleToCustomer])
 }
 
 model SalesDocumentLog {

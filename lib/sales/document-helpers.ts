@@ -1,13 +1,5 @@
 // lib/sales/document-helpers.ts
-// Shared helpers for sales documents:
-//   - Status display labels
-//   - Customer-visible status mapping (hides internal statuses)
-//   - Amount formatters
-//   - VAT calculation
-
 import { SalesDocumentType, SalesDocumentStatus } from "@prisma/client";
-
-// ── Type labels ───────────────────────────────────────────────────────────────
 
 export const DOC_TYPE_LABEL: Record<SalesDocumentType, string> = {
   RFQ:           "RFQ",
@@ -28,8 +20,6 @@ export const DOC_TYPE_LABEL_AR: Record<SalesDocumentType, string> = {
   INVOICE:       "فاتورة ضريبية",
   CREDIT_NOTE:   "إشعار دائن",
 };
-
-// ── Status display labels ─────────────────────────────────────────────────────
 
 export const STATUS_LABEL: Record<SalesDocumentStatus, string> = {
   DRAFT:          "Draft",
@@ -54,9 +44,8 @@ export const STATUS_LABEL: Record<SalesDocumentStatus, string> = {
   WRITTEN_OFF:    "Written Off",
   APPLIED:        "Applied",
   FOLLOW_UP:      "Follow Up",
+  REPLIED:        "Replied",
 };
-
-// ── Customer-visible status ───────────────────────────────────────────────────
 
 export function toCustomerStatus(
   status: SalesDocumentStatus,
@@ -68,17 +57,15 @@ export function toCustomerStatus(
     DRAFT:       null,
     VOID:        null,
     FOLLOW_UP:   "PENDING",
+    REPLIED:     "REPLIED", // customer can see — admin has responded
   };
 
   if (status in map) return map[status] ?? null;
   return status;
 }
 
-// ── Valid statuses per document type ─────────────────────────────────────────
-
 export const VALID_STATUSES: Record<SalesDocumentType, SalesDocumentStatus[]> = {
-  // RFQ acts as CRM lead — has extended status set
-  RFQ:           ["DRAFT","PENDING","IN_REVIEW","PROCESSING","QUOTED","FOLLOW_UP","ACCEPTED","REJECTED","CONVERTED","EXPIRED","CANCELLED","CLOSED","VOID"],
+  RFQ:           ["DRAFT","PENDING","IN_REVIEW","PROCESSING","QUOTED","FOLLOW_UP","REPLIED","ACCEPTED","REJECTED","CONVERTED","EXPIRED","CANCELLED","CLOSED","VOID"],
   QUOTATION:     ["DRAFT","ISSUED","SENT","REVISED","ACCEPTED","REJECTED","CONVERTED","EXPIRED","VOID"],
   PO:            ["DRAFT","ISSUED","CONVERTED","CLOSED","VOID"],
   DELIVERY_NOTE: ["DRAFT","ISSUED","SENT","DELIVERED","CANCELLED","CONVERTED","VOID"],
@@ -86,8 +73,6 @@ export const VALID_STATUSES: Record<SalesDocumentType, SalesDocumentStatus[]> = 
   INVOICE:       ["DRAFT","ISSUED","SENT","PARTIALLY_PAID","PAID","OVERDUE","WRITTEN_OFF","VOID"],
   CREDIT_NOTE:   ["DRAFT","ISSUED","SENT","APPLIED","VOID"],
 };
-
-// ── Amount helpers ────────────────────────────────────────────────────────────
 
 export function fmtAmount(cents: number, currency: string): string {
   const amount = (cents / 100).toFixed(2);
@@ -108,8 +93,6 @@ export function calcTotals(lines: { unitPrice: number; quantity: number; discoun
   const total     = subtotal + vatAmount;
   return { subtotal, vatAmount, total };
 }
-
-// ── Date helpers ──────────────────────────────────────────────────────────────
 
 export function fmtDate(d: string | Date | null | undefined): string {
   if (!d) return "—";

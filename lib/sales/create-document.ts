@@ -1,6 +1,5 @@
 // lib/sales/create-document.ts
-// Core document creation logic — called by all 7 document type API routes.
-// Market data fetched outside transaction to avoid timeout.
+// Core document creation logic — called by all document type API routes.
 
 import { prisma } from "@/lib/prisma";
 import { SalesDocumentType, SalesDocumentStatus } from "@prisma/client";
@@ -13,7 +12,6 @@ export interface CreateDocumentInput {
   customerId: string;
   createdByAdminId: string;
 
-  // Document fields
   subject?:            string | null;
   referenceNumber?:    string | null;
   notes?:              string | null;
@@ -21,19 +19,16 @@ export interface CreateDocumentInput {
   termsAndConditions?: string | null;
   language?:           string;
 
-  // Dates
   issueDate?:  string | Date;
   dueDate?:    string | Date | null;
   validUntil?: string | Date | null;
 
-  // Origin doc (for conversions)
   originDocId?: string | null;
 
-  // RFQ-specific
-  rfqTitle?:   string | null;
-  rfqFileUrl?: string | null;
+  rfqTitle?:          string | null;
+  rfqFileUrl?:        string | null;
+  visibleToCustomer?: boolean; // RFQ only — defaults to false
 
-  // Lines
   lines: Array<{
     productId?:      string | null;
     description:     string;
@@ -42,13 +37,12 @@ export interface CreateDocumentInput {
     productDetails?: string | null;
     detailsAr?:      string | null;
     quantity:        number;
-    unitPrice:       number;  // cents
-    discount:        number;  // 0–100 percent
+    unitPrice:       number;
+    discount:        number;
   }>;
 }
 
 export async function createDocument(input: CreateDocumentInput) {
-  // ── Fetch market OUTSIDE transaction to avoid timeout ─────────────────────
   const market = await prisma.market.findUniqueOrThrow({
     where:  { id: input.marketId },
     select: { defaultCurrency: true, vatPercent: true, legalInfo: true },
@@ -57,17 +51,11 @@ export async function createDocument(input: CreateDocumentInput) {
   const currency   = market.defaultCurrency;
   const vatPercent = Number(market.vatPercent ?? 0);
 
-  // Compute totals outside transaction
   const { subtotal, vatAmount, total } = calcTotals(
-    input.lines.map(l => ({
-      unitPrice: l.unitPrice,
-      quantity:  l.quantity,
-      discount:  l.discount,
-    })),
+    input.lines.map(l => ({ unitPrice: l.unitPrice, quantity: l.quantity, discount: l.discount })),
     vatPercent,
   );
 
-  // Determine validUntil for quotations
   let validUntil: Date | null = null;
   if (input.type === "QUOTATION") {
     if (input.validUntil) {
@@ -79,18 +67,15 @@ export async function createDocument(input: CreateDocumentInput) {
     }
   }
 
-  // Determine initial status
   let status: SalesDocumentStatus = "DRAFT";
   if (input.type === "RFQ") status = "PENDING";
 
-  // Get default T&C from market legalInfo if not provided
   let terms = input.termsAndConditions ?? null;
   if (!terms && input.type !== "RFQ") {
     const li = market.legalInfo as Record<string, unknown> | null;
     terms = String(li?.defaultPaymentTerms ?? "") || null;
   }
 
-  // ── Only DB writes inside transaction, with generous timeout ─────────────
   const doc = await prisma.$transaction(async tx => {
     const docNum = await allocateDocNumber(tx, input.marketId, input.type);
 
@@ -120,22 +105,23 @@ export async function createDocument(input: CreateDocumentInput) {
         dueDate:    input.dueDate    ? new Date(input.dueDate)    : null,
         validUntil: validUntil,
 
-        rfqTitle:   input.rfqTitle   ?? null,
-        rfqFileUrl: input.rfqFileUrl ?? null,
+        rfqTitle:          input.rfqTitle          ?? null,
+        rfqFileUrl:        input.rfqFileUrl        ?? null,
+        visibleToCustomer: input.visibleToCustomer ?? false,
 
         lines: {
           create: input.lines.map((l, i) => ({
-            productId:     l.productId     ?? null,
-            description:   l.description,
-            descriptionAr: l.descriptionAr ?? null,
-            billingPeriod: l.billingPeriod ?? null,
-            productDetails:l.productDetails ?? null,
-            detailsAr:     l.detailsAr     ?? null,
-            quantity:      l.quantity,
-            unitPrice:     l.unitPrice,
-            discount:      l.discount,
-            lineTotal:     Math.round(l.unitPrice * l.quantity * (1 - l.discount / 100)),
-            sortOrder:     i,
+            productId:      l.productId      ?? null,
+            description:    l.description,
+            descriptionAr:  l.descriptionAr  ?? null,
+            billingPeriod:  l.billingPeriod  ?? null,
+            productDetails: l.productDetails ?? null,
+            detailsAr:      l.detailsAr      ?? null,
+            quantity:       l.quantity,
+            unitPrice:      l.unitPrice,
+            discount:       l.discount,
+            lineTotal:      Math.round(l.unitPrice * l.quantity * (1 - l.discount / 100)),
+            sortOrder:      i,
           })),
         },
       },
@@ -149,7 +135,6 @@ export async function createDocument(input: CreateDocumentInput) {
     return created;
   }, { timeout: 30000 });
 
-  // ── Audit log outside transaction ─────────────────────────────────────────
   await prisma.auditLog.create({
     data: {
       actorUserId:  input.createdByAdminId,

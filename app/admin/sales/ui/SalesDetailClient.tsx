@@ -33,6 +33,36 @@ const fieldLabel: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: 
 const fieldValue: React.CSSProperties = { fontSize: 13, color: "#111827", fontWeight: 500 };
 const inputStyle: React.CSSProperties = { width: "100%", padding: "7px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", fontFamily: "inherit", color: "#111827", background: "#fff", boxSizing: "border-box" as const };
 
+// ── Receipt download button for payment notification log entries ──────────────
+function ReceiptDownloadBtn({ receiptKey }: { receiptKey: string }) {
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState("");
+
+  async function open() {
+    setLoading(true); setError("");
+    try {
+      const res  = await fetch(`/api/admin/sales/attachment?key=${encodeURIComponent(receiptKey)}`);
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error ?? "Failed");
+      window.open(data.url, "_blank");
+    } catch (e: any) { setError(e.message); }
+    setLoading(false);
+  }
+
+  const fileName = receiptKey.split("/").pop() ?? "receipt";
+
+  return (
+    <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <button onClick={open} disabled={loading}
+        style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac", cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: loading ? 0.6 : 1 }}>
+        {loading ? "Loading…" : "↓ Download Receipt"}
+      </button>
+      <span style={{ fontSize: 10, color: "#9ca3af", fontFamily: "monospace" }}>{fileName}</span>
+      {error && <span style={{ fontSize: 10, color: "#dc2626" }}>{error}</span>}
+    </span>
+  );
+}
+
 export default function SalesDetailClient({ docId, docType, backHref }: Props) {
   const router       = useRouter();
   const searchParams = useSearchParams();
@@ -66,6 +96,7 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
   const [expectedCloseDate, setExpectedCloseDate] = useState("");
   const [followUpDate,      setFollowUpDate]      = useState("");
   const [lostReason,        setLostReason]        = useState("");
+  const [visibleToCustomer, setVisibleToCustomer] = useState(false);
 
   // CRM Activities
   const [activities,  setActivities]  = useState<any[]>([]);
@@ -239,6 +270,7 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
     setExpectedCloseDate(d.expectedCloseDate ? d.expectedCloseDate.split("T")[0] : "");
     setFollowUpDate(d.followUpDate ? d.followUpDate.split("T")[0] : "");
     setLostReason(d.lostReason ?? "");
+    setVisibleToCustomer(d.visibleToCustomer ?? false);
   }
 
   function startEdit()  { populateEdit(doc); setEditing(true);  setError(""); }
@@ -266,7 +298,8 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
             assignedToId:      assignedToId      || null,
             expectedCloseDate: expectedCloseDate || null,
             followUpDate:      followUpDate      || null,
-            lostReason:        lostReason        || null,
+            lostReason:          lostReason          || null,
+            visibleToCustomer:   visibleToCustomer,
           } : {}),
           lines: lines.map(l => ({
             id:             l.id,
@@ -691,6 +724,28 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
                       : <p style={{ ...fieldValue, color: lostReason ? "#111827" : "#9ca3af" }}>{lostReason || "—"}</p>}
                   </div>
                 )}
+                {/* Visibility toggle */}
+                <div style={{ gridColumn: "1/-1" }}>
+                  <p style={fieldLabel}>Customer Portal Visibility</p>
+                  {editing ? (
+                    <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none" }}>
+                      <div onClick={() => setVisibleToCustomer(v => !v)}
+                        style={{ width: 38, height: 20, borderRadius: 10, background: visibleToCustomer ? CLR.primary : "#d1d5db", position: "relative", transition: "background 0.2s", flexShrink: 0, cursor: "pointer" }}>
+                        <div style={{ position: "absolute", top: 2, left: visibleToCustomer ? 20 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
+                      </div>
+                      <span style={{ fontSize: 13, color: visibleToCustomer ? CLR.primary : "#6b7280", fontWeight: visibleToCustomer ? 600 : 400 }}>
+                        {visibleToCustomer ? "Visible to customer" : "Hidden from customer"}
+                      </span>
+                    </label>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: doc.visibleToCustomer ? CLR.primary : "#d1d5db" }} />
+                      <p style={{ ...fieldValue, color: doc.visibleToCustomer ? CLR.primary : "#6b7280", margin: 0 }}>
+                        {doc.visibleToCustomer ? "Visible to customer" : "Hidden from customer"}
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -788,36 +843,102 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
               <p style={{ fontSize: 12, color: "#9ca3af" }}>No status changes recorded yet.</p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                {docLogs.map((log, i) => (
-                  <div key={log.id} style={{ padding: "10px 0", borderBottom: i < docLogs.length - 1 ? "1px solid #f3f4f6" : "none", display: "flex", gap: 12, alignItems: "flex-start" }}>
-                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: CLR.primary, flexShrink: 0, marginTop: 5 }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        {log.field === "status" ? (
-                          <>
-                            <span style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>Status changed</span>
-                            {log.oldValue && (
+                {docLogs.map((log, i) => {
+
+                  // ── Payment Notification — special card ──────────────────
+                  if (log.field === "payment_notification") {
+                    // Parse structured fields from the note text
+                    const lines  = (log.note ?? "").split("\n");
+                    const get    = (prefix: string) => lines.find(l => l.startsWith(prefix))?.slice(prefix.length).trim() ?? null;
+                    const amount    = get("Amount: ");
+                    const date      = get("Date: ");
+                    const reference = get("Reference: ");
+                    const notes     = get("Notes: ");
+                    const receiptKey = log.newValue && log.newValue !== "no-receipt" ? log.newValue : null;
+
+                    return (
+                      <div key={log.id} style={{ padding: "12px 0", borderBottom: i < docLogs.length - 1 ? "1px solid #f3f4f6" : "none", display: "flex", gap: 12, alignItems: "flex-start" }}>
+                        {/* Green dot for payment notifications */}
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#15803d", flexShrink: 0, marginTop: 5 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          {/* Header */}
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", background: "#f0fdf4", border: "1px solid #86efac", color: "#15803d", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                              💳 Payment Notification
+                            </span>
+                            <span style={{ fontSize: 10, color: "#9ca3af" }}>
+                              {new Date(log.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                              {log.changedBy && ` · submitted by ${log.changedBy.fullName ?? log.changedBy.email}`}
+                            </span>
+                          </div>
+
+                          {/* Details grid */}
+                          <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", padding: "12px 14px", display: "grid", gridTemplateColumns: "120px 1fr", gap: "6px 0", fontSize: 12 }}>
+                            {amount && <>
+                              <span style={{ color: "#9ca3af" }}>Amount</span>
+                              <span style={{ fontWeight: 700, color: "#111827" }}>{amount}</span>
+                            </>}
+                            {date && <>
+                              <span style={{ color: "#9ca3af" }}>Transfer Date</span>
+                              <span style={{ color: "#374151" }}>{date}</span>
+                            </>}
+                            {reference && <>
+                              <span style={{ color: "#9ca3af" }}>Reference</span>
+                              <span style={{ fontFamily: "monospace", fontWeight: 600, color: "#111827" }}>{reference}</span>
+                            </>}
+                            {notes && <>
+                              <span style={{ color: "#9ca3af" }}>Notes</span>
+                              <span style={{ color: "#374151" }}>{notes}</span>
+                            </>}
+                            {receiptKey ? (
                               <>
-                                <span style={{ fontSize: 11, padding: "1px 7px", background: "#f3f4f6", border: "1px solid #e5e7eb", color: "#6b7280" }}>{log.oldValue.replace(/_/g, " ")}</span>
-                                <span style={{ fontSize: 11, color: "#9ca3af" }}>→</span>
+                                <span style={{ color: "#9ca3af" }}>Receipt</span>
+                                <ReceiptDownloadBtn receiptKey={receiptKey} />
+                              </>
+                            ) : (
+                              <>
+                                <span style={{ color: "#9ca3af" }}>Receipt</span>
+                                <span style={{ color: "#9ca3af", fontStyle: "italic" }}>Not uploaded</span>
                               </>
                             )}
-                            <span style={{ fontSize: 11, padding: "1px 7px", background: CLR.primaryBg, border: `1px solid ${CLR.primary}44`, color: CLR.primary, fontWeight: 600 }}>{log.newValue?.replace(/_/g, " ")}</span>
-                          </>
-                        ) : (
-                          <span style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>
-                            {log.field} updated{log.oldValue && <span style={{ fontWeight: 400, color: "#6b7280" }}> · was: {log.oldValue}</span>}
-                          </span>
-                        )}
+                          </div>
+                        </div>
                       </div>
-                      {log.note && <p style={{ fontSize: 11, color: "#6b7280", marginTop: 3, fontStyle: "italic" }}>"{log.note}"</p>}
-                      <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 3 }}>
-                        {new Date(log.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                        {log.changedBy && ` · by ${log.changedBy.fullName ?? log.changedBy.email}`}
-                      </p>
+                    );
+                  }
+
+                  // ── Regular log entry ────────────────────────────────────
+                  return (
+                    <div key={log.id} style={{ padding: "10px 0", borderBottom: i < docLogs.length - 1 ? "1px solid #f3f4f6" : "none", display: "flex", gap: 12, alignItems: "flex-start" }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: CLR.primary, flexShrink: 0, marginTop: 5 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          {log.field === "status" ? (
+                            <>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>Status changed</span>
+                              {log.oldValue && (
+                                <>
+                                  <span style={{ fontSize: 11, padding: "1px 7px", background: "#f3f4f6", border: "1px solid #e5e7eb", color: "#6b7280" }}>{log.oldValue.replace(/_/g, " ")}</span>
+                                  <span style={{ fontSize: 11, color: "#9ca3af" }}>→</span>
+                                </>
+                              )}
+                              <span style={{ fontSize: 11, padding: "1px 7px", background: CLR.primaryBg, border: `1px solid ${CLR.primary}44`, color: CLR.primary, fontWeight: 600 }}>{log.newValue?.replace(/_/g, " ")}</span>
+                            </>
+                          ) : (
+                            <span style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>
+                              {log.field} updated{log.oldValue && <span style={{ fontWeight: 400, color: "#6b7280" }}> · was: {log.oldValue}</span>}
+                            </span>
+                          )}
+                        </div>
+                        {log.note && <p style={{ fontSize: 11, color: "#6b7280", marginTop: 3, fontStyle: "italic" }}>"{log.note}"</p>}
+                        <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 3 }}>
+                          {new Date(log.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          {log.changedBy && ` · by ${log.changedBy.fullName ?? log.changedBy.email}`}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

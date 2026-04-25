@@ -22,6 +22,7 @@ const STATUS_COLORS: Record<string, { bg: string; color: string; border: string 
   CONVERTED: { bg: "#f5f0ff", color: "#6d28d9", border: "#c4b5fd" },
   CLOSED:    { bg: "#f3f4f6", color: "#6b7280", border: "#e5e7eb" },
   FOLLOW_UP: { bg: "#fff8e6", color: "#854F0B", border: "#fcd34d" },
+  REPLIED:   { bg: "#e0f2fe", color: "#0369a1", border: "#7dd3fc" },
 };
 
 const STATUS_MESSAGES: Record<string, string> = {
@@ -31,6 +32,7 @@ const STATUS_MESSAGES: Record<string, string> = {
   CONVERTED: "Your inquiry has been processed and converted.",
   CLOSED:    "This inquiry has been closed.",
   FOLLOW_UP: "Our team will follow up with you shortly.",
+  REPLIED:   "Our team has responded to your inquiry. Please check your email or contact us for details.",
 };
 
 function fmtDate(d: string) {

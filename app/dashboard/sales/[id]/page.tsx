@@ -12,11 +12,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: doc?.docNum ?? "Document" };
 }
 
-export default async function SalesDocPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function SalesDocPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await getSessionUser();
   if (!user) redirect("/login");
@@ -44,9 +40,18 @@ export default async function SalesDocPage({
           currency: true, reference: true, paidAt: true,
         },
       },
-      originDoc: {
-        select: { id: true, docNum: true, type: true, status: true },
+      // Fetch payment notification logs for this invoice
+      logs: {
+        where:   { field: "payment_notification" },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id:        true,
+          note:      true,
+          newValue:  true,
+          createdAt: true,
+        },
       },
+      originDoc:   { select: { id: true, docNum: true, type: true, status: true } },
       derivedDocs: {
         where:  { status: { notIn: ["DRAFT", "VOID", "WRITTEN_OFF"] } },
         select: { id: true, docNum: true, type: true, status: true },
@@ -55,6 +60,9 @@ export default async function SalesDocPage({
         select: {
           name: true, key: true, defaultCurrency: true,
           legalInfo: true, vatPercent: true,
+          paymentMethods: true,
+          showPayOnline:  true,
+          stripePublicKey: true,
         },
       },
       customer: {
@@ -71,6 +79,23 @@ export default async function SalesDocPage({
   if (!doc) notFound();
 
   const amountPaid = doc.payments.reduce((s, p) => s + p.amountCents, 0);
+  const li = (doc.market.legalInfo ?? {}) as Record<string, any>;
+
+  // Parse payment notification logs into structured objects
+  const paymentNotifications = doc.logs.map(log => {
+    const lines     = (log.note ?? "").split("\n");
+    const get       = (prefix: string) => lines.find(l => l.startsWith(prefix))?.slice(prefix.length).trim() ?? null;
+    const receiptKey = log.newValue && log.newValue !== "no-receipt" ? log.newValue : null;
+    return {
+      id:         log.id,
+      amount:     get("Amount: "),
+      date:       get("Date: "),
+      reference:  get("Reference: "),
+      notes:      get("Notes: "),
+      receiptKey,
+      submittedAt: log.createdAt.toISOString(),
+    };
+  });
 
   const serialized = {
     id:                 doc.id,
@@ -97,12 +122,17 @@ export default async function SalesDocPage({
     validUntil:         doc.validUntil?.toISOString() ?? null,
     paidAt:             doc.paidAt?.toISOString()     ?? null,
     createdAt:          doc.createdAt.toISOString(),
+    paymentNotifications,
     market: {
-      name:       doc.market.name,
-      key:        doc.market.key,
-      currency:   doc.market.defaultCurrency,
-      vatPercent: Number(doc.market.vatPercent ?? 0),
-      legalInfo:  doc.market.legalInfo as Record<string, string> | null,
+      name:            doc.market.name,
+      key:             doc.market.key,
+      currency:        doc.market.defaultCurrency,
+      vatPercent:      Number(doc.market.vatPercent ?? 0),
+      legalInfo:       doc.market.legalInfo as Record<string, any> | null,
+      paymentMethods:  doc.market.paymentMethods ?? [],
+      showPayOnline:   doc.market.showPayOnline  ?? false,
+      stripePublicKey: doc.market.stripePublicKey ?? null,
+      bankDetails:     li.bankDetails ?? null,
     },
     customer: {
       fullName:    doc.customer.fullName    ?? null,
@@ -127,9 +157,7 @@ export default async function SalesDocPage({
       unitPrice:     l.unitPrice,
       discount:      Number(l.discount),
       lineTotal:     l.lineTotal,
-      product:       l.product
-        ? { id: l.product.id, name: l.product.name, key: l.product.key }
-        : null,
+      product:       l.product ? { id: l.product.id, name: l.product.name, key: l.product.key } : null,
     })),
     payments: doc.payments.map(p => ({
       id:          p.id,
@@ -140,16 +168,11 @@ export default async function SalesDocPage({
       paidAt:      p.paidAt.toISOString(),
     })),
     originDoc: doc.originDoc ? {
-      id:     doc.originDoc.id,
-      docNum: doc.originDoc.docNum,
-      type:   String(doc.originDoc.type),
-      status: String(doc.originDoc.status),
+      id: doc.originDoc.id, docNum: doc.originDoc.docNum,
+      type: String(doc.originDoc.type), status: String(doc.originDoc.status),
     } : null,
     derivedDocs: doc.derivedDocs.map(d => ({
-      id:     d.id,
-      docNum: d.docNum,
-      type:   String(d.type),
-      status: String(d.status),
+      id: d.id, docNum: d.docNum, type: String(d.type), status: String(d.status),
     })),
   };
 

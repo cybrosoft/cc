@@ -46,7 +46,7 @@ async function allocateDocNum(marketId: string): Promise<string> {
 async function uploadFile(file: File, prefix = "sales/rfq"): Promise<string> {
   const ext = ALLOWED_TYPES[file.type];
   if (!ext) throw new Error(`Unsupported file type: ${file.type}`);
-  if (file.size > 10 * 1024 * 1024) throw new Error(`File too large — max 10 MB`);
+  if (file.size > 10 * 1024 * 1024) throw new Error("File too large — max 10 MB");
   const buffer = Buffer.from(await file.arrayBuffer());
   const key    = `${prefix}/${randomUUID()}.${ext}`;
   await s3.send(new PutObjectCommand({ Bucket: BUCKET, Key: key, Body: buffer, ContentType: file.type }));
@@ -54,6 +54,7 @@ async function uploadFile(file: File, prefix = "sales/rfq"): Promise<string> {
 }
 
 // ── POST — submit new RFQ ─────────────────────────────────────────────────────
+// Customer-submitted RFQs are always visibleToCustomer: true
 export async function POST(req: NextRequest) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -71,7 +72,6 @@ export async function POST(req: NextRequest) {
     title = String(form.get("title") ?? "").trim();
     notes = String(form.get("notes") ?? "").trim();
 
-    // Support multiple files — field name "files" (multiple) or "file" (single)
     const files = form.getAll("files").concat(form.getAll("file"))
       .filter((f): f is File => f instanceof File && f.size > 0);
 
@@ -110,15 +110,16 @@ export async function POST(req: NextRequest) {
   const doc = await prisma.salesDocument.create({
     data: {
       docNum,
-      type:       "RFQ",
-      status:     "PENDING",
-      marketId:   fullUser.marketId,
-      customerId: user.id,
-      currency:   fullUser.market.defaultCurrency,
-      rfqTitle:   title,
-      notes:      notes || null,
-      rfqFileUrl: serializeAttachments(uploadedKeys),
-      issueDate:  new Date(),
+      type:               "RFQ",
+      status:             "PENDING",
+      marketId:           fullUser.marketId,
+      customerId:         user.id,
+      currency:           fullUser.market.defaultCurrency,
+      rfqTitle:           title,
+      notes:              notes || null,
+      rfqFileUrl:         serializeAttachments(uploadedKeys),
+      visibleToCustomer:  true, // customer-submitted RFQs are always visible
+      issueDate:          new Date(),
       subtotal:   0,
       vatPercent: 0,
       vatAmount:  0,
@@ -158,13 +159,18 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true, docNum: doc.docNum, id: doc.id }, { status: 201 });
 }
 
-// ── GET — list customer's own RFQs ────────────────────────────────────────────
+// ── GET — list customer's own visible RFQs ────────────────────────────────────
+// Only returns RFQs where visibleToCustomer = true
 export async function GET(req: NextRequest) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const rfqs = await prisma.salesDocument.findMany({
-    where:   { customerId: user.id, type: "RFQ" },
+    where:   {
+      customerId:        user.id,
+      type:              "RFQ",
+      visibleToCustomer: true,  // ← only show visible ones
+    },
     orderBy: { createdAt: "desc" },
     take:    50,
     select: {
