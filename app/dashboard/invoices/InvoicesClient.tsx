@@ -52,8 +52,8 @@ const TYPE_LABELS: Record<string, string> = {
   CREDIT_NOTE: "Credit Note",
 };
 
-const CREDIT_NOTE_FILTER = ["ALL", "UNPAID", "PAID", "OVERDUE"] as const;
-type Filter = typeof CREDIT_NOTE_FILTER[number];
+const FILTER_VALUES = ["ALL", "UNPAID", "PAID", "OVERDUE", "CREDIT_NOTES"] as const;
+type Filter = typeof FILTER_VALUES[number];
 
 export function InvoicesClient({ docs }: { docs: InvoiceRow[] }) {
   const [filter, setFilter] = useState<Filter>("ALL");
@@ -62,10 +62,11 @@ export function InvoicesClient({ docs }: { docs: InvoiceRow[] }) {
   const hasCreditNotes = docs.some(d => d.type === "CREDIT_NOTE");
 
   const filtered = docs.filter(d => {
-    if (filter === "UNPAID")  return ["ISSUED", "SENT", "PARTIALLY_PAID"].includes(d.status);
-    if (filter === "PAID")    return ["PAID", "APPLIED"].includes(d.status);
-    if (filter === "OVERDUE") return d.status === "OVERDUE";
-    return true;
+    if (filter === "UNPAID")       return ["ISSUED", "SENT", "PARTIALLY_PAID"].includes(d.status) && d.type === "INVOICE";
+    if (filter === "PAID")         return ["PAID", "APPLIED"].includes(d.status) && d.type === "INVOICE";
+    if (filter === "OVERDUE")      return d.status === "OVERDUE" && d.type === "INVOICE";
+    if (filter === "CREDIT_NOTES") return d.type === "CREDIT_NOTE";
+    return d.type === "INVOICE"; // ALL — invoices only
   });
 
   // Count pending submissions across all unpaid invoices
@@ -111,6 +112,11 @@ export function InvoicesClient({ docs }: { docs: InvoiceRow[] }) {
                 {f === "ALL" ? "All" : f.charAt(0) + f.slice(1).toLowerCase()}
               </button>
             ))}
+            {hasCreditNotes && (
+              <button className={`inv-filter-btn${filter === "CREDIT_NOTES" ? " active" : ""}`} onClick={() => setFilter("CREDIT_NOTES")}>
+                Credit Notes
+              </button>
+            )}
           </div>
 
           {/* Invoice list */}
@@ -118,7 +124,7 @@ export function InvoicesClient({ docs }: { docs: InvoiceRow[] }) {
             <div style={{ padding: "48px 24px", textAlign: "center", background: "#fff", border: "1px solid #e5e7eb" }}>
               <p style={{ fontSize: 14, fontWeight: 500, color: "#374151", marginBottom: 6 }}>No invoices found</p>
               <p style={{ fontSize: 13, color: "#9ca3af" }}>
-                {filter === "ALL" ? "Invoices will appear here once issued by our team." : `No ${filter.toLowerCase()} invoices.`}
+                {filter === "ALL" ? "Invoices will appear here once issued by our team." : filter === "CREDIT_NOTES" ? "No credit notes found." : `No ${filter.toLowerCase()} invoices.`}
               </p>
             </div>
           ) : (

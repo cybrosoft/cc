@@ -1,8 +1,7 @@
 // app/api/admin/sales/[id]/convert/route.ts
 // POST — converts a document to another type.
-// Marks source as CONVERTED, creates new doc as DRAFT.
-// Returns the new doc so the UI can redirect to its detail page in edit mode.
-// The new doc is NOT auto-issued — admin reviews and saves from the edit form.
+// Marks source as CONVERTED (except PAID invoices → credit note, which stay PAID).
+// Creates new doc as DRAFT. Returns the new doc so UI can redirect to its detail page.
 
 export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
@@ -20,7 +19,6 @@ const CONVERT_OPTIONS: Record<string, SalesDocumentType[]> = {
   INVOICE:       ["CREDIT_NOTE"],
 };
 
-// Map target type → admin route prefix (for redirect URL)
 const ROUTE_MAP: Record<string, string> = {
   QUOTATION:     "/admin/sales/quotations",
   PROFORMA:      "/admin/sales/proforma",
@@ -30,6 +28,9 @@ const ROUTE_MAP: Record<string, string> = {
   PO:            "/admin/sales/po",
   RFQ:           "/admin/sales/rfq",
 };
+
+// Statuses that block conversion entirely
+const BLOCKED_STATUSES = ["VOID", "CONVERTED"];
 
 export async function POST(
   req: NextRequest,
@@ -46,13 +47,15 @@ export async function POST(
     if (!targetType) return NextResponse.json({ error: "targetType required" }, { status: 400 });
 
     const source = await prisma.salesDocument.findUnique({
-      where: { id },
+      where:   { id },
       include: { lines: { orderBy: { sortOrder: "asc" } } },
     });
 
     if (!source) return NextResponse.json({ error: "Document not found" }, { status: 404 });
-    if (source.status === "VOID")      return NextResponse.json({ error: "Cannot convert a voided document" }, { status: 400 });
-    if (source.status === "CONVERTED") return NextResponse.json({ error: "Document already converted" }, { status: 400 });
+
+    if (BLOCKED_STATUSES.includes(source.status)) {
+      return NextResponse.json({ error: `Cannot convert a ${source.status.toLowerCase()} document` }, { status: 400 });
+    }
 
     const allowed = CONVERT_OPTIONS[source.type] ?? [];
     if (!allowed.includes(targetType)) {
@@ -61,48 +64,61 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // Create new document as DRAFT — copying all lines and metadata from source
+    // Create the new document as DRAFT
     const newDoc = await createDocument({
-      type:             targetType,
-      marketId:         source.marketId,
-      customerId:       source.customerId,
-      createdByAdminId: auth.user.id,
-      originDocId:      source.id,
-      subject:          source.subject,
-      referenceNumber:  source.referenceNumber,
-      notes:            source.notes,
-      internalNote:     source.internalNote,
+      type:               targetType,
+      marketId:           source.marketId,
+      customerId:         source.customerId,
+      createdByAdminId:   auth.user.id,
+      originDocId:        source.id,
+      subject:            source.subject,
+      referenceNumber:    source.referenceNumber,
+      notes:              source.notes,
+      internalNote:       source.internalNote,
       termsAndConditions: source.termsAndConditions,
-      language:         source.language,
+      language:           source.language,
       lines: source.lines.map(l => ({
         productId:      l.productId,
         description:    l.description,
-        descriptionAr:  l.descriptionAr ?? null,
-        billingPeriod:  l.billingPeriod ?? null,
+        descriptionAr:  l.descriptionAr  ?? null,
+        billingPeriod:  l.billingPeriod  ?? null,
         productDetails: l.productDetails ?? null,
-        detailsAr:      l.detailsAr ?? null,
+        detailsAr:      l.detailsAr      ?? null,
         quantity:       Number(l.quantity),
         unitPrice:      l.unitPrice,
         discount:       Number(l.discount),
       })),
     });
 
-    // Mark source as CONVERTED
-    await prisma.salesDocument.update({
-      where: { id: source.id },
-      data:  { status: "CONVERTED" },
+    // Update source status:
+    // - PAID invoice → credit note: keep PAID (invoice was paid, return is separate)
+    // - Everything else → CONVERTED
+    const isPaidToCredit = source.type === "INVOICE"
+      && source.status === "PAID"
+      && targetType === "CREDIT_NOTE";
+
+    if (!isPaidToCredit) {
+      await prisma.salesDocument.update({
+        where: { id: source.id },
+        data:  { status: "CONVERTED" },
+      });
+    }
+
+    // Log the conversion
+    await prisma.salesDocumentLog.create({
+      data: {
+        documentId:  source.id,
+        field:       "conversion",
+        oldValue:    source.type,
+        newValue:    targetType,
+        note:        `Converted to ${targetType} — created ${newDoc.docNum}`,
+        changedById: auth.user.id,
+      },
     });
 
-    // Build the redirect URL for the UI:
-    // e.g. /admin/sales/invoices/NEW_DOC_ID?edit=1
-    // The ?edit=1 param tells SalesDetailClient to open in edit mode immediately.
     const redirectTo = `${ROUTE_MAP[targetType] ?? "/admin/sales"}/${newDoc.id}?edit=1`;
 
-    return NextResponse.json({
-      ok:         true,
-      doc:        newDoc,
-      redirectTo,
-    });
+    return NextResponse.json({ ok: true, doc: newDoc, redirectTo });
 
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

@@ -22,7 +22,9 @@ const ENDPOINT_FOR_TYPE: Record<string, string> = {
   CREDIT_NOTE:   "/api/admin/sales/returns",
 };
 
-const LOCKED_STATUSES = ["PAID", "VOID", "WRITTEN_OFF", "APPLIED", "CANCELLED"];
+const LOCKED_STATUSES     = ["PAID", "VOID", "WRITTEN_OFF", "APPLIED", "CANCELLED"];
+// PAID invoices can still be converted to credit notes — all other locked actions remain blocked
+const CONVERT_BLOCKED     = ["VOID", "WRITTEN_OFF", "APPLIED", "CANCELLED", "CONVERTED"];
 const WARN_STATUSES   = ["ISSUED", "SENT", "REVISED", "QUOTED", "PARTIALLY_PAID"];
 
 interface Props { docId: string; docType: string; backHref: string }
@@ -141,6 +143,8 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
   const [payRef,     setPayRef]     = useState("");
   const [payNotes,   setPayNotes]   = useState("");
   const [payDate,    setPayDate]    = useState(new Date().toISOString().split("T")[0]);
+  const [payReceipt, setPayReceipt] = useState<File | null>(null);
+  const payReceiptRef = useRef<HTMLInputElement>(null);
   const [payLoading, setPayLoading] = useState(false);
   const [payError,   setPayError]   = useState("");
 
@@ -361,6 +365,18 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
   async function recordPayment() {
     setPayLoading(true); setPayError("");
     try {
+      // Upload receipt if provided
+      let receiptUrl: string | null = null;
+      if (payReceipt) {
+        const fd = new FormData();
+        fd.append("file", payReceipt);
+        fd.append("docType", "INVOICE");
+        const upRes  = await fetch("/api/admin/sales/upload", { method: "POST", body: fd });
+        const upData = await upRes.json();
+        if (!upRes.ok) throw new Error(upData.error ?? "Receipt upload failed");
+        receiptUrl = upData.key ?? upData.url;
+      }
+
       const res = await fetch("/api/admin/sales/billing", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -368,10 +384,12 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
           method: payMethod, amountCents: Math.round(Number(payAmount) * 100),
           currency: doc.currency, reference: payRef || null,
           notes: payNotes || null, paidAt: payDate,
+          receiptUrl,
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error);
-      setShowPayment(false); setPayAmount(""); setPayRef(""); setPayNotes("");
+      setShowPayment(false);
+      setPayAmount(""); setPayRef(""); setPayNotes(""); setPayReceipt(null);
       await load();
     } catch (e: any) { setPayError(e.message); }
     setPayLoading(false);
@@ -405,10 +423,11 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
   const totalPaid   = (doc.payments ?? []).reduce((s: number, p: any) => s + p.amountCents, 0);
   const balanceDue  = doc.total - totalPaid;
   const isLocked    = LOCKED_STATUSES.includes(doc.status);
+  const canConvert  = !CONVERT_BLOCKED.includes(doc.status);
   const canSend     = !["VOID"].includes(doc.status);
   const hasBeenSent = (doc.emailSentCount ?? 0) > 0;
   const isInvoiceUnpaid = doc.type === "INVOICE" && ["ISSUED", "SENT", "PARTIALLY_PAID", "OVERDUE"].includes(doc.status);
-  const canPay      = ["ISSUED", "SENT", "PARTIALLY_PAID", "OVERDUE"].includes(doc.status);
+  const canPay      = doc.type === "INVOICE" && ["ISSUED", "SENT", "PARTIALLY_PAID", "OVERDUE"].includes(doc.status);
 
   // Saudi official invoice logic
   const isSaudi          = doc.market?.key === "SAUDI";
@@ -562,7 +581,7 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
             </button>
           )}
 
-          {!editing && (
+          {!editing && canConvert && (
             <button onClick={() => setShowConvert(true)}
               style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", fontSize: 12, fontWeight: 600, background: "#fffbeb", color: "#b45309", border: "1px solid #fcd34d", cursor: "pointer", fontFamily: "inherit" }}>
               Convert
@@ -1056,6 +1075,31 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
               <div>
                 <label style={{ ...fieldLabel, display: "block", marginBottom: 5 }}>Notes</label>
                 <input style={inputStyle} value={payNotes} onChange={e => setPayNotes(e.target.value)} placeholder="Optional" />
+              </div>
+              {/* Receipt upload */}
+              <div>
+                <label style={{ ...fieldLabel, display: "block", marginBottom: 5 }}>
+                  Receipt <span style={{ fontSize: 10, fontWeight: 400, color: "#9ca3af" }}>(optional — PDF, JPG, PNG · max 10 MB)</span>
+                </label>
+                {payReceipt ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#f0fdf4", border: "1px solid #86efac" }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#15803d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                    <span style={{ fontSize: 12, flex: 1, color: "#15803d", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{payReceipt.name}</span>
+                    <span style={{ fontSize: 11, color: "#9ca3af" }}>{(payReceipt.size / 1024).toFixed(0)} KB</span>
+                    <button type="button" onClick={() => setPayReceipt(null)}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626", fontSize: 16, lineHeight: 1, flexShrink: 0 }}>×</button>
+                  </div>
+                ) : (
+                  <div onClick={() => payReceiptRef.current?.click()}
+                    style={{ border: "2px dashed #d1d5db", padding: "12px", textAlign: "center", cursor: "pointer", background: "#fafafa" }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = CLR.primary}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = "#d1d5db"}>
+                    <p style={{ fontSize: 12, color: CLR.muted, margin: 0 }}>Click to attach receipt</p>
+                  </div>
+                )}
+                <input ref={payReceiptRef} type="file" style={{ display: "none" }}
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={e => setPayReceipt(e.target.files?.[0] ?? null)} />
               </div>
               {payError && <p style={{ fontSize: 12, color: "#dc2626" }}>{payError}</p>}
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>

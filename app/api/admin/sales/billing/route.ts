@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
 
     const payments = await prisma.salesPayment.findMany({
       where: {
-        ...(marketId ? { marketId }             : {}),
+        ...(marketId ? { marketId } : {}),
         ...(method   ? { method: method as any } : {}),
         ...(q ? {
           OR: [
@@ -22,6 +22,8 @@ export async function GET(req: NextRequest) {
             { document:  { docNum: { contains: q, mode: "insensitive" } } },
           ],
         } : {}),
+        // Only show payments on invoices and proforma — not credit notes
+        document: { type: { in: ["INVOICE", "PROFORMA"] } },
       },
       include: {
         document: {
@@ -54,6 +56,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Verify document type before recording payment
+    const doc = await prisma.salesDocument.findUnique({
+      where:  { id: body.documentId },
+      select: { type: true, status: true },
+    });
+
+    if (!doc) return NextResponse.json({ error: "Document not found" }, { status: 404 });
+
+    if (!["INVOICE", "PROFORMA"].includes(doc.type)) {
+      return NextResponse.json(
+        { error: `Payments cannot be recorded against ${doc.type.replace("_", " ")} documents` },
+        { status: 400 }
+      );
+    }
+
+    if (doc.status === "VOID") {
+      return NextResponse.json({ error: "Cannot record payment on a voided document" }, { status: 400 });
+    }
+
     const payment = await prisma.$transaction(async (tx) => {
       const p = await tx.salesPayment.create({
         data: {
@@ -62,14 +83,13 @@ export async function POST(req: NextRequest) {
           method:      body.method ?? "BANK_TRANSFER",
           amountCents: body.amountCents,
           currency:    body.currency,
-          reference:   body.reference   ?? null,
-          notes:       body.notes       ?? null,
-          receiptUrl:  body.receiptUrl  ?? null,
+          reference:   body.reference  ?? null,
+          notes:       body.notes      ?? null,
+          receiptUrl:  body.receiptUrl ?? null,
           paidAt:      body.paidAt ? new Date(body.paidAt) : undefined,
         },
       });
 
-      // Update document paidAt if not already set
       await tx.salesDocument.updateMany({
         where: { id: body.documentId, paidAt: null },
         data:  { paidAt: new Date(), status: "PAID" },
