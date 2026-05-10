@@ -1,15 +1,20 @@
-// app/api/customer/statement/route.ts
-// Statement of accounts: invoices + credit notes + payments with running balance.
+// app/api/admin/customers/[id]/statement/route.ts
+// Admin-side statement of accounts for a specific customer.
+// Same logic as /api/customer/statement but admin-authenticated.
 // Supports optional date range: ?from=2024-01-01&to=2024-12-31
-// Entry shape: { type, docType, docNum, docId, detailMain, detailSub, amount, payment, currency, balance }
 
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth/get-session-user";
+import { requireAdmin } from "@/lib/auth/require-admin";
 import { prisma } from "@/lib/prisma";
 
-export async function GET(req: NextRequest) {
-  const user = await getSessionUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireAdmin();
+  if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id: customerId } = await context.params;
 
   const { searchParams } = new URL(req.url);
   const fromParam = searchParams.get("from");
@@ -18,24 +23,17 @@ export async function GET(req: NextRequest) {
   const from = fromParam ? new Date(fromParam) : undefined;
   const to   = toParam   ? new Date(toParam)   : undefined;
 
-  // ── Opening balance — sum of all transactions strictly before `from` ──────
-  // Only needed when a from-date filter is applied.
+  // ── Opening balance — all transactions strictly before `from` ─────────────
   let openingBalance = 0;
   if (from) {
     const priorDocs = await prisma.salesDocument.findMany({
       where: {
-        customerId: user.id,
-        type:       { in: ["INVOICE", "CREDIT_NOTE"] },
-        status:     { notIn: ["DRAFT", "VOID"] },
-        issueDate:  { lt: from },
+        customerId,
+        type:      { in: ["INVOICE", "CREDIT_NOTE"] },
+        status:    { notIn: ["DRAFT", "VOID"] },
+        issueDate: { lt: from },
       },
-      select: {
-        type:  true,
-        total: true,
-        payments: {
-          select: { amountCents: true },
-        },
-      },
+      select: { type: true, total: true, payments: { select: { amountCents: true } } },
     });
     for (const d of priorDocs) {
       if (d.type === "INVOICE")     openingBalance += d.total;
@@ -44,12 +42,12 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // ── Invoices & credit notes ───────────────────────────────────────────────
+  // ── Main docs ─────────────────────────────────────────────────────────────
   const docs = await prisma.salesDocument.findMany({
     where: {
-      customerId: user.id,
-      type:       { in: ["INVOICE", "CREDIT_NOTE"] },
-      status:     { notIn: ["DRAFT", "VOID"] },
+      customerId,
+      type:   { in: ["INVOICE", "CREDIT_NOTE"] },
+      status: { notIn: ["DRAFT", "VOID"] },
       ...(from || to ? {
         issueDate: {
           ...(from ? { gte: from } : {}),
@@ -68,20 +66,17 @@ export async function GET(req: NextRequest) {
       dueDate:   true,
       subject:   true,
       createdAt: true,
-      originDoc: {
-        select: { docNum: true },
-      },
+      originDoc: { select: { docNum: true } },
       payments: {
-        select: { id: true, amountCents: true, method: true, paidAt: true, currency: true, createdAt: true },
+        select: { amountCents: true, method: true, paidAt: true, createdAt: true },
         orderBy: { paidAt: "asc" },
       },
     },
     orderBy: { issueDate: "asc" },
   });
 
-  // ── Build statement entries ───────────────────────────────────────────────
-  type StatementEntry = {
-    date:       string;
+  // ── Build entries ─────────────────────────────────────────────────────────
+  type Entry = {
     createdAt:  string;
     docType:    "INVOICE" | "CREDIT_NOTE" | "PAYMENT";
     subType?:   "REFUND";
@@ -95,14 +90,13 @@ export async function GET(req: NextRequest) {
     status:     string;
   };
 
-  const entries: StatementEntry[] = [];
+  const entries: Entry[] = [];
 
   for (const doc of docs) {
     const currency = doc.currency;
 
     if (doc.type === "INVOICE") {
       entries.push({
-        date:       doc.issueDate.toISOString(),
         createdAt:  doc.createdAt.toISOString(),
         docType:    "INVOICE",
         docNum:     doc.docNum,
@@ -111,26 +105,24 @@ export async function GET(req: NextRequest) {
         detailSub:  doc.dueDate
           ? `Due on ${new Date(doc.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
           : doc.subject ?? "",
-        amount:     doc.total,
-        payment:    0,
+        amount:  doc.total,
+        payment: 0,
         currency,
-        status:     String(doc.status),
+        status:  String(doc.status),
       });
-
       for (const p of doc.payments) {
         const method = String(p.method).replace(/_/g, " ");
         entries.push({
-          date:       p.paidAt.toISOString(),
           createdAt:  p.createdAt.toISOString(),
           docType:    "PAYMENT",
           docNum:     doc.docNum,
           docId:      doc.id,
           detailMain: method.charAt(0).toUpperCase() + method.slice(1).toLowerCase(),
           detailSub:  `${new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(p.amountCents / 100)} for ${doc.docNum}`,
-          amount:     0,
-          payment:    p.amountCents,
+          amount:  0,
+          payment: p.amountCents,
           currency,
-          status:     "PAID",
+          status:  "PAID",
         });
       }
     }
@@ -138,63 +130,58 @@ export async function GET(req: NextRequest) {
     if (doc.type === "CREDIT_NOTE") {
       const originDocNum = doc.originDoc?.docNum ?? null;
       entries.push({
-        date:       doc.issueDate.toISOString(),
         createdAt:  doc.createdAt.toISOString(),
         docType:    "CREDIT_NOTE",
         docNum:     doc.docNum,
         docId:      doc.id,
         detailMain: doc.docNum,
         detailSub:  originDocNum ? `Credit for ${originDocNum}` : (doc.subject ?? `Credit Note ${doc.docNum}`),
-        amount:     doc.total,
-        payment:    0,
+        amount:  doc.total,
+        payment: 0,
         currency,
-        status:     String(doc.status),
+        status:  String(doc.status),
       });
-
-      // Refund payments recorded against this credit note
+      // Refund payments on credit note
       for (const p of doc.payments) {
         const method = String(p.method).replace(/_/g, " ");
         entries.push({
-          date:       p.paidAt.toISOString(),
           createdAt:  p.createdAt.toISOString(),
           docType:    "PAYMENT",
+          subType:    "REFUND",
           docNum:     doc.docNum,
           docId:      doc.id,
           detailMain: method.charAt(0).toUpperCase() + method.slice(1).toLowerCase(),
           detailSub:  `Refund for ${doc.docNum}`,
-          amount:     0,
-          payment:    p.amountCents,
+          amount:  0,
+          payment: p.amountCents,
           currency,
-          status:     "REFUNDED",
-          subType:    "REFUND" as const,
+          status:  "REFUNDED",
         });
       }
     }
   }
 
-  // Sort by createdAt timestamp — the actual time the document or action was created.
+  // Sort by createdAt
   entries.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
   // ── Running balance ───────────────────────────────────────────────────────
-  // Start from opening balance (0 if no filter, prior balance if filtered)
   let runningBalance = openingBalance;
   const entriesWithBalance = entries.map(e => {
-    if (e.docType === "INVOICE")                          runningBalance += e.amount;
-    if (e.docType === "PAYMENT" && !e.subType)            runningBalance -= e.payment;  // regular payment
-    if (e.docType === "PAYMENT" && e.subType === "REFUND") runningBalance += e.payment; // refund adds back
-    if (e.docType === "CREDIT_NOTE")                      runningBalance -= e.amount;
+    if (e.docType === "INVOICE")                           runningBalance += e.amount;
+    if (e.docType === "PAYMENT" && !e.subType)             runningBalance -= e.payment;
+    if (e.docType === "PAYMENT" && e.subType === "REFUND") runningBalance += e.payment;
+    if (e.docType === "CREDIT_NOTE")                       runningBalance -= e.amount;
     return { ...e, balance: runningBalance };
   });
 
-  // ── Summary totals ────────────────────────────────────────────────────────
+  // ── Totals ────────────────────────────────────────────────────────────────
   const totalCharged  = entries.filter(e => e.docType === "INVOICE").reduce((s, e) => s + e.amount,  0);
   const totalPayments = entries.filter(e => e.docType === "PAYMENT" && !e.subType).reduce((s, e) => s + e.payment, 0);
   const totalRefunds  = entries.filter(e => e.subType === "REFUND").reduce((s, e) => s + e.payment, 0);
   const totalCredits  = entries.filter(e => e.docType === "CREDIT_NOTE").reduce((s, e) => s + e.amount, 0);
   const outstandingBalance = openingBalance + totalCharged - totalPayments - totalCredits + totalRefunds;
 
-  // Currency — use market default (all docs for a customer are same currency)
-  const currency = docs[0]?.currency ?? "USD";
+  const currency = docs[0]?.currency ?? "SAR";
 
   return NextResponse.json({
     statement: {
@@ -203,6 +190,7 @@ export async function GET(req: NextRequest) {
       totalCharged,
       totalPayments,
       totalCredits,
+      totalRefunds,
       outstandingBalance,
       entries: entriesWithBalance,
     },

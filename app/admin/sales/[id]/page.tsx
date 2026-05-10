@@ -234,7 +234,6 @@ export default function SalesDocDetailPage() {
   const totalPaid    = doc.payments.reduce((s, p) => s + p.amountCents, 0);
   const balanceDue   = doc.total - totalPaid;
 
-  // Market-aware labels
   const typeLabel    = needsOfficialPdf
     ? (doc.type === "INVOICE" ? "Invoice Memo" : "Credit Note Memo")
     : (DOC_TYPE_LABEL[doc.type as keyof typeof DOC_TYPE_LABEL] ?? doc.type);
@@ -243,9 +242,9 @@ export default function SalesDocDetailPage() {
   const primaryColor = cp.primaryColor ?? "#318774";
   const isInvoiceUnpaid = doc.type === "INVOICE" && ["ISSUED", "SENT", "PARTIALLY_PAID", "OVERDUE"].includes(doc.status);
   const canSend      = !["VOID"].includes(doc.status);
-  // Block send for Saudi INVOICE/CREDIT_NOTE if no official PDF uploaded
   const sendBlocked  = needsOfficialPdf && !hasOfficialPdf;
   const canRecordPayment = doc.type === "INVOICE" && ["ISSUED", "SENT", "PARTIALLY_PAID", "OVERDUE"].includes(doc.status);
+  const canRecordRefund  = doc.type === "CREDIT_NOTE" && ["ISSUED", "SENT"].includes(doc.status);
   const taxRateLabel = (() => {
     const t = (li.taxLabel ?? "VAT").trim();
     const base = t.replace(/\s*(No\.|Number|ID|#)\s*$/i, "").trim();
@@ -281,6 +280,13 @@ export default function SalesDocDetailPage() {
                 style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", fontSize: 12, fontWeight: 600, lineHeight: 1, background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac", cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
                 Record Payment
+              </button>
+            )}
+            {canRecordRefund && (
+              <button onClick={() => setShowPayment(true)}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", fontSize: 12, fontWeight: 600, lineHeight: 1, background: "#f5f3ff", color: "#7c3aed", border: "1px solid #ddd6fe", cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/></svg>
+                Record Refund
               </button>
             )}
             {canSend && (
@@ -327,7 +333,6 @@ export default function SalesDocDetailPage() {
       {needsOfficialPdf && !isEmbed && (
         <div className="no-print" style={{ maxWidth: 860, margin: "0 auto 16px" }}>
           <div style={{ background: "#fff", border: `1px solid ${hasOfficialPdf ? "#86efac" : "#fcd34d"}`, padding: "14px 20px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-            {/* Status indicator */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
               {hasOfficialPdf ? (
                 <>
@@ -347,8 +352,6 @@ export default function SalesDocDetailPage() {
                 </>
               )}
             </div>
-
-            {/* Actions */}
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
               {hasOfficialPdf && (
                 <>
@@ -368,21 +371,11 @@ export default function SalesDocDetailPage() {
                   </button>
                 </>
               )}
-              {/* Upload button */}
               <label style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 14px", fontSize: 11, fontWeight: 600, background: hasOfficialPdf ? "#fff" : "#b45309", color: hasOfficialPdf ? "#374151" : "#fff", border: hasOfficialPdf ? "1px solid #d1d5db" : "none", cursor: uploading ? "not-allowed" : "pointer", opacity: uploading ? 0.6 : 1 }}>
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 {uploading ? "Uploading…" : hasOfficialPdf ? "Replace" : "Upload Zoho PDF"}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/pdf"
-                  style={{ display: "none" }}
-                  onChange={e => {
-                    const file = e.target.files?.[0];
-                    e.target.value = "";
-                    if (file) uploadOfficialInvoice(file);
-                  }}
-                />
+                <input ref={fileInputRef} type="file" accept="application/pdf" style={{ display: "none" }}
+                  onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) uploadOfficialInvoice(file); }} />
               </label>
             </div>
           </div>
@@ -660,6 +653,7 @@ export default function SalesDocDetailPage() {
 }
 
 function RecordPaymentModal({ doc, onClose, onSaved }: { doc: any; onClose: () => void; onSaved: () => void }) {
+  const isRefund = doc.type === "CREDIT_NOTE";
   const [method,    setMethod]    = useState("BANK_TRANSFER");
   const [amount,    setAmount]    = useState((doc.total / 100).toFixed(2));
   const [reference, setReference] = useState("");
@@ -674,9 +668,15 @@ function RecordPaymentModal({ doc, onClose, onSaved }: { doc: any; onClose: () =
   async function submit() {
     setLoading(true); setError("");
     try {
-      const res = await fetch("/api/admin/sales/billing", {
+      // Credit notes use the payment route (handles CREDIT_NOTE → APPLIED status)
+      // Invoices use the billing route
+      const url  = isRefund ? `/api/admin/sales/${doc.id}/payment` : "/api/admin/sales/billing";
+      const body = isRefund
+        ? { method, amountCents: Math.round(Number(amount) * 100), currency: doc.currency, reference: reference || null, notes: notes || null, paidAt }
+        : { documentId: doc.id, marketId: doc.market.id, method, amountCents: Math.round(Number(amount) * 100), currency: doc.currency, reference: reference || null, notes: notes || null, paidAt };
+      const res = await fetch(url, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documentId: doc.id, marketId: doc.market.id, method, amountCents: Math.round(Number(amount) * 100), currency: doc.currency, reference: reference || null, notes: notes || null, paidAt }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error((await res.json()).error);
       onSaved();
@@ -687,9 +687,12 @@ function RecordPaymentModal({ doc, onClose, onSaved }: { doc: any; onClose: () =
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={onClose}>
       <div style={{ background: "#fff", width: "100%", maxWidth: 440, padding: 24 }} onClick={e => e.stopPropagation()}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 20, color: "#111827" }}>Record Payment — {doc.docNum}</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 20, color: "#111827" }}>
+          {isRefund ? "Record Refund" : "Record Payment"} — {doc.docNum}
+        </h2>
+        {error && <div style={{ marginBottom: 12, padding: "8px 12px", background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 13 }}>{error}</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div><label style={lbl}>PAYMENT METHOD</label>
+          <div><label style={lbl}>{isRefund ? "REFUND METHOD" : "PAYMENT METHOD"}</label>
             <select value={method} onChange={e => setMethod(e.target.value)} style={inp}>
               <option value="BANK_TRANSFER">Bank Transfer</option>
               <option value="STRIPE">Stripe</option>
@@ -703,7 +706,7 @@ function RecordPaymentModal({ doc, onClose, onSaved }: { doc: any; onClose: () =
           <div><label style={lbl}>REFERENCE / TRANSACTION ID</label>
             <input value={reference} onChange={e => setReference(e.target.value)} placeholder="Bank ref, Stripe charge ID…" style={inp} />
           </div>
-          <div><label style={lbl}>PAYMENT DATE</label>
+          <div><label style={lbl}>{isRefund ? "REFUND DATE" : "PAYMENT DATE"}</label>
             <input type="date" value={paidAt} onChange={e => setPaidAt(e.target.value)} style={inp} />
           </div>
           <div><label style={lbl}>NOTES</label>
@@ -712,8 +715,8 @@ function RecordPaymentModal({ doc, onClose, onSaved }: { doc: any; onClose: () =
           {error && <p style={{ fontSize: 12, color: "#dc2626" }}>{error}</p>}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 6 }}>
             <button onClick={onClose} disabled={loading} style={{ padding: "7px 16px", fontSize: 12, fontWeight: 600, background: "#fff", color: "#374151", border: "1px solid #d1d5db", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
-            <button onClick={submit} disabled={loading} style={{ padding: "7px 16px", fontSize: 12, fontWeight: 600, background: CLR.primary, color: "#fff", border: "none", cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: loading ? 0.7 : 1 }}>
-              {loading ? "Saving…" : "Record Payment"}
+            <button onClick={submit} disabled={loading} style={{ padding: "7px 16px", fontSize: 12, fontWeight: 600, background: isRefund ? "#7c3aed" : CLR.primary, color: "#fff", border: "none", cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: loading ? 0.7 : 1 }}>
+              {loading ? "Saving…" : isRefund ? "Record Refund" : "Record Payment"}
             </button>
           </div>
         </div>

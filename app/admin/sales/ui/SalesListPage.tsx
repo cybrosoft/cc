@@ -77,6 +77,7 @@ export default function SalesListPage({ docType }: Props) {
   const [sendDropOpen,  setSendDropOpen]  = useState(false);
   const [sendModalMode, setSendModalMode] = useState<"reminder" | "custom" | null>(null);
   const [showPayment,   setShowPayment]   = useState(false);
+  const [showRefund,    setShowRefund]    = useState(false);
   const [pdfDownloading, setPdfDownloading] = useState(false);
   const sendDropRef = useRef<HTMLDivElement>(null);
 
@@ -431,6 +432,15 @@ export default function SalesListPage({ docType }: Props) {
                     </button>
                   )}
 
+                  {/* Record Refund — credit notes only */}
+                  {selected.type === "CREDIT_NOTE" && ["ISSUED","SENT"].includes(selected.status) && (
+                    <button onClick={() => setShowRefund(true)}
+                      style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", fontSize: 11, fontWeight: 600, background: "#f5f3ff", color: "#7c3aed", border: "1px solid #ddd6fe", cursor: "pointer", fontFamily: "inherit" }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/></svg>
+                      Record Refund
+                    </button>
+                  )}
+
                   {/* Download PDF */}
                   <button
                     onClick={() => { if (sendBlocked) return; downloadPdf(selected.id, selected.docNum); }}
@@ -509,6 +519,17 @@ export default function SalesListPage({ docType }: Props) {
         />
       )}
 
+      {showRefund && selected && (
+        <RecordPaymentModal
+          docId={selected.id} docNum={selected.docNum}
+          currency={selected.currency} total={selected.total}
+          marketId={(selected.market as any)?.id ?? ""}
+          isRefund
+          onClose={() => setShowRefund(false)}
+          onSaved={() => { setShowRefund(false); fetchDocs(); }}
+        />
+      )}
+
       {convertId && convertDoc && (
         <ConvertModal
           docId={convertId}
@@ -526,8 +547,9 @@ export default function SalesListPage({ docType }: Props) {
   );
 }
 
-function RecordPaymentModal({ docId, docNum, currency, total, marketId, onClose, onSaved }: {
+function RecordPaymentModal({ docId, docNum, currency, total, marketId, isRefund, onClose, onSaved }: {
   docId: string; docNum: string; currency: string; total: number; marketId: string;
+  isRefund?: boolean;
   onClose: () => void; onSaved: () => void;
 }) {
   const [method,    setMethod]    = useState("BANK_TRANSFER");
@@ -544,14 +566,16 @@ function RecordPaymentModal({ docId, docNum, currency, total, marketId, onClose,
   async function submit() {
     setLoading(true); setError("");
     try {
-      const res = await fetch("/api/admin/sales/billing", {
+      // Refunds use the payment route directly; regular payments use the billing route
+      const url = isRefund
+        ? `/api/admin/sales/${docId}/payment`
+        : "/api/admin/sales/billing";
+      const body = isRefund
+        ? { method, amountCents: Math.round(Number(amount) * 100), currency, reference: reference || null, notes: notes || null, paidAt }
+        : { documentId: docId, marketId, method, amountCents: Math.round(Number(amount) * 100), currency, reference: reference || null, notes: notes || null, paidAt };
+      const res = await fetch(url, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          documentId: docId, marketId, method,
-          amountCents: Math.round(Number(amount) * 100),
-          currency, reference: reference || null,
-          notes: notes || null, paidAt,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
@@ -564,13 +588,13 @@ function RecordPaymentModal({ docId, docNum, currency, total, marketId, onClose,
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ background: "#fff", width: 420, maxWidth: "95vw", padding: 24 }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Record Payment — {docNum}</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>{isRefund ? "Record Refund" : "Record Payment"} — {docNum}</h2>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#9ca3af" }}>×</button>
         </div>
         {error && <div style={{ marginBottom: 12, padding: "8px 12px", background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 13 }}>{error}</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div>
-            <label style={lbl}>Payment Method</label>
+            <label style={lbl}>{isRefund ? "Refund Method" : "Payment Method"}</label>
             <select value={method} onChange={e => setMethod(e.target.value)} style={inp}>
               <option value="BANK_TRANSFER">Bank Transfer</option>
               <option value="STRIPE">Stripe</option>
@@ -598,8 +622,8 @@ function RecordPaymentModal({ docId, docNum, currency, total, marketId, onClose,
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
           <button onClick={onClose} style={{ padding: "8px 16px", fontSize: 13, background: "#fff", border: "1px solid #d1d5db", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
           <button onClick={submit} disabled={loading}
-            style={{ padding: "8px 16px", fontSize: 13, fontWeight: 600, background: CLR.primary, color: "#fff", border: "none", cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: loading ? 0.7 : 1 }}>
-            {loading ? "Saving…" : "Record Payment"}
+            style={{ padding: "8px 16px", fontSize: 13, fontWeight: 600, background: isRefund ? "#7c3aed" : CLR.primary, color: "#fff", border: "none", cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: loading ? 0.7 : 1 }}>
+            {loading ? "Saving…" : isRefund ? "Record Refund" : "Record Payment"}
           </button>
         </div>
       </div>

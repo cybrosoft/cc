@@ -6,18 +6,18 @@ import { useState } from "react";
 import { colors } from "@/lib/ui/tokens";
 
 interface InvoiceRow {
-  id:                   string;
-  docNum:               string;
-  type:                 string;
-  status:               string;
-  currency:             string;
-  total:                number;
-  amountPaid:           number;
-  issueDate:            string;
-  dueDate:              string | null;
-  officialInvoiceUrl:   string | null;
-  market:               { key: string; name: string };
-  paymentNotifications: number;
+  id:                 string;
+  docNum:             string;
+  type:               string;
+  status:             string;
+  currency:           string;
+  total:              number;
+  amountPaid:         number;
+  issueDate:          string;
+  createdAt:          string;
+  dueDate:            string | null;
+  officialInvoiceUrl: string | null;
+  market:             { key: string; name: string };
 }
 
 function fmt(cents: number, currency: string) {
@@ -36,6 +36,7 @@ const STATUS_COLORS: Record<string, { bg: string; color: string; border: string 
   OVERDUE:        { bg: "#fef2f2", color: "#991b1b", border: "#fecaca" },
   VOID:           { bg: "#f3f4f6", color: "#6b7280", border: "#d1d5db" },
   APPLIED:        { bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0" },
+  CONVERTED:      { bg: "#f5f3ff", color: "#6d28d9", border: "#ddd6fe" },
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -52,28 +53,16 @@ const TYPE_LABELS: Record<string, string> = {
   CREDIT_NOTE: "Credit Note",
 };
 
-const FILTER_VALUES = ["ALL", "UNPAID", "PAID", "OVERDUE", "CREDIT_NOTES"] as const;
-type Filter = typeof FILTER_VALUES[number];
-
 export function InvoicesClient({ docs }: { docs: InvoiceRow[] }) {
-  const [filter, setFilter] = useState<Filter>("ALL");
-
-  // Credit notes that exist
-  const hasCreditNotes = docs.some(d => d.type === "CREDIT_NOTE");
+  const [filter, setFilter] = useState<"ALL" | "UNPAID" | "PAID" | "OVERDUE" | "CREDIT_NOTES">("ALL");
 
   const filtered = docs.filter(d => {
-    if (filter === "UNPAID")       return ["ISSUED", "SENT", "PARTIALLY_PAID"].includes(d.status) && d.type === "INVOICE";
-    if (filter === "PAID")         return ["PAID", "APPLIED"].includes(d.status) && d.type === "INVOICE";
-    if (filter === "OVERDUE")      return d.status === "OVERDUE" && d.type === "INVOICE";
+    if (filter === "UNPAID")       return ["ISSUED", "SENT", "PARTIALLY_PAID"].includes(d.status);
+    if (filter === "PAID")         return ["PAID", "APPLIED"].includes(d.status);
+    if (filter === "OVERDUE")      return d.status === "OVERDUE";
     if (filter === "CREDIT_NOTES") return d.type === "CREDIT_NOTE";
-    return d.type === "INVOICE"; // ALL — invoices only
+    return true;
   });
-
-  // Count pending submissions across all unpaid invoices
-  const pendingCount = docs.filter(d =>
-    d.paymentNotifications > 0 &&
-    ["ISSUED","SENT","PARTIALLY_PAID","OVERDUE"].includes(d.status)
-  ).length;
 
   return (
     <>
@@ -93,102 +82,55 @@ export function InvoicesClient({ docs }: { docs: InvoiceRow[] }) {
             <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Your invoices and credit notes</p>
           </div>
 
-          {/* Pending verification banner */}
-          {pendingCount > 0 && (
-            <div style={{ marginBottom: 16, padding: "12px 16px", background: "#fffbeb", border: "1px solid #fcd34d", display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 15 }}>⏳</span>
-              <p style={{ fontSize: 13, color: "#92400e", margin: 0, fontWeight: 500 }}>
-                {pendingCount === 1
-                  ? "You have 1 invoice with a payment notification awaiting verification."
-                  : `You have ${pendingCount} invoices with payment notifications awaiting verification.`}
-              </p>
-            </div>
-          )}
-
           {/* Filter bar */}
           <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
-            {(["ALL", "UNPAID", "PAID", "OVERDUE"] as const).map(f => (
-              <button key={f} className={`inv-filter-btn${filter === f ? " active" : ""}`} onClick={() => setFilter(f)}>
-                {f === "ALL" ? "All" : f.charAt(0) + f.slice(1).toLowerCase()}
+            {([
+              { key: "ALL",          label: "All"          },
+              { key: "UNPAID",       label: "Unpaid"       },
+              { key: "PAID",         label: "Paid"         },
+              { key: "OVERDUE",      label: "Overdue"      },
+              { key: "CREDIT_NOTES", label: "Credit Notes" },
+            ] as const).map(f => (
+              <button key={f.key} className={`inv-filter-btn${filter === f.key ? " active" : ""}`} onClick={() => setFilter(f.key)}>
+                {f.label}
               </button>
             ))}
-            {hasCreditNotes && (
-              <button className={`inv-filter-btn${filter === "CREDIT_NOTES" ? " active" : ""}`} onClick={() => setFilter("CREDIT_NOTES")}>
-                Credit Notes
-              </button>
-            )}
           </div>
 
-          {/* Invoice list */}
           {filtered.length === 0 ? (
-            <div style={{ padding: "48px 24px", textAlign: "center", background: "#fff", border: "1px solid #e5e7eb" }}>
-              <p style={{ fontSize: 14, fontWeight: 500, color: "#374151", marginBottom: 6 }}>No invoices found</p>
-              <p style={{ fontSize: 13, color: "#9ca3af" }}>
-                {filter === "ALL" ? "Invoices will appear here once issued by our team." : filter === "CREDIT_NOTES" ? "No credit notes found." : `No ${filter.toLowerCase()} invoices.`}
-              </p>
+            <div style={{ padding: "48px 0", textAlign: "center", fontSize: 13, color: "#9ca3af" }}>
+              No documents found.
             </div>
           ) : (
-            <div style={{ background: "#fff", border: "1px solid #e5e7eb", overflow: "hidden" }}>
-              {/* Header */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 130px 140px 70px", gap: 0, padding: "8px 20px", background: "#f9fafb", borderBottom: "1px solid #f3f4f6" }}>
-                {["Document", "Date", "Amount", "Status", ""].map((h, i) => (
-                  <span key={i} style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</span>
-                ))}
+            <div style={{ border: "1px solid #e5e7eb", background: "#fff" }}>
+              {/* Table header */}
+              <div style={{ display: "flex", padding: "8px 16px", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>
+                <span style={{ flex: 2, fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em" }}>Document</span>
+                <span style={{ width: 120, fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em" }}>Date</span>
+                <span style={{ width: 120, fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "right" }}>Amount</span>
+                <span style={{ width: 110, fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "center" }}>Status</span>
+                <span style={{ width: 60 }} />
               </div>
 
-              {filtered.map((doc, i) => {
-                const needsOfficialPdf = doc.market.key === "SAUDI" && doc.type === "INVOICE";
-                const hasOfficialPdf   = !!doc.officialInvoiceUrl;
-                const canDownload      = needsOfficialPdf ? hasOfficialPdf : true;
-                const typeLabel        = needsOfficialPdf
-                  ? "Invoice Memo"
-                  : (TYPE_LABELS[doc.type] ?? doc.type);
-                const balance          = doc.total - doc.amountPaid;
-                const isUnpaid         = ["ISSUED","SENT","PARTIALLY_PAID","OVERDUE"].includes(doc.status);
-                const hasPending       = doc.paymentNotifications > 0 && isUnpaid;
+              {filtered.map((d, idx) => {
+                const isLast    = idx === filtered.length - 1;
+                const typeLabel = TYPE_LABELS[d.type] ?? d.type;
+                const isSaudi   = d.market.key === "SAUDI";
+                const docLabel  = isSaudi
+                  ? (d.type === "INVOICE" ? "Invoice Memo" : d.type === "CREDIT_NOTE" ? "Credit Note Memo" : typeLabel)
+                  : typeLabel;
 
                 return (
-                  <Link key={doc.id} href={`/dashboard/sales/${doc.id}`}
-                    className="inv-row"
-                    style={{ display: "grid", gridTemplateColumns: "1fr 100px 130px 140px 70px", gap: 0, padding: "14px 20px", borderBottom: i < filtered.length - 1 ? "1px solid #f3f4f6" : "none", alignItems: "center", background: "#fff", transition: "background 0.1s", textDecoration: "none", color: "inherit" }}>
-
-                    {/* Doc info */}
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", fontFamily: "monospace", letterSpacing: "-0.01em" }}>
-                        {doc.docNum}
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: 12, color: "#9ca3af" }}>{typeLabel}</span>
-                        {hasPending && (
-                          <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", background: "#fffbeb", border: "1px solid #fcd34d", color: "#92400e", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                            ⏳ Pending Verification
-                          </span>
-                        )}
-                      </div>
+                  <Link key={d.id} href={`/dashboard/sales/${d.id}`} className="inv-row"
+                    style={{ display: "flex", alignItems: "center", padding: "12px 16px", borderBottom: isLast ? "none" : "1px solid #f3f4f6", textDecoration: "none" }}>
+                    <div style={{ flex: 2 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#111827", fontFamily: "monospace" }}>{d.docNum}</div>
+                      <div style={{ fontSize: 11.5, color: "#9ca3af", marginTop: 1 }}>{docLabel}</div>
                     </div>
-
-                    {/* Date */}
-                    <div style={{ fontSize: 13, color: "#6b7280" }}>{fmtDate(doc.issueDate)}</div>
-
-                    {/* Amount */}
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{fmt(doc.total, doc.currency)}</div>
-                      {balance > 0 && doc.amountPaid > 0 && (
-                        <div style={{ fontSize: 11, color: "#b45309", marginTop: 1 }}>Due: {fmt(balance, doc.currency)}</div>
-                      )}
-                    </div>
-
-                    {/* Status */}
-                    <div><StatusBadge status={doc.status} /></div>
-
-                    {/* Action */}
-                    <div style={{ textAlign: "right" }}>
-                      {canDownload ? (
-                        <span style={{ fontSize: 12, fontWeight: 600, color: colors.primary }}>View ↗</span>
-                      ) : (
-                        <span style={{ fontSize: 11, color: "#9ca3af" }}>Processing</span>
-                      )}
-                    </div>
+                    <span style={{ width: 120, fontSize: 12.5, color: "#374151" }}>{fmtDate(d.createdAt)}</span>
+                    <span style={{ width: 120, fontSize: 12.5, fontWeight: 600, color: "#111827", textAlign: "right" }}>{fmt(d.total, d.currency)}</span>
+                    <span style={{ width: 110, textAlign: "center" }}><StatusBadge status={d.status} /></span>
+                    <span style={{ width: 60, textAlign: "right", fontSize: 12.5, color: colors.primary, fontWeight: 500 }}>View ↗</span>
                   </Link>
                 );
               })}

@@ -1,6 +1,7 @@
 // app/api/admin/sales/[id]/payment/route.ts
 // POST — record a payment against a document.
-// Auto-sets status to PARTIALLY_PAID or PAID based on total paid vs total.
+// Invoices/Proforma: auto-sets PARTIALLY_PAID or PAID.
+// Credit Notes: records a refund, auto-sets APPLIED.
 export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -35,19 +36,31 @@ export async function POST(
         id: true, type: true, status: true, docNum: true,
         total: true, marketId: true, currency: true,
         payments: { select: { amountCents: true } },
+        originDoc: { select: { id: true, docNum: true, status: true } },
       },
     });
 
     if (!doc) return NextResponse.json({ error: "Document not found" }, { status: 404 });
 
-    if (doc.type !== "INVOICE" && doc.type !== "PROFORMA") {
+    if (!["INVOICE", "PROFORMA", "CREDIT_NOTE"].includes(doc.type)) {
       return NextResponse.json({
-        error: "Payments can only be recorded against Invoices and Proforma Invoices",
+        error: "Payments can only be recorded against Invoices, Proforma Invoices, and Credit Notes",
       }, { status: 400 });
     }
 
     if (doc.status === "VOID") {
       return NextResponse.json({ error: "Cannot record payment on a voided document" }, { status: 400 });
+    }
+
+    // ── Credit note refund guard ──────────────────────────────────────────
+    // Only allow refund if the corresponding invoice has been paid
+    if (doc.type === "CREDIT_NOTE" && doc.originDoc) {
+      const invoicePaid = ["PAID", "PARTIALLY_PAID"].includes(doc.originDoc.status);
+      if (!invoicePaid) {
+        return NextResponse.json({
+          error: `Cannot refund: the original invoice ${doc.originDoc.docNum} has not been paid yet.`,
+        }, { status: 400 });
+      }
     }
 
     // Create payment record
@@ -58,77 +71,53 @@ export async function POST(
         method,
         amountCents,
         currency:    currency ?? doc.currency,
-        reference:   reference   ?? null,
-        notes:       notes       ?? null,
-        receiptUrl:  receiptUrl  ?? null,
+        reference:   reference  ?? null,
+        notes:       notes      ?? null,
+        receiptUrl:  receiptUrl ?? null,
         paidAt:      paidAt ? new Date(paidAt) : new Date(),
       },
     });
 
-    // Compute new total paid
-    const prevPaid   = doc.payments.reduce((s, p) => s + p.amountCents, 0);
-    const totalPaid  = prevPaid + amountCents;
-    const isPaid     = totalPaid >= doc.total;
-    const isPartial  = totalPaid > 0 && !isPaid;
+    // ── Determine new status ──────────────────────────────────────────────
+    let newStatus: string | null = null;
 
-    // Auto-update status
-    let newStatus = doc.status;
-    if (isPaid) {
-      newStatus = "PAID";
-    } else if (isPartial) {
-      newStatus = "PARTIALLY_PAID";
+    if (doc.type === "CREDIT_NOTE") {
+      // Any refund payment marks the credit note as APPLIED
+      newStatus = "APPLIED";
+    } else {
+      // Invoice / Proforma — check total paid vs total
+      const prevPaid  = doc.payments.reduce((s, p) => s + p.amountCents, 0);
+      const totalPaid = prevPaid + amountCents;
+
+      if (totalPaid >= doc.total) {
+        newStatus = "PAID";
+      } else if (totalPaid > 0) {
+        newStatus = "PARTIALLY_PAID";
+      }
     }
 
-    const updated = await prisma.salesDocument.update({
-      where: { id },
+    if (newStatus) {
+      await prisma.salesDocument.update({
+        where: { id },
+        data:  { status: newStatus as any, ...(newStatus === "PAID" ? { paidAt: paidAt ? new Date(paidAt) : new Date() } : {}) },
+      });
+    }
+
+    // Log the payment
+    await prisma.salesDocumentLog.create({
       data: {
-        status: newStatus,
-        paidAt: isPaid ? new Date() : null,
+        documentId:  id,
+        field:       doc.type === "CREDIT_NOTE" ? "refund" : "payment",
+        oldValue:    doc.status,
+        newValue:    newStatus ?? doc.status,
+        note:        doc.type === "CREDIT_NOTE"
+          ? `Refund recorded: ${amountCents / 100} ${doc.currency} via ${method}`
+          : `Payment recorded: ${amountCents / 100} ${doc.currency} via ${method}`,
+        changedById: auth.user.id,
       },
-      select: { id: true, docNum: true, status: true, total: true },
-    });
+    }).catch(() => { /* best-effort */ });
 
-    await prisma.auditLog.create({
-      data: {
-        actorUserId:  auth.user.id,
-        action:       "SALES_PAYMENT_RECORDED",
-        entityType:   "SalesDocument",
-        entityId:     id,
-        metadataJson: JSON.stringify({
-          docNum: doc.docNum,
-          amountCents,
-          method,
-          newStatus,
-          totalPaid,
-        }),
-      },
-    });
-
-    return NextResponse.json({ ok: true, payment, doc: updated });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
-  }
-}
-
-// GET — list payments for a document
-export async function GET(
-  _req: NextRequest,
-  context: { params: Promise<{ id: string }> }
-) {
-  try {
-    const auth = await requireAdmin();
-    if (!auth.ok) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const { id } = await context.params;
-
-    const payments = await prisma.salesPayment.findMany({
-      where:   { documentId: id },
-      orderBy: { paidAt: "desc" },
-    });
-
-    const totalPaid = payments.reduce((s, p) => s + p.amountCents, 0);
-
-    return NextResponse.json({ ok: true, payments, totalPaid });
+    return NextResponse.json({ ok: true, payment, newStatus });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

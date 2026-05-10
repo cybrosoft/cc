@@ -31,7 +31,7 @@ function fmtD(iso: string) {
 }
 
 const TX: Record<string, string> = {
-  INVOICE: "Invoice", CREDIT_NOTE: "Credit Note", PAYMENT: "Payment Received",
+  INVOICE: "Invoice", CREDIT_NOTE: "Credit Note", PAYMENT: "Payment Received", REFUND: "Refund",
 };
 
 export default async function StatementPrintPage({ searchParams }: Props) {
@@ -232,7 +232,7 @@ export default async function StatementPrintPage({ searchParams }: Props) {
               {rows.map((e, i) => (
                 <tr key={i}>
                   <td style={{ whiteSpace: "nowrap" }}>{fmtD(e.createdAt)}</td>
-                  <td>{TX[e.docType] ?? e.docType}</td>
+                  <td>{(e as any).subType === "REFUND" ? "Refund" : (TX[e.docType] ?? e.docType)}</td>
                   <td>
                     <div>{e.detailMain}</div>
                     {e.detailSub && <div className="ds">{e.detailSub}</div>}

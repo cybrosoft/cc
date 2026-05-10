@@ -7,6 +7,7 @@ import Link from "next/link";
 interface Entry {
   date:       string;
   docType:    "INVOICE" | "CREDIT_NOTE" | "PAYMENT";
+  subType?:   "REFUND";
   docNum:     string;
   docId:      string;
   detailMain: string;
@@ -89,7 +90,7 @@ export function StatementClient() {
       const blob = await res.blob();
       const href = URL.createObjectURL(blob);
       const a    = document.createElement("a");
-      const label = from && to ? `Statement_${from}_${to}` : "Statement";
+      const label = from && to ? `Statement_of_Accounts_${from}_${to}` : from ? `Statement_of_Accounts_from_${from}` : "Statement_of_Accounts";
       a.href = href; a.download = `${label}.pdf`;
       document.body.appendChild(a); a.click();
       document.body.removeChild(a); URL.revokeObjectURL(href);
@@ -248,7 +249,7 @@ export function StatementClient() {
                 {/* Data rows */}
                 {!loading && statement?.entries.map((e, idx) => {
                   const isLast     = idx === statement.entries.length - 1;
-                  const typeLabel  = TRANSACTION_LABELS[e.docType] ?? e.docType;
+                  const typeLabel  = e.subType === "REFUND" ? "Refund" : (TRANSACTION_LABELS[e.docType] ?? e.docType);
                   const isLinkable = LINKABLE_TYPES.includes(e.docType);
 
                   return (

@@ -239,7 +239,6 @@ function CustomerTagSelector({ allTags, selectedKeys, setSelectedKeys, onTagCrea
   );
 }
 
-
 // ── Status History ────────────────────────────────────────────────────────────
 const STATUS_ACTION_LABELS: Record<string, { label: string; bg: string; color: string; border: string }> = {
   ACTIVE:        { label: "Approved",       bg: "#e8f5f0", color: "#166534", border: "#a7d9d1" },
@@ -500,7 +499,14 @@ export default function CustomerForm({ mode, customerId }: { mode: "create" | "e
   );
 
   return (
-    <PageShell breadcrumb={breadcrumb} title={title}>
+    <PageShell
+      breadcrumb={breadcrumb}
+      title={title}
+      {...(mode === "edit" && customerId ? {
+        ctaLabel: "View Statement",
+        ctaOnClick: () => router.push(`/admin/customers/${customerId}/statement`),
+      } : {})}
+    >
       <div style={{ maxWidth: 780, display: "flex", flexDirection: "column", gap: 16 }}>
 
         {error   && <Alert type="error">{error}</Alert>}

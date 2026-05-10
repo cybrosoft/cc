@@ -16,7 +16,7 @@ export default async function InvoicesPage() {
       type:       { in: ["INVOICE", "CREDIT_NOTE"] },
       status:     { notIn: ["DRAFT", "WRITTEN_OFF"] },
     },
-    orderBy: { issueDate: "desc" },
+    orderBy: { createdAt: "desc" },
     select: {
       id:                 true,
       docNum:             true,
@@ -26,29 +26,26 @@ export default async function InvoicesPage() {
       total:              true,
       issueDate:          true,
       dueDate:            true,
+      createdAt:          true,
       officialInvoiceUrl: true,
       market: { select: { key: true, name: true } },
       payments: { select: { amountCents: true } },
-      logs: {
-        where: { field: "payment_notification" },
-        select: { id: true },
-      },
     },
   });
 
   const serialized = docs.map(d => ({
-    id:                    d.id,
-    docNum:                d.docNum,
-    type:                  String(d.type),
-    status:                String(d.status),
-    currency:              d.currency,
-    total:                 d.total,
-    amountPaid:            d.payments.reduce((s, p) => s + p.amountCents, 0),
-    issueDate:             d.issueDate.toISOString(),
-    dueDate:               d.dueDate?.toISOString() ?? null,
-    officialInvoiceUrl:    d.officialInvoiceUrl ?? null,
-    market:                { key: d.market.key, name: d.market.name },
-    paymentNotifications:  d.logs.length, // count of customer payment submissions
+    id:                 d.id,
+    docNum:             d.docNum,
+    type:               String(d.type),
+    status:             String(d.status),
+    currency:           d.currency,
+    total:              d.total,
+    amountPaid:         d.payments.reduce((s, p) => s + p.amountCents, 0),
+    issueDate:          d.issueDate.toISOString(),
+    createdAt:          d.createdAt.toISOString(),
+    dueDate:            d.dueDate?.toISOString() ?? null,
+    officialInvoiceUrl: d.officialInvoiceUrl ?? null,
+    market:             { key: d.market.key, name: d.market.name },
   }));
 
   return <InvoicesClient docs={serialized} />;

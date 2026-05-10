@@ -66,7 +66,7 @@ export async function makeListHandler(docType: SalesDocumentType) {
         prisma.salesDocument.findMany({
           where,
           select:  DOC_SELECT,
-          orderBy: { issueDate: "desc" },
+          orderBy: { createdAt: "desc" },
           skip:    (page - 1) * pageSize,
           take:    pageSize,
         }),

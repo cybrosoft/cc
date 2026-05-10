@@ -29,8 +29,6 @@ export async function GET(req: NextRequest) {
     where: {
       customerId: user.id,
       type:       type ? type : { in: visibleTypes },
-      // DRAFT never shown — no exceptions
-      // WRITTEN_OFF is admin-only
       status: { notIn: ["DRAFT", "WRITTEN_OFF"] },
     },
     select: {
@@ -59,7 +57,7 @@ export async function GET(req: NextRequest) {
         select: { id: true, docNum: true, type: true },
       },
     },
-    orderBy: { issueDate: "desc" },
+    orderBy: { createdAt: "desc" },
     take,
   });
 
