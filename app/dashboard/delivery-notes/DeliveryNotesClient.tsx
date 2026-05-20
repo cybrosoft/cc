@@ -84,7 +84,7 @@ export function DeliveryNotesClient() {
                 </div>
               )
               : docs.map((doc, idx) => (
-                  <Link key={doc.id} href={`/dashboard/sales/${doc.id}`} className="cy-lrow"
+                  <Link key={doc.id} href={`/dashboard/sales/${doc.id}?from=dn`} className="cy-lrow"
                     style={{ display: "flex", alignItems: "center", padding: "11px 16px", borderBottom: idx < docs.length - 1 ? "1px solid #f3f4f6" : "none", textDecoration: "none", transition: "background 0.1s" }}>
                     <div style={{ flex: 3, minWidth: 0, paddingRight: 12 }}>
                       <div style={{ fontSize: 13, fontWeight: 500, color: "#111827", fontFamily: "monospace" }}>{doc.docNum}</div>

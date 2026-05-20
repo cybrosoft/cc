@@ -3,7 +3,7 @@
 
 import React, { useEffect } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
 import { colors } from "@/lib/ui/tokens";
 
@@ -41,7 +41,18 @@ interface NavItem {
   href?: string;
   children?: NavChild[];
   alwaysAllowed?: boolean; // never locked during onboarding
+  activePaths?: string[]; // extra paths that make this group active
 }
+
+// Maps ?from= param to child href
+const FROM_MAP: Record<string, string> = {
+  invoices:   "/dashboard/invoices",
+  quotations: "/dashboard/quotations",
+  po:         "/dashboard/po",
+  proforma:   "/dashboard/proforma",
+  dn:         "/dashboard/delivery-notes",
+  statement:  "/dashboard/statement",
+};
 
 // ─── Nav Leaf ─────────────────────────────────────────────────────────────────
 function NavLeaf({
@@ -92,9 +103,9 @@ function NavLeaf({
 
 // ─── Nav Group ────────────────────────────────────────────────────────────────
 function NavGroup({
-  item, pathname, onLinkClick, isMobile, locked,
+  item, pathname, onLinkClick, isMobile, locked, fromHref,
 }: {
-  item: NavItem; pathname: string; onLinkClick?: () => void; isMobile?: boolean; locked?: boolean;
+  item: NavItem; pathname: string; onLinkClick?: () => void; isMobile?: boolean; locked?: boolean; fromHref?: string;
 }) {
   const router = useRouter();
 
@@ -102,9 +113,13 @@ function NavGroup({
     (c) => !c.mobileOnly || isMobile
   );
 
-  const childActive = visibleChildren.some(
-    (c) => !c.isLogout && (pathname === c.href || pathname.startsWith(c.href + "/"))
-  );
+  const childActive =
+    visibleChildren.some(
+      (c) => !c.isLogout && (pathname === c.href || pathname.startsWith(c.href + "/"))
+    ) ||
+    (item.activePaths ?? []).some(p => pathname === p || pathname.startsWith(p + "/")) ||
+    (!!fromHref && visibleChildren.some(c => c.href === fromHref));
+
   const [open, setOpen] = React.useState(childActive);
   const isOpen = open || childActive;
   const highlight = childActive;
@@ -168,7 +183,7 @@ function NavGroup({
                 </button>
               );
             }
-            const ca = pathname === child.href || pathname.startsWith(child.href + "/");
+            const ca = pathname === child.href || pathname.startsWith(child.href + "/") || (!!fromHref && child.href === fromHref);
             return (
               <Link key={child.id} href={child.href} onClick={onLinkClick} className="cy-nav-child"
                 style={{
@@ -234,10 +249,11 @@ function SidebarContent({
     {
       id: "billing", label: "Billing", icon: "billing",
       children: billingChildren,
+      activePaths: ["/dashboard/sales"],
     },
     {
       id: "account", label: "Account", icon: "user",
-      alwaysAllowed: true, // never locked
+      alwaysAllowed: true,
       children: [
         { id: "profile",       label: "Profile & Settings",    icon: "settings",      href: "/dashboard/profile" },
         { id: "notifications", label: "Notification Settings", icon: "notifications", href: "/dashboard/notifications" },
@@ -245,6 +261,10 @@ function SidebarContent({
       ],
     },
   ];
+
+  const searchParams    = useSearchParams();
+  const fromParam       = searchParams?.get("from") ?? "";
+  const fromHref        = FROM_MAP[fromParam] ?? undefined;
 
   const footerPrimaryName = companyName || userName || userEmail;
 
@@ -267,13 +287,11 @@ function SidebarContent({
       {/* Nav */}
       <nav style={{ flex: 1, overflowY: "auto", padding: "6px 0 12px", borderRight: `1px solid ${colors.border}` }}>
         {NAV.map((item) => {
-          // Lock all items except Account when not ACTIVE or onboarding incomplete
-          // No nav locking — all visible. Security enforced at API + ActionGuard level.
           const locked = false;
           return item.href ? (
             <NavLeaf key={item.id} item={item} pathname={pathname} onLinkClick={onLinkClick} locked={locked} />
           ) : (
-            <NavGroup key={item.id} item={item} pathname={pathname} onLinkClick={onLinkClick} isMobile={isMobile} locked={locked} />
+            <NavGroup key={item.id} item={item} pathname={pathname} onLinkClick={onLinkClick} isMobile={isMobile} locked={locked} fromHref={fromHref} />
           );
         })}
       </nav>

@@ -1,6 +1,6 @@
 // app/api/customer/sales/[id]/route.ts
 // Returns full detail for a single SalesDocument belonging to the customer.
-// Includes lines, payments, origin chain, and derived docs.
+// Includes lines, payments, origin chain, derived docs, and rfqFileUrl.
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
@@ -17,7 +17,6 @@ export async function GET(
     where: {
       id:         params.id,
       customerId: user.id,
-      // Do not expose internal-only statuses
       status: { notIn: ["WRITTEN_OFF"] },
     },
     include: {
@@ -50,7 +49,6 @@ export async function GET(
       originDoc: {
         select: { id: true, docNum: true, type: true, status: true },
       },
-      // Docs derived from this one (e.g. invoice generated from this quotation)
       derivedDocs: {
         where: { status: { notIn: ["DRAFT", "VOID", "WRITTEN_OFF"] } },
         select: { id: true, docNum: true, type: true, status: true },
@@ -76,30 +74,30 @@ export async function GET(
       total:             doc.total,
       amountPaid,
       balance,
-      subject:           doc.subject           ?? null,
-      notes:             doc.notes             ?? null,
-      termsAndConditions:doc.termsAndConditions ?? null,
-      referenceNumber:   doc.referenceNumber   ?? null,
-      rfqTitle:          doc.rfqTitle          ?? null,
-      pdfKey:            doc.pdfKey            ?? null,
+      subject:           doc.subject             ?? null,
+      notes:             doc.notes               ?? null,
+      termsAndConditions:doc.termsAndConditions   ?? null,
+      referenceNumber:   doc.referenceNumber      ?? null,
+      rfqTitle:          doc.rfqTitle             ?? null,
+      pdfKey:            doc.pdfKey               ?? null,
+      rfqFileUrl:        doc.rfqFileUrl           ?? null,  // PO attachment
+      officialInvoiceUrl:doc.officialInvoiceUrl   ?? null,
       language:          doc.language,
       issueDate:         doc.issueDate.toISOString(),
-      dueDate:           doc.dueDate?.toISOString()    ?? null,
-      validUntil:        doc.validUntil?.toISOString() ?? null,
-      paidAt:            doc.paidAt?.toISOString()     ?? null,
+      dueDate:           doc.dueDate?.toISOString()     ?? null,
+      validUntil:        doc.validUntil?.toISOString()  ?? null,
+      paidAt:            doc.paidAt?.toISOString()      ?? null,
       createdAt:         doc.createdAt.toISOString(),
       lines: doc.lines.map(l => ({
         id:            l.id,
         description:   l.description,
-        descriptionAr: l.descriptionAr ?? null,
-        billingPeriod: l.billingPeriod ?? null,
+        descriptionAr: l.descriptionAr  ?? null,
+        billingPeriod: l.billingPeriod  ?? null,
         quantity:      Number(l.quantity),
         unitPrice:     l.unitPrice,
         discount:      Number(l.discount),
         lineTotal:     l.lineTotal,
-        product:       l.product
-          ? { id: l.product.id, name: l.product.name, key: l.product.key }
-          : null,
+        product:       l.product        ?? null,
       })),
       payments: doc.payments.map(p => ({
         id:          p.id,

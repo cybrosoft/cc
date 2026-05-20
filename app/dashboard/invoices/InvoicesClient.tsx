@@ -121,7 +121,7 @@ export function InvoicesClient({ docs }: { docs: InvoiceRow[] }) {
                   : typeLabel;
 
                 return (
-                  <Link key={d.id} href={`/dashboard/sales/${d.id}`} className="inv-row"
+                  <Link key={d.id} href={`/dashboard/sales/${d.id}?from=invoices`} className="inv-row"
                     style={{ display: "flex", alignItems: "center", padding: "12px 16px", borderBottom: isLast ? "none" : "1px solid #f3f4f6", textDecoration: "none" }}>
                     <div style={{ flex: 2 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: "#111827", fontFamily: "monospace" }}>{d.docNum}</div>

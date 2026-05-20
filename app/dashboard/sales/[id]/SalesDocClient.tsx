@@ -29,7 +29,7 @@ interface Doc {
   subject: string | null; notes: string | null;
   termsAndConditions: string | null; referenceNumber: string | null;
   rfqTitle: string | null; pdfKey: string | null; language: string;
-  officialInvoiceUrl: string | null;
+  officialInvoiceUrl: string | null; rfqFileUrl: string | null;
   issueDate: string; dueDate: string | null; validUntil: string | null;
   paidAt: string | null; createdAt: string;
   market: {
@@ -142,19 +142,20 @@ function dateItems(doc: Doc) {
 function backLink(type: string) {
   if (type === "INVOICE" || type === "CREDIT_NOTE") return "/dashboard/invoices";
   if (type === "QUOTATION") return "/dashboard/quotations";
+  if (type === "PO") return "/dashboard/po";
   return "/dashboard/documents";
 }
 
 // ── Bank Details Display ──────────────────────────────────────────────────────
 function BankDetailsCard({ bd, currency }: { bd: BankDetails; currency: string }) {
   const rows: { label: string; value: string }[] = [
-    bd.bankName    ? { label: "Bank",           value: bd.bankName }    : null,
-    bd.accountName ? { label: "Account Name",   value: bd.accountName } : null,
-    bd.accountNumber? { label: "Account No.",   value: bd.accountNumber }: null,
-    bd.iban        ? { label: "IBAN",           value: bd.iban }        : null,
-    bd.swift       ? { label: "SWIFT / BIC",    value: bd.swift }       : null,
-    bd.branch      ? { label: "Branch",         value: bd.branch }      : null,
-    bd.currency    ? { label: "Account Currency", value: bd.currency }  : null,
+    bd.bankName    ? { label: "Bank",             value: bd.bankName }     : null,
+    bd.accountName ? { label: "Account Name",     value: bd.accountName }  : null,
+    bd.accountNumber?{ label: "Account No.",      value: bd.accountNumber }: null,
+    bd.iban        ? { label: "IBAN",             value: bd.iban }         : null,
+    bd.swift       ? { label: "SWIFT / BIC",      value: bd.swift }        : null,
+    bd.branch      ? { label: "Branch",           value: bd.branch }       : null,
+    bd.currency    ? { label: "Account Currency", value: bd.currency }     : null,
   ].filter(Boolean) as { label: string; value: string }[];
 
   return (
@@ -170,6 +171,136 @@ function BankDetailsCard({ bd, currency }: { bd: BankDetails; currency: string }
         Please include the invoice number <strong>{currency}</strong> in your payment reference.
       </p>
     </div>
+  );
+}
+
+// ── Accept Quotation Modal ────────────────────────────────────────────────────
+function AcceptModal({ doc, onClose, onSuccess }: {
+  doc: Doc;
+  onClose: () => void;
+  onSuccess: (poAttached: boolean) => void;
+}) {
+  const [poFile,     setPoFile]     = useState<File | null>(null);
+  const [accepting,  setAccepting]  = useState(false);
+  const [error,      setError]      = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function submit() {
+    setAccepting(true); setError("");
+    try {
+      let res: Response;
+      if (poFile) {
+        const fd = new FormData();
+        fd.append("poFile", poFile);
+        res = await fetch(`/api/customer/sales/${doc.id}/accept`, { method: "POST", body: fd });
+      } else {
+        res = await fetch(`/api/customer/sales/${doc.id}/accept`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      onSuccess(!!data.poAttached);
+    } catch (e: any) { setError(e.message); }
+    setAccepting(false);
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+      onClick={onClose}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ background: "#fff", width: "min(480px,96vw)", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
+
+        {/* Header */}
+        <div style={{ padding: "16px 20px", borderTop: `4px solid ${colors.primary}`, background: "#111827", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <p style={{ fontSize: 15, fontWeight: 600, color: "#fff", margin: 0 }}>Accept Quotation</p>
+            <p style={{ fontSize: 12, color: "#9ca3af", margin: "2px 0 0" }}>{doc.docNum}</p>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af", fontSize: 20, lineHeight: 1 }}>✕</button>
+        </div>
+
+        <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+          <p style={{ fontSize: 13, color: "#374151", margin: 0 }}>
+            You are about to accept <strong>{doc.docNum}</strong>. This will notify our team to proceed.
+          </p>
+
+          {/* PO file upload */}
+          <div style={{ border: "1px solid #e5e7eb", padding: "14px 16px", background: "#f9fafb" }}>
+            <p style={{ fontSize: 12, fontWeight: 600, color: "#374151", margin: "0 0 4px" }}>
+              Attach Purchase Order{" "}
+              <span style={{ fontWeight: 400, color: "#9ca3af" }}>(optional)</span>
+            </p>
+            <p style={{ fontSize: 11.5, color: "#6b7280", margin: "0 0 10px" }}>
+              If your company requires a PO number, attach it here — PDF, JPG, or PNG, max 10 MB.
+            </p>
+            {poFile ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "#f0fdf4", border: "1px solid #86efac" }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#15803d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                <span style={{ fontSize: 12, flex: 1, color: "#15803d", fontWeight: 500 }}>{poFile.name}</span>
+                <button type="button" onClick={() => setPoFile(null)}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626", fontSize: 16, lineHeight: 1 }}>×</button>
+              </div>
+            ) : (
+              <div onClick={() => fileRef.current?.click()}
+                style={{ border: "2px dashed #d1d5db", padding: "12px", textAlign: "center", cursor: "pointer", background: "#fff" }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = colors.primary}
+                onMouseLeave={e => e.currentTarget.style.borderColor = "#d1d5db"}>
+                <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Click to attach PO file</p>
+                <p style={{ fontSize: 11, color: "#9ca3af", margin: "3px 0 0" }}>PDF, JPG, PNG — max 10 MB</p>
+              </div>
+            )}
+            <input ref={fileRef} type="file" style={{ display: "none" }}
+              accept=".pdf,.jpg,.jpeg,.png"
+              onChange={e => setPoFile(e.target.files?.[0] ?? null)} />
+          </div>
+
+          {error && (
+            <div style={{ padding: "10px 14px", background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 13 }}>{error}</div>
+          )}
+
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button onClick={onClose} style={{ padding: "9px 18px", fontSize: 13, background: "#fff", border: "1px solid #d1d5db", cursor: "pointer", fontFamily: "inherit", color: "#374151" }}>
+              Cancel
+            </button>
+            <button onClick={submit} disabled={accepting}
+              style={{ padding: "9px 20px", fontSize: 13, fontWeight: 600, background: accepting ? "#9ca3af" : colors.primary, color: "#fff", border: "none", cursor: accepting ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
+              {accepting ? "Accepting…" : "Accept Quotation"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── PO File Download Button ───────────────────────────────────────────────────
+function PODownloadBtn({ docId }: { docId: string }) {
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState("");
+
+  async function download() {
+    setLoading(true); setError("");
+    try {
+      const res  = await fetch(`/api/customer/sales/${docId}/po-file`);
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error ?? "Failed");
+      window.open(data.url, "_blank");
+    } catch (e: any) { setError(e.message); }
+    setLoading(false);
+  }
+
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+      <button onClick={download} disabled={loading}
+        style={{ display: "flex", alignItems: "center", gap: 6, height: 36, padding: "0 14px", background: "#eff6ff", border: "1px solid #bfdbfe", fontSize: 13, color: "#1d4ed8", cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: loading ? 0.6 : 1 }}>
+        <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M1 11v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        {loading ? "Loading…" : "Download Attached PO"}
+      </button>
+      {error && <span style={{ fontSize: 11, color: "#dc2626" }}>{error}</span>}
+    </span>
   );
 }
 
@@ -232,7 +363,6 @@ function PayModal({ doc, onClose, onSuccess }: {
       <div onClick={e => e.stopPropagation()}
         style={{ background: "#fff", width: "min(520px, 96vw)", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
 
-        {/* Header */}
         <div style={{ padding: "16px 20px", borderTop: `4px solid ${colors.primary}`, background: "#111827", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
             <p style={{ fontSize: 15, fontWeight: 600, color: "#fff", margin: 0 }}>Pay Invoice</p>
@@ -242,8 +372,6 @@ function PayModal({ doc, onClose, onSuccess }: {
         </div>
 
         <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
-
-          {/* Payment method chooser */}
           {mode === "choose" && (
             <>
               <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Choose how you'd like to pay:</p>
@@ -282,7 +410,6 @@ function PayModal({ doc, onClose, onSuccess }: {
             </>
           )}
 
-          {/* Bank transfer form */}
           {mode === "bank" && (
             <>
               {(hasBank && hasStripe) && (
@@ -290,53 +417,36 @@ function PayModal({ doc, onClose, onSuccess }: {
                   ← Back to payment options
                 </button>
               )}
-
-              {/* Bank details */}
               {bd && <BankDetailsCard bd={bd} currency={doc.docNum} />}
               {!bd && (
                 <div style={{ padding: "12px 16px", background: "#fffbeb", border: "1px solid #fcd34d", fontSize: 13, color: "#92400e" }}>
                   Please contact us for our bank details before transferring.
                 </div>
               )}
-
               <p style={{ fontSize: 13, fontWeight: 600, color: "#374151", margin: 0 }}>After transferring, fill in the details below:</p>
-
-              {/* Amount */}
               <div>
                 <label style={lbl}>Amount Paid ({doc.currency})</label>
-                <input type="number" step="0.01" min="0" style={inp}
-                  value={amount} onChange={e => setAmount(e.target.value)} />
+                <input type="number" step="0.01" min="0" style={inp} value={amount} onChange={e => setAmount(e.target.value)} />
               </div>
-
-              {/* Date */}
               <div>
                 <label style={lbl}>Transfer Date</label>
                 <input type="date" style={inp} value={date} onChange={e => setDate(e.target.value)} />
               </div>
-
-              {/* Reference */}
               <div>
                 <label style={lbl}>Transfer Reference / Transaction ID <span style={{ color: "#dc2626" }}>*</span></label>
-                <input style={inp} value={reference} onChange={e => setReference(e.target.value)}
-                  placeholder="Bank reference or transaction ID" />
+                <input style={inp} value={reference} onChange={e => setReference(e.target.value)} placeholder="Bank reference or transaction ID" />
               </div>
-
-              {/* Notes */}
               <div>
                 <label style={lbl}>Additional Notes <span style={{ fontSize: 10, fontWeight: 400 }}>(optional)</span></label>
-                <textarea style={{ ...inp, height: 72, resize: "vertical" }} value={notes} onChange={e => setNotes(e.target.value)}
-                  placeholder="Any additional information…" />
+                <textarea style={{ ...inp, height: 72, resize: "vertical" }} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Any additional information…" />
               </div>
-
-              {/* Receipt upload */}
               <div>
                 <label style={lbl}>Payment Receipt <span style={{ fontSize: 10, fontWeight: 400 }}>(optional — PDF, JPG, PNG)</span></label>
                 {receipt ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#f0fdf4", border: "1px solid #86efac" }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#15803d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                     <span style={{ fontSize: 13, flex: 1, color: "#15803d", fontWeight: 500 }}>{receipt.name}</span>
-                    <button type="button" onClick={() => setReceipt(null)}
-                      style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626", fontSize: 16, lineHeight: 1 }}>×</button>
+                    <button type="button" onClick={() => setReceipt(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626", fontSize: 16, lineHeight: 1 }}>×</button>
                   </div>
                 ) : (
                   <div onClick={() => fileRef.current?.click()}
@@ -347,15 +457,9 @@ function PayModal({ doc, onClose, onSuccess }: {
                     <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4, marginBottom: 0 }}>PDF, JPG, PNG — max 10 MB</p>
                   </div>
                 )}
-                <input ref={fileRef} type="file" style={{ display: "none" }}
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={e => setReceipt(e.target.files?.[0] ?? null)} />
+                <input ref={fileRef} type="file" style={{ display: "none" }} accept=".pdf,.jpg,.jpeg,.png" onChange={e => setReceipt(e.target.files?.[0] ?? null)} />
               </div>
-
-              {error && (
-                <div style={{ padding: "10px 14px", background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 13 }}>{error}</div>
-              )}
-
+              {error && <div style={{ padding: "10px 14px", background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 13 }}>{error}</div>}
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                 <button onClick={onClose} style={{ padding: "9px 18px", fontSize: 13, background: "#fff", border: "1px solid #d1d5db", cursor: "pointer", fontFamily: "inherit", color: "#374151" }}>Cancel</button>
                 <button onClick={submitBank} disabled={submitting}
@@ -366,7 +470,6 @@ function PayModal({ doc, onClose, onSuccess }: {
             </>
           )}
 
-          {/* Stripe */}
           {mode === "stripe" && (
             <>
               {(hasBank && hasStripe) && (
@@ -391,14 +494,13 @@ function PayModal({ doc, onClose, onSuccess }: {
   );
 }
 
-// ── Payment Options Info Panel (shown below totals on invoice) ────────────────
+// ── Payment Options Info Panel ────────────────────────────────────────────────
 function PaymentOptionsPanel({ doc }: { doc: Doc }) {
   const methods   = doc.market.paymentMethods ?? [];
   const hasBank   = methods.includes("BANK_TRANSFER");
   const hasStripe = doc.market.showPayOnline && !!doc.market.stripePublicKey;
   const hasCash   = methods.includes("CASH");
   const hasOther  = methods.includes("OTHER");
-
   if (!hasBank && !hasStripe && !hasCash && !hasOther) return null;
 
   return (
@@ -413,17 +515,13 @@ function PaymentOptionsPanel({ doc }: { doc: Doc }) {
               </div>
               <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>Bank Transfer</span>
             </div>
-            {doc.market.bankDetails ? (
-              <BankDetailsCard bd={doc.market.bankDetails} currency={doc.docNum} />
-            ) : (
-              <p style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>Contact us for bank details.</p>
-            )}
+            {doc.market.bankDetails ? <BankDetailsCard bd={doc.market.bankDetails} currency={doc.docNum} /> : <p style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>Contact us for bank details.</p>}
           </div>
         )}
         {hasStripe && (
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ width: 28, height: 28, background: "#eff6ff", border: "1px solid #bfdbfe", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
             </div>
             <div>
               <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>Online Payment</span>
@@ -434,7 +532,7 @@ function PaymentOptionsPanel({ doc }: { doc: Doc }) {
         {hasCash && (
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ width: 28, height: 28, background: "#fffbeb", border: "1px solid #fde68a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             </div>
             <div>
               <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>Cash Payment</span>
@@ -445,7 +543,7 @@ function PaymentOptionsPanel({ doc }: { doc: Doc }) {
         {hasOther && (
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ width: 28, height: 28, background: "#f9fafb", border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
             </div>
             <div>
               <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>Other</span>
@@ -489,21 +587,15 @@ function CustomerReceiptBtn({ docId, receiptKey }: { docId: string; receiptKey: 
 function PaymentSubmissionsSection({ doc }: { doc: Doc }) {
   const notifications = doc.paymentNotifications;
   if (!notifications.length) return null;
-
-  const isPaid    = ["PAID", "PARTIALLY_PAID", "APPLIED"].includes(doc.status);
-  const isUnpaid  = ["ISSUED","SENT","PARTIALLY_PAID","OVERDUE"].includes(doc.status);
+  const isPaid = ["PAID", "PARTIALLY_PAID", "APPLIED"].includes(doc.status);
 
   return (
     <div style={{ borderTop: "1px solid #e5e7eb" }}>
       <div style={{ padding: "14px 24px 0" }}>
-        <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 14 }}>
-          Your Payment Submissions
-        </p>
+        <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 14 }}>Your Payment Submissions</p>
       </div>
-
       {notifications.map((n, i) => (
         <div key={n.id} style={{ padding: "0 24px 14px", borderBottom: i < notifications.length - 1 ? "1px solid #f3f4f6" : "none", marginBottom: i < notifications.length - 1 ? 14 : 0 }}>
-          {/* Header row */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", background: isPaid ? "#f0fdf4" : "#fffbeb", border: `1px solid ${isPaid ? "#86efac" : "#fcd34d"}`, color: isPaid ? "#15803d" : "#92400e" }}>
               {isPaid ? "✓ Verified" : "⏳ Pending Verification"}
@@ -512,45 +604,16 @@ function PaymentSubmissionsSection({ doc }: { doc: Doc }) {
               Submitted {new Date(n.submittedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
             </span>
           </div>
-
-          {/* Details grid */}
           <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", padding: "12px 16px", display: "grid", gridTemplateColumns: "120px 1fr", gap: "6px 0", fontSize: 12 }}>
-            {n.amount && (
-              <>
-                <span style={{ color: "#9ca3af" }}>Amount</span>
-                <span style={{ fontWeight: 700, color: "#111827" }}>{n.amount}</span>
-              </>
-            )}
-            {n.date && (
-              <>
-                <span style={{ color: "#9ca3af" }}>Transfer Date</span>
-                <span style={{ color: "#374151" }}>{n.date}</span>
-              </>
-            )}
-            {n.reference && (
-              <>
-                <span style={{ color: "#9ca3af" }}>Reference</span>
-                <span style={{ fontFamily: "monospace", fontWeight: 600, color: "#111827" }}>{n.reference}</span>
-              </>
-            )}
-            {n.notes && (
-              <>
-                <span style={{ color: "#9ca3af" }}>Notes</span>
-                <span style={{ color: "#374151" }}>{n.notes}</span>
-              </>
-            )}
+            {n.amount    && <><span style={{ color: "#9ca3af" }}>Amount</span><span style={{ fontWeight: 700, color: "#111827" }}>{n.amount}</span></>}
+            {n.date      && <><span style={{ color: "#9ca3af" }}>Transfer Date</span><span style={{ color: "#374151" }}>{n.date}</span></>}
+            {n.reference && <><span style={{ color: "#9ca3af" }}>Reference</span><span style={{ fontFamily: "monospace", fontWeight: 600, color: "#111827" }}>{n.reference}</span></>}
+            {n.notes     && <><span style={{ color: "#9ca3af" }}>Notes</span><span style={{ color: "#374151" }}>{n.notes}</span></>}
             <span style={{ color: "#9ca3af" }}>Receipt</span>
-            {n.receiptKey ? (
-              <CustomerReceiptBtn docId={doc.id} receiptKey={n.receiptKey} />
-            ) : (
-              <span style={{ color: "#9ca3af", fontStyle: "italic" }}>Not uploaded</span>
-            )}
+            {n.receiptKey ? <CustomerReceiptBtn docId={doc.id} receiptKey={n.receiptKey} /> : <span style={{ color: "#9ca3af", fontStyle: "italic" }}>Not uploaded</span>}
           </div>
-
           {!isPaid && i === 0 && (
-            <p style={{ fontSize: 11, color: "#6b7280", marginTop: 8 }}>
-              Our team is reviewing your payment. Once verified, your invoice status will be updated automatically.
-            </p>
+            <p style={{ fontSize: 11, color: "#6b7280", marginTop: 8 }}>Our team is reviewing your payment. Once verified, your invoice status will be updated automatically.</p>
           )}
         </div>
       ))}
@@ -561,9 +624,9 @@ function PaymentSubmissionsSection({ doc }: { doc: Doc }) {
 // ── Main Component ────────────────────────────────────────────────────────────
 export function SalesDocClient({ doc }: { doc: Doc }) {
   const [pdfDownloading, setPdfDownloading] = useState(false);
-  const [accepting,      setAccepting]      = useState(false);
+  const [showAcceptModal,setShowAcceptModal]= useState(false);
   const [acceptDone,     setAcceptDone]     = useState(false);
-  const [acceptErr,      setAcceptErr]      = useState<string | null>(null);
+  const [poAttached,     setPoAttached]     = useState(false);
   const [showPayModal,   setShowPayModal]   = useState(false);
   const [paySuccess,     setPaySuccess]     = useState(false);
 
@@ -578,12 +641,13 @@ export function SalesDocClient({ doc }: { doc: Doc }) {
   const back             = backLink(doc.type);
   const showBalance      = doc.type === "INVOICE" || doc.type === "CREDIT_NOTE";
   const showPayments     = showBalance && doc.payments.length > 0;
-
-  // Show Pay Now button: invoice, unpaid, and at least one payment method available
-  const isUnpaid      = ["ISSUED","SENT","PARTIALLY_PAID","OVERDUE"].includes(doc.status);
-  const hasPayMethod  = (doc.market.paymentMethods ?? []).length > 0 || (doc.market.showPayOnline && !!doc.market.stripePublicKey);
+  const isUnpaid         = ["ISSUED","SENT","PARTIALLY_PAID","OVERDUE"].includes(doc.status);
+  const hasPayMethod     = (doc.market.paymentMethods ?? []).length > 0 || (doc.market.showPayOnline && !!doc.market.stripePublicKey);
   const hasPendingSubmission = doc.paymentNotifications.length > 0 && isUnpaid;
-  const showPayBtn    = doc.type === "INVOICE" && isUnpaid && hasPayMethod && !paySuccess && !hasPendingSubmission;
+  const showPayBtn       = doc.type === "INVOICE" && isUnpaid && hasPayMethod && !paySuccess && !hasPendingSubmission;
+
+  // Show PO download if quotation is ACCEPTED and has rfqFileUrl
+  const showPoDownload   = doc.type === "QUOTATION" && doc.status === "ACCEPTED" && (!!doc.rfqFileUrl || poAttached);
 
   async function downloadPdf() {
     setPdfDownloading(true);
@@ -598,18 +662,6 @@ export function SalesDocClient({ doc }: { doc: Doc }) {
       document.body.removeChild(a); URL.revokeObjectURL(href);
     } catch { alert("PDF download failed"); }
     setPdfDownloading(false);
-  }
-
-  async function handleAccept() {
-    if (!confirm(`Accept ${doc.docNum}?`)) return;
-    setAccepting(true); setAcceptErr(null);
-    try {
-      const res  = await fetch(`/api/customer/sales/${doc.id}/accept`, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) { setAcceptErr(data.error ?? "Failed"); return; }
-      setAcceptDone(true);
-    } catch { setAcceptErr("Network error."); }
-    setAccepting(false);
   }
 
   return (
@@ -634,11 +686,16 @@ export function SalesDocClient({ doc }: { doc: Doc }) {
             <span style={{ fontSize: 16, flexShrink: 0 }}>⏳</span>
             <div>
               <p style={{ fontSize: 13, fontWeight: 600, color: "#92400e", margin: "0 0 2px" }}>Payment Notification Pending Verification</p>
-              <p style={{ fontSize: 12, color: "#b45309", margin: 0 }}>
-                You have already submitted a payment notification. Our team is reviewing it.
-                Once verified, your invoice status will be updated automatically.
-              </p>
+              <p style={{ fontSize: 12, color: "#b45309", margin: 0 }}>You have already submitted a payment notification. Our team is reviewing it.</p>
             </div>
+          </div>
+        )}
+
+        {/* Accept success banner */}
+        {acceptDone && (
+          <div style={{ marginBottom: 16, padding: "12px 18px", background: "#f0fdf4", border: "1px solid #86efac", color: "#15803d", fontSize: 13, fontWeight: 500 }}>
+            ✓ Quotation accepted. Our team has been notified and will proceed shortly.
+            {poAttached && " Your PO file has been attached."}
           </div>
         )}
 
@@ -650,27 +707,34 @@ export function SalesDocClient({ doc }: { doc: Doc }) {
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <h1 style={{ fontSize: 20, fontWeight: 700, color: "#111827", margin: 0, fontFamily: "monospace" }}>{doc.docNum}</h1>
-                <StatusText status={doc.status} />
+                <StatusText status={acceptDone ? "ACCEPTED" : doc.status} />
                 <span style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em" }}>{typeLabel}</span>
               </div>
               {doc.subject && <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4, marginBottom: 0 }}>{doc.subject}</p>}
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+
+              {/* Accept Quotation button */}
               {canAccept && (
-                <button onClick={handleAccept} disabled={accepting}
-                  style={{ display: "flex", alignItems: "center", gap: 6, height: 36, padding: "0 16px", background: colors.primary, color: "#fff", border: "none", fontSize: 13, fontWeight: 600, cursor: accepting ? "not-allowed" : "pointer", opacity: accepting ? 0.7 : 1 }}>
+                <button onClick={() => setShowAcceptModal(true)}
+                  style={{ display: "flex", alignItems: "center", gap: 6, height: 36, padding: "0 16px", background: colors.primary, color: "#fff", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
                   <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7l4 4 6-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  {accepting ? "Accepting…" : "Accept Quotation"}
+                  Accept Quotation
                 </button>
               )}
-              {acceptDone && doc.type === "QUOTATION" && (
+
+              {/* Accepted state */}
+              {(acceptDone || (!canAccept && doc.type === "QUOTATION" && doc.status === "ACCEPTED")) && (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, height: 36, padding: "0 14px", background: "#e8f5f0", color: "#0F6E56", fontSize: 13, fontWeight: 600 }}>
                   <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7l4 4 6-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   Accepted
                 </div>
               )}
 
-              {/* Pay Now button */}
+              {/* Download attached PO */}
+              {showPoDownload && <PODownloadBtn docId={doc.id} />}
+
+              {/* Pay Now */}
               {showPayBtn && (
                 <button onClick={() => setShowPayModal(true)}
                   style={{ display: "flex", alignItems: "center", gap: 6, height: 36, padding: "0 16px", background: "#15803d", color: "#fff", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
@@ -679,7 +743,7 @@ export function SalesDocClient({ doc }: { doc: Doc }) {
                 </button>
               )}
 
-              {/* Download */}
+              {/* Download PDF */}
               {canDownload ? (
                 <button onClick={downloadPdf} disabled={pdfDownloading}
                   style={{ display: "flex", alignItems: "center", gap: 6, height: 36, padding: "0 14px", background: "#fff", border: "1px solid #e5e7eb", fontSize: 13, color: "#374151", cursor: pdfDownloading ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: pdfDownloading ? 0.6 : 1 }}>
@@ -688,16 +752,11 @@ export function SalesDocClient({ doc }: { doc: Doc }) {
                 </button>
               ) : needsOfficialPdf && !hasOfficialPdf ? (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, height: 36, padding: "0 14px", background: "#fffbeb", border: "1px solid #fcd34d", fontSize: 12, color: "#b45309", fontWeight: 500 }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                   Invoice being processed
                 </div>
               ) : null}
             </div>
           </div>
-
-          {acceptErr && (
-            <div style={{ padding: "10px 24px", background: "#fdf0ef", borderBottom: "1px solid #fca5a5", fontSize: 13, color: "#991b1b" }}>{acceptErr}</div>
-          )}
 
           {/* Date strip */}
           <div style={{ display: "flex", borderBottom: "1px solid #e5e7eb", flexWrap: "wrap" }}>
@@ -732,7 +791,7 @@ export function SalesDocClient({ doc }: { doc: Doc }) {
                 </tr>
               </thead>
               <tbody>
-                {doc.lines.map((l, i) => (
+                {doc.lines.map((l) => (
                   <tr key={l.id} style={{ borderTop: "1px solid #f3f4f6" }}>
                     <td style={{ padding: "12px 16px", color: "#111827" }}>
                       <div style={{ fontWeight: 500 }}>{l.description}</div>
@@ -798,25 +857,15 @@ export function SalesDocClient({ doc }: { doc: Doc }) {
             </div>
           )}
 
-          {/* Payment options panel — only for unpaid invoices with no pending submission */}
-          {doc.type === "INVOICE" && isUnpaid && !hasPendingSubmission && (
-            <PaymentOptionsPanel doc={doc} />
-          )}
+          {doc.type === "INVOICE" && isUnpaid && !hasPendingSubmission && <PaymentOptionsPanel doc={doc} />}
+          {doc.type === "INVOICE" && <PaymentSubmissionsSection doc={doc} />}
 
-          {/* Payment submissions — customer's own submissions */}
-          {doc.type === "INVOICE" && (
-            <PaymentSubmissionsSection doc={doc} />
-          )}
-
-          {/* Notes */}
           {doc.notes && (
             <div style={{ padding: "16px 24px", borderTop: "1px solid #e5e7eb" }}>
               <p style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Notes</p>
               <p style={{ fontSize: 13, color: "#374151", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{doc.notes}</p>
             </div>
           )}
-
-          {/* Terms */}
           {doc.termsAndConditions && (
             <div style={{ padding: "16px 24px", borderTop: "1px solid #e5e7eb" }}>
               <p style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Terms &amp; Conditions</p>
@@ -845,8 +894,16 @@ export function SalesDocClient({ doc }: { doc: Doc }) {
             </div>
           </div>
         )}
-
       </div>
+
+      {/* Accept modal */}
+      {showAcceptModal && (
+        <AcceptModal
+          doc={doc}
+          onClose={() => setShowAcceptModal(false)}
+          onSuccess={(attached) => { setShowAcceptModal(false); setAcceptDone(true); setPoAttached(attached); }}
+        />
+      )}
 
       {/* Pay modal */}
       {showPayModal && (
