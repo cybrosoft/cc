@@ -1845,6 +1845,7 @@ function SubRowItem({ sub, addons, isOpen, onToggle, onChanged }: {
             <span style={{ fontFamily:"monospace", fontSize:10, color:C.faint }}>{sub.product.key}</span>
             <TypeBadge type={sub.product.type} />
           </div>
+          <div style={{ fontFamily:"monospace", fontSize:10, color:C.faint, marginTop:2 }}>{sub.id}</div>
         </div>
         <div><StatusBadge status={sub.status} /></div>
         <div><PayBadge paymentStatus={sub.paymentStatus} /></div>

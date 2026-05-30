@@ -1,245 +1,265 @@
 "use client";
+// app/dashboard/servers/[id]/ServerDetailsClient.tsx
 
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { colors } from "@/lib/ui/tokens";
 
-type ServerDetails = {
-  id: string;
-  subscriptionId: string | null;
-  hetznerServerId: string;
-  name: string | null;
-  status: string | null;
-  ipv4: string | null;
-  ipv6: string | null;
-  createdAt: string;
-  updatedAt: string;
+type ServerDetail = {
+  id:                 string;
+  subscriptionId:     string | null;
+  hetznerServerId:    string | null;
+  provider:           string;
+  productKey:         string | null;
+  productName:        string | null;
+  paymentStatus:      string | null;
+  subscriptionStatus: string | null;
+  billingPeriod:      string | null;
+  periodEnd:          string | null;
+  locationCode:       string | null;
+  templateSlug:       string | null;
+  name:               string | null;
+  status:             string | null;
+  ipv4:               string | null;
+  ipv6:               string | null;
+  location:           string | null;
+  vcpu:               number | null;
+  ramGb:              number | null;
+  diskGb:             number | null;
+  createdAt:          string;
+  updatedAt:          string;
 };
 
-type DetailsResp =
-  | { ok: true; server: ServerDetails }
-  | { ok: false; error: string };
+type Tab = "overview" | "backups" | "network" | "volumes";
 
-type RestartResp =
-  | { ok: true; action: string; providerStatus: string | null }
-  | { ok: false; error: string };
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
-}
-function readBoolean(obj: Record<string, unknown>, key: string): boolean | null {
-  const v = obj[key];
-  return typeof v === "boolean" ? v : null;
-}
-function readString(obj: Record<string, unknown>, key: string): string | null {
-  const v = obj[key];
-  return typeof v === "string" ? v : null;
+function na(v: string | number | null | undefined): string {
+  if (v === null || v === undefined || v === "") return "N/A";
+  return String(v);
 }
 
-function parseDetails(raw: unknown): DetailsResp | null {
-  if (!raw || !isRecord(raw)) return null;
-  const ok = readBoolean(raw, "ok");
-  if (ok === true) {
-    const server = raw["server"];
-    if (!server || !isRecord(server)) return null;
-    return { ok: true, server: server as ServerDetails };
-  }
-  if (ok === false) {
-    return { ok: false, error: readString(raw, "error") ?? "UNKNOWN_ERROR" };
-  }
-  return null;
+function fmtDate(iso: string | null): string {
+  if (!iso) return "N/A";
+  return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-function parseRestart(raw: unknown): RestartResp | null {
-  if (!raw || !isRecord(raw)) return null;
-  const ok = readBoolean(raw, "ok");
-  if (ok === true) {
-    return {
-      ok: true,
-      action: readString(raw, "action") ?? "reboot",
-      providerStatus: readString(raw, "providerStatus"),
-    };
-  }
-  if (ok === false) {
-    return { ok: false, error: readString(raw, "error") ?? "RESTART_FAILED" };
-  }
-  return null;
-}
-
-function fmt(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toISOString().slice(0, 10);
-}
-
-export default function ServerDetailsClient() {
-  const params = useParams();
-  const router = useRouter();
-
-  const id = useMemo(() => String(params?.id ?? ""), [params]);
-
-  const [tab, setTab] = useState<"overview" | "backups" | "network" | "volumes">("overview");
-  const [loading, setLoading] = useState(false);
-  const [server, setServer] = useState<ServerDetails | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [restartBusy, setRestartBusy] = useState(false);
-
-  const load = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    setErr(null);
-
-    try {
-      const res = await fetch(`/api/servers/${encodeURIComponent(id)}`, { cache: "no-store" });
-      const raw = (await res.json().catch(() => null)) as unknown;
-      const parsed = parseDetails(raw);
-
-      if (!res.ok || !parsed) {
-        setErr(`Failed to load (${res.status})`);
-        setServer(null);
-        return;
-      }
-      if (!parsed.ok) {
-        setErr(parsed.error);
-        setServer(null);
-        return;
-      }
-
-      setServer(parsed.server);
-    } catch {
-      setErr("Network error while loading server");
-      setServer(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  async function restart(): Promise<void> {
-    if (!server) return;
-    if (!confirm("Restart this VPS?")) return;
-
-    setRestartBusy(true);
-    try {
-      const res = await fetch(`/api/servers/${encodeURIComponent(server.id)}/restart`, {
-        method: "POST",
-        cache: "no-store",
-      });
-
-      const raw = (await res.json().catch(() => null)) as unknown;
-      const parsed = parseRestart(raw);
-
-      if (!res.ok || !parsed) {
-        alert(`Restart failed (${res.status})`);
-        return;
-      }
-      if (!parsed.ok) {
-        alert(parsed.error);
-        return;
-      }
-
-      alert(`Restart requested. Provider status: ${parsed.providerStatus ?? "unknown"}`);
-      await load();
-      router.refresh();
-    } catch {
-      alert("Network error while restarting");
-    } finally {
-      setRestartBusy(false);
-    }
-  }
+function StatusBadge({ status }: { status: string | null }) {
+  const s = (status ?? "").toLowerCase();
+  let color = "#6b7280", bg = "#f3f4f6", border = "#e5e7eb";
+  if (s === "running")                               { color = "#15803d"; bg = "#f0fdf4"; border = "#86efac"; }
+  else if (s === "off" || s === "stopped")           { color = "#dc2626"; bg = "#fef2f2"; border = "#fecaca"; }
+  else if (["starting","stopping","rebooting"].includes(s)) { color = "#b45309"; bg = "#fffbeb"; border = "#fcd34d"; }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">Server Details</h1>
-          <p className="text-sm text-gray-600">Hetzner VPS (more sections coming).</p>
-        </div>
+    <span style={{ display: "inline-block", fontSize: 11.5, fontWeight: 600, padding: "3px 10px", background: bg, color, border: `1px solid ${border}`, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+      {na(status)}
+    </span>
+  );
+}
 
-        <button
-          className="rounded-md border px-3 py-1.5 text-xs hover:bg-gray-100 disabled:opacity-50"
-          disabled={loading}
-          onClick={() => void load()}
-        >
-          {loading ? "Loading..." : "Refresh"}
-        </button>
+function PayBadge({ status }: { status: string | null }) {
+  const s = (status ?? "").toLowerCase();
+  let color = "#6b7280", bg = "#f3f4f6", border = "#e5e7eb";
+  if (s === "paid")   { color = "#15803d"; bg = "#f0fdf4"; border = "#86efac"; }
+  if (s === "unpaid") { color = "#b45309"; bg = "#fffbeb"; border = "#fcd34d"; }
+  if (s === "failed") { color = "#dc2626"; bg = "#fef2f2"; border = "#fecaca"; }
+  return (
+    <span style={{ display: "inline-block", fontSize: 11.5, fontWeight: 600, padding: "3px 10px", background: bg, color, border: `1px solid ${border}`, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+      {na(status)}
+    </span>
+  );
+}
+
+function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", borderBottom: "1px solid #f3f4f6", padding: "10px 0" }}>
+      <span style={{ width: 160, flexShrink: 0, fontSize: 12, color: "#9ca3af", fontWeight: 500 }}>{label}</span>
+      <span style={{ fontSize: 13, color: "#111827", fontWeight: 400 }}>{children}</span>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ background: "#fff", border: "1px solid #e5e7eb", marginBottom: 16 }}>
+      <div style={{ padding: "12px 20px", borderBottom: "1px solid #e5e7eb", fontSize: 12, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+        {title}
       </div>
-
-      {err ? (
-        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {err}
-        </div>
-      ) : null}
-
-      <div className="flex flex-wrap gap-2">
-        <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>Overview</TabButton>
-        <TabButton active={tab === "backups"} onClick={() => setTab("backups")}>Backups</TabButton>
-        <TabButton active={tab === "network"} onClick={() => setTab("network")}>Network & Firewall</TabButton>
-        <TabButton active={tab === "volumes"} onClick={() => setTab("volumes")}>Additional Volumes</TabButton>
-      </div>
-
-      <div className="rounded-lg border bg-white p-4">
-        {tab === "overview" ? (
-          server ? (
-            <div className="space-y-3 text-sm">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <Info label="Name" value={server.name ?? "—"} />
-                <Info label="Status" value={server.status ?? "unknown"} />
-                <Info label="Hetzner ID" value={server.hetznerServerId} />
-                <Info label="IPv4" value={server.ipv4 ?? "—"} />
-                <Info label="IPv6" value={server.ipv6 ?? "—"} />
-                <Info label="Created" value={fmt(server.createdAt)} />
-              </div>
-
-              <div className="pt-2">
-                <button
-                  className="rounded-md border px-3 py-2 text-sm hover:bg-gray-100 disabled:opacity-50"
-                  onClick={() => void restart()}
-                  disabled={restartBusy}
-                >
-                  {restartBusy ? "Restarting..." : "Restart VPS"}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="text-sm text-gray-600">Loading…</div>
-          )
-        ) : tab === "backups" ? (
-          <div className="text-sm text-gray-600">
-            Backups view coming next (snapshots/backups list).
-          </div>
-        ) : tab === "network" ? (
-          <div className="text-sm text-gray-600">
-            Network & Firewall coming next (private networks + firewall rules).
-          </div>
-        ) : (
-          <div className="text-sm text-gray-600">
-            Volumes view coming next (attached volumes list).
-          </div>
-        )}
+      <div style={{ padding: "4px 20px 10px" }}>
+        {children}
       </div>
     </div>
   );
 }
 
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function Skeleton() {
   return (
-    <button
-      onClick={onClick}
-      className={`rounded-md border px-3 py-1.5 text-xs hover:bg-gray-100 ${active ? "bg-gray-50" : ""}`}
-    >
-      {children}
-    </button>
+    <span style={{ display: "inline-block", width: 120, height: 12, background: "#f0f0f0", borderRadius: 3 }} />
   );
 }
 
-function Info({ label, value }: { label: string; value: string }) {
+export default function ServerDetailsClient() {
+  const params = useParams();
+  const router = useRouter();
+  const id     = useMemo(() => String(params?.id ?? ""), [params]);
+
+  const [tab,         setTab]         = useState<Tab>("overview");
+  const [loading,     setLoading]     = useState(true);
+  const [server,      setServer]      = useState<ServerDetail | null>(null);
+  const [restartBusy, setRestartBusy] = useState(false);
+  const [restartMsg,  setRestartMsg]  = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!id) return;
+    setLoading(true);
+    try {
+      const res  = await fetch(`/api/servers/${encodeURIComponent(id)}`, { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (data?.ok && data.server) setServer(data.server);
+    } catch { /**/ }
+    finally { setLoading(false); }
+  }, [id]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function restart() {
+    if (!confirm("Restart this server?")) return;
+    setRestartBusy(true); setRestartMsg(null);
+    try {
+      const res  = await fetch(`/api/servers/${encodeURIComponent(id)}/restart`, { method: "POST", cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (data?.ok) {
+        setRestartMsg("Restart requested successfully.");
+        await load();
+      } else {
+        setRestartMsg(data?.error ?? "Restart failed.");
+      }
+    } catch { setRestartMsg("Network error."); }
+    setRestartBusy(false);
+  }
+
+  const V = (v: string | number | null | undefined) =>
+    loading ? <Skeleton /> : <span style={{ fontFamily: typeof v === "string" && /^\d{1,3}\.\d/.test(v) ? "monospace" : "inherit" }}>{na(v)}</span>;
+
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "overview", label: "Overview"           },
+    { id: "network",  label: "Network & Firewall" },
+    { id: "backups",  label: "Backups"            },
+    { id: "volumes",  label: "Additional Volumes" },
+  ];
+
   return (
-    <div>
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className="font-medium">{value}</div>
+    <div className="cy-page-content">
+      <div className="cy-dash-wrap">
+
+        {/* Header */}
+        <div style={{ marginBottom: 20 }}>
+          <Link href="/dashboard/servers" style={{ fontSize: 12, color: "#6b7280", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4, marginBottom: 10 }}>
+            ← Cloud Servers
+          </Link>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <h1 style={{ fontSize: 22, fontWeight: 700, color: "#111827", margin: 0 }}>
+                {loading ? "Loading…" : (server?.name ?? server?.productName ?? `Server`)}
+              </h1>
+              {!loading && <StatusBadge status={server?.status ?? null} />}
+              {!loading && <PayBadge status={server?.paymentStatus ?? null} />}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => void load()} disabled={loading}
+                style={{ height: 34, padding: "0 14px", fontSize: 12, fontWeight: 600, background: "#fff", border: "1px solid #e5e7eb", cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit", color: "#374151", opacity: loading ? 0.6 : 1 }}>
+                ↻ Refresh
+              </button>
+              <button onClick={() => void restart()} disabled={restartBusy || loading}
+                style={{ height: 34, padding: "0 14px", fontSize: 12, fontWeight: 600, background: "#fef2f2", border: "1px solid #fecaca", cursor: (restartBusy || loading) ? "not-allowed" : "pointer", fontFamily: "inherit", color: "#dc2626", opacity: (restartBusy || loading) ? 0.6 : 1 }}>
+                {restartBusy ? "Restarting…" : "Restart Server"}
+              </button>
+            </div>
+          </div>
+          {restartMsg && (
+            <div style={{ marginTop: 10, padding: "8px 14px", background: "#f0fdf4", border: "1px solid #86efac", color: "#15803d", fontSize: 13 }}>
+              {restartMsg}
+            </div>
+          )}
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "1px solid #e5e7eb", paddingBottom: 0 }}>
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              style={{
+                padding: "8px 16px", fontSize: 13, fontWeight: tab === t.id ? 600 : 400,
+                background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
+                color: tab === t.id ? colors.primary : "#6b7280",
+                borderBottom: `2px solid ${tab === t.id ? colors.primary : "transparent"}`,
+                marginBottom: -1,
+              }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Overview Tab */}
+        {tab === "overview" && (
+          <>
+            <Section title="Server Info">
+              <InfoRow label="Server Name">{V(server?.name)}</InfoRow>
+              <InfoRow label="Product">{V(server?.productName)}</InfoRow>
+              <InfoRow label="Product Key">{V(server?.productKey)}</InfoRow>
+              <InfoRow label="Provider">{V(server?.provider)}</InfoRow>
+              <InfoRow label="Provider ID">{V(server?.hetznerServerId)}</InfoRow>
+              <InfoRow label="Location">{V(server?.location ?? server?.locationCode)}</InfoRow>
+              <InfoRow label="OS Template">{V(server?.templateSlug)}</InfoRow>
+            </Section>
+
+            <Section title="Resources">
+              <InfoRow label="vCPU">{loading ? <Skeleton /> : <span>{server?.vcpu != null ? `${server.vcpu} vCPU` : "N/A"}</span>}</InfoRow>
+              <InfoRow label="RAM">{loading ? <Skeleton /> : <span>{server?.ramGb != null ? `${server.ramGb} GB` : "N/A"}</span>}</InfoRow>
+              <InfoRow label="Disk">{loading ? <Skeleton /> : <span>{server?.diskGb != null ? `${server.diskGb} GB` : "N/A"}</span>}</InfoRow>
+            </Section>
+
+            <Section title="Network">
+              <InfoRow label="IPv4">{V(server?.ipv4)}</InfoRow>
+              <InfoRow label="IPv6">{V(server?.ipv6)}</InfoRow>
+            </Section>
+
+            <Section title="Billing">
+              <InfoRow label="Payment Status"><PayBadge status={server?.paymentStatus ?? null} /></InfoRow>
+              <InfoRow label="Subscription Status">{V(server?.subscriptionStatus?.replace(/_/g, " "))}</InfoRow>
+              <InfoRow label="Billing Period">{V(server?.billingPeriod?.replace(/_/g, " "))}</InfoRow>
+              <InfoRow label="Period Ends">{loading ? <Skeleton /> : <span>{fmtDate(server?.periodEnd ?? null)}</span>}</InfoRow>
+            </Section>
+          </>
+        )}
+
+        {/* Network Tab */}
+        {tab === "network" && (
+          <Section title="Network & Firewall">
+            <div style={{ padding: "24px 0", textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
+              Firewall rules and private network details coming soon.
+            </div>
+          </Section>
+        )}
+
+        {/* Backups Tab */}
+        {tab === "backups" && (
+          <Section title="Backups & Snapshots">
+            <div style={{ padding: "24px 0", textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
+              Backup and snapshot management coming soon.
+            </div>
+          </Section>
+        )}
+
+        {/* Volumes Tab */}
+        {tab === "volumes" && (
+          <Section title="Additional Volumes">
+            <div style={{ padding: "24px 0", textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
+              Attached volumes will appear here.
+            </div>
+          </Section>
+        )}
+
+      </div>
     </div>
   );
 }

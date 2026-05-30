@@ -1,5 +1,4 @@
 // app/api/customer/sales/[id]/po-file/route.ts
-// GET — generate signed URL for the PO file attached to a quotation.
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
@@ -20,7 +19,6 @@ const s3 = new S3Client({
 
 const BUCKET = process.env.SUPABASE_S3_BUCKET ?? "uploads";
 
-// Sanitize key — strips JSON array brackets if stored incorrectly e.g. ["sales/doc/...pdf"]
 function sanitizeKey(raw: string): string {
   const trimmed = raw.trim();
   if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
@@ -34,16 +32,15 @@ function sanitizeKey(raw: string): string {
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const { id } = await context.params;
+
   const doc = await prisma.salesDocument.findFirst({
-    where: {
-      id:         params.id,
-      customerId: user.id,
-    },
+    where: { id, customerId: user.id },
     select: { rfqFileUrl: true },
   });
 

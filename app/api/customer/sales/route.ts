@@ -1,8 +1,4 @@
 // app/api/customer/sales/route.ts
-// Lists SalesDocuments for the current customer.
-// DRAFT is never shown to customers — for any document type.
-// WRITTEN_OFF is admin-only, shown as OVERDUE to customer.
-
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { prisma } from "@/lib/prisma";
@@ -29,7 +25,7 @@ export async function GET(req: NextRequest) {
     where: {
       customerId: user.id,
       type:       type ? type : { in: visibleTypes },
-      status: { notIn: ["DRAFT", "WRITTEN_OFF"] },
+      status:     { notIn: ["DRAFT", "WRITTEN_OFF"] },
     },
     select: {
       id:         true,
@@ -44,6 +40,7 @@ export async function GET(req: NextRequest) {
       subject:    true,
       rfqTitle:   true,
       pdfKey:     true,
+      rfqFileUrl: true,
       issueDate:  true,
       dueDate:    true,
       validUntil: true,
@@ -75,9 +72,10 @@ export async function GET(req: NextRequest) {
       total:      doc.total,
       amountPaid,
       balance:    doc.total - amountPaid,
-      subject:    doc.subject   ?? null,
-      rfqTitle:   doc.rfqTitle  ?? null,
-      pdfKey:     doc.pdfKey    ?? null,
+      subject:    doc.subject    ?? null,
+      rfqTitle:   doc.rfqTitle   ?? null,
+      pdfKey:     doc.pdfKey     ?? null,
+      rfqFileUrl: doc.rfqFileUrl ?? null,
       issueDate:  doc.issueDate.toISOString(),
       dueDate:    doc.dueDate?.toISOString()    ?? null,
       validUntil: doc.validUntil?.toISOString() ?? null,

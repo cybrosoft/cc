@@ -40,8 +40,8 @@ interface NavItem {
   icon: string;
   href?: string;
   children?: NavChild[];
-  alwaysAllowed?: boolean; // never locked during onboarding
-  activePaths?: string[]; // extra paths that make this group active
+  alwaysAllowed?: boolean;
+  activePaths?: string[];
 }
 
 // Maps ?from= param to child href
@@ -86,9 +86,7 @@ function NavLeaf({
       }}>
         {item.label}
       </span>
-      {locked && (
-        <Icon name="lock" size={12} color={colors.textFaint} />
-      )}
+      {locked && <Icon name="lock" size={12} color={colors.textFaint} />}
     </span>
   );
 
@@ -224,28 +222,31 @@ function SidebarContent({
   needsOnboarding?: boolean;
   userStatus?: string;
 }) {
+  const searchParams    = useSearchParams();
+  const fromParam       = searchParams?.get("from") ?? "";
+  const fromHref        = FROM_MAP[fromParam] ?? undefined;
+
   const bv = billingVisibility ?? { hasIssuedPO: false, hasDeliveryNotes: false, hasProformaInvoices: false };
 
   const billingChildren: NavChild[] = [
     { id: "quotations", label: "Quotations",       icon: "quotations", href: "/dashboard/quotations" },
-    ...(bv.hasIssuedPO         ? [{ id: "po",       label: "Issued PO",         icon: "po",        href: "/dashboard/po" }]             : []),
-    ...(bv.hasDeliveryNotes    ? [{ id: "dn",       label: "Delivery Notes",    icon: "documents",  href: "/dashboard/delivery-notes" }] : []),
-    ...(bv.hasProformaInvoices ? [{ id: "proforma", label: "Proforma Invoices", icon: "invoice",   href: "/dashboard/proforma" }]       : []),
-    { id: "invoices",  label: "Invoices",           icon: "invoice",   href: "/dashboard/invoices" },
-    { id: "statement", label: "Statement",          icon: "statement", href: "/dashboard/statement" },
+    ...(bv.hasIssuedPO         ? [{ id: "po",       label: "Issued PO",         icon: "po",       href: "/dashboard/po" }]             : []),
+    ...(bv.hasDeliveryNotes    ? [{ id: "dn",       label: "Delivery Notes",    icon: "documents", href: "/dashboard/delivery-notes" }] : []),
+    ...(bv.hasProformaInvoices ? [{ id: "proforma", label: "Proforma Invoices", icon: "invoice",  href: "/dashboard/proforma" }]       : []),
+    { id: "invoices",  label: "Invoices",  icon: "invoice",   href: "/dashboard/invoices" },
+    { id: "statement", label: "Statement", icon: "statement", href: "/dashboard/statement" },
   ];
 
   const NAV: NavItem[] = [
-    { id: "dashboard",     label: "Dashboard",     icon: "dashboard", href: "/dashboard" },
-    { id: "subscriptions", label: "Subscriptions", icon: "services",  href: "/dashboard/subscriptions" },
-    { id: "servers",       label: "Servers",       icon: "server",    href: "/dashboard/servers" },
-    {
-      id: "services", label: "Services", icon: "catalogue",
-      children: [
-        { id: "catalogue", label: "Service Catalogue", icon: "catalogue", href: "/dashboard/catalogue" },
-        { id: "rfq",       label: "RFQ / Inquiries",   icon: "rfq",       href: "/dashboard/rfq" },
-      ],
-    },
+    { id: "dashboard",  label: "Dashboard",          icon: "dashboard", href: "/dashboard" },
+    { id: "servers",    label: "Cloud Servers",       icon: "server",    href: "/dashboard/servers" },
+    { id: "storage",    label: "Storage",             icon: "documents", href: "/dashboard/storage" },
+    { id: "backup",     label: "Backup",              icon: "backup",    href: "/dashboard/backup" },
+    { id: "network",    label: "Network & Public IP", icon: "network",   href: "/dashboard/network" },
+    { id: "email",      label: "Email & Productivity",icon: "mail",      href: "/dashboard/email" },
+    { id: "security",   label: "Security",            icon: "lock",      href: "/dashboard/security" },
+    { id: "domains",    label: "Domain & DNS",        icon: "domain",    href: "/dashboard/domains" },
+    { id: "services",   label: "Other Services",      icon: "catalogue", href: "/dashboard/services" },
     {
       id: "billing", label: "Billing", icon: "billing",
       children: billingChildren,
@@ -261,10 +262,6 @@ function SidebarContent({
       ],
     },
   ];
-
-  const searchParams    = useSearchParams();
-  const fromParam       = searchParams?.get("from") ?? "";
-  const fromHref        = FROM_MAP[fromParam] ?? undefined;
 
   const footerPrimaryName = companyName || userName || userEmail;
 

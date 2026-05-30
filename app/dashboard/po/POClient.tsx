@@ -26,9 +26,9 @@ function Sk({ w = "100%", h = 13 }: { w?: string | number; h?: number }) {
 }
 
 function docTypeLabel(row: PORow): string {
-  if (row.type === "PO")        return "PO Issued";
-  if (row.rfqFileUrl)           return "Quote Accepted & PO Issued";
-  return "Quote Accepted";
+  if (row.type === "PO")  return "PO Issued";
+  if (row.rfqFileUrl)     return "PO Issued";
+  return "Quote Accepted (Acts as PO)";
 }
 
 function PODownloadBtn({ docId }: { docId: string }) {
@@ -83,7 +83,7 @@ export function POClient() {
     }).finally(() => setLoading(false));
   }, []);
 
-  const col = "120px 1fr 1fr auto";
+  const col = "120px 1fr 240px 120px";
 
   return (
     <>
@@ -101,20 +101,18 @@ export function POClient() {
         </div>
 
         <div style={{ background: "#fff", border: "1px solid #e5e7eb", overflow: "hidden" }}>
-
           {/* Header */}
           <div style={{ display: "grid", gridTemplateColumns: col, gap: 12, padding: "9px 16px", background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-            {["Date", "Doc Number", "Doc Type", "Actions"].map((h, i) => (
-              <span key={h} style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase" as const, letterSpacing: "0.05em", textAlign: i === 3 ? "right" as const : "left" as const }}>
-                {h}
-              </span>
-            ))}
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase" as const, letterSpacing: "0.05em" }}>Date</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase" as const, letterSpacing: "0.05em" }}>Doc Number</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase" as const, letterSpacing: "0.05em" }}>Doc Type</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase" as const, letterSpacing: "0.05em", textAlign: "right" as const }}>Actions</span>
           </div>
 
           {/* Skeletons */}
           {loading && [1,2,3].map(i => (
             <div key={i} style={{ display: "grid", gridTemplateColumns: col, gap: 12, padding: "13px 16px", borderBottom: "1px solid #f3f4f6", alignItems: "center" }}>
-              <Sk w="80px" h={12} /><Sk w="110px" h={12} /><Sk w="130px" h={12} /><Sk w="60px" h={28} />
+              <Sk w="80px" h={12} /><Sk w="110px" h={12} /><Sk w="160px" h={12} /><Sk w="60px" h={28} />
             </div>
           ))}
 
@@ -130,43 +128,39 @@ export function POClient() {
             const isPO            = row.type === "PO";
             const isAcceptedQuote = row.type === "QUOTATION";
             const hasPOFile       = !!row.rfqFileUrl;
-            // PO (admin issued) → download attached doc; Quotation → view quote page
-            const viewHref        = `/dashboard/sales/${row.id}?from=${isAcceptedQuote ? "quotations" : "po"}`;
+            const viewHref        = `/dashboard/sales/${row.id}?from=quotations`;
             const isLast          = idx === rows.length - 1;
+
+            const showDownload = (isPO && hasPOFile) || (isAcceptedQuote && hasPOFile);
+            const showView     = isAcceptedQuote && !hasPOFile;
 
             return (
               <div key={row.id} className="cy-po-row"
                 style={{ display: "grid", gridTemplateColumns: col, gap: 12, padding: "12px 16px", borderBottom: isLast ? "none" : "1px solid #f3f4f6", alignItems: "center", transition: "background 0.1s" }}>
 
-                {/* Date */}
                 <span style={{ fontSize: 12.5, color: "#6b7280", whiteSpace: "nowrap" }}>
                   {fmtDate(row.createdAt)}
                 </span>
 
-                {/* Doc Number */}
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: "#111827", fontFamily: "monospace" }}>{row.docNum}</div>
                   {row.subject && <div style={{ fontSize: 11.5, color: "#9ca3af", marginTop: 2 }}>{row.subject}</div>}
                 </div>
 
-                {/* Doc Type */}
+                {/* Doc Type — left aligned, fixed width column */}
                 <span style={{ fontSize: 12.5, color: "#374151" }}>
                   {docTypeLabel(row)}
                 </span>
 
-                {/* Actions */}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
-                  {/* Accepted quotes → View button only */}
-                  {isAcceptedQuote && (
+                  {showDownload && <PODownloadBtn docId={row.id} />}
+                  {showView && (
                     <a href={viewHref}
                       style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, padding: "5px 10px", background: "#fff", color: colors.primary, border: `1px solid ${colors.primary}44`, textDecoration: "none", whiteSpace: "nowrap" }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                       View
                     </a>
                   )}
-                  {/* Admin PO → Download button (if file attached) */}
-                  {isPO && hasPOFile && <PODownloadBtn docId={row.id} />}
-                  {/* Admin PO with no file → nothing */}
                 </div>
               </div>
             );

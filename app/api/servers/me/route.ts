@@ -1,109 +1,127 @@
+// app/api/servers/me/route.ts
+// Lists all server subscriptions for the current customer.
+// Source of truth: Subscription model (category = "Server")
+// Live provider data fetched from Server model if provisioned.
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth/get-session-user";
-import { Role } from "@prisma/client";
 import { getServerCore } from "@/lib/hetzner";
-
-type ServerOut = {
-  id: string;
-  subscriptionId: string | null;
-
-  productKey: string | null;
-  productName: string | null;
-
-  hetznerServerId: string | null;
-
-  // Hetzner summary (safe)
-  name: string | null;
-  status: string | null; // "NA" on invalid token/id
-  ipv4: string | null;
-  ipv6: string | null;
-  location: string | null;
-  vcpu: number | null;
-  ramGb: number | null;
-  diskGb: number | null;
-};
 
 export async function GET() {
   try {
     const user = await getSessionUser();
     if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    if (user.role !== Role.CUSTOMER) {
-      return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
-    }
 
-    const servers = await prisma.server.findMany({
-      where: { userId: user.id },
+    // Fetch all subscriptions for this customer where product is in "Server" category
+    const subscriptions = await prisma.subscription.findMany({
+      where: {
+        userId: user.id,
+        product: {
+          category: { key: "server" },
+        },
+      },
       orderBy: { createdAt: "desc" },
       select: {
-        id: true,
-        subscriptionId: true,
-        hetznerServerId: true,
-        hetznerApiToken: true,
-        subscription: {
+        id:                 true,
+        status:             true,
+        paymentStatus:      true,
+        billingPeriod:      true,
+        currentPeriodStart: true,
+        currentPeriodEnd:   true,
+        locationCode:       true,
+        templateSlug:       true,
+        productDetails:     true,
+        createdAt:          true,
+        product: {
+          select: { key: true, name: true, categoryId: true, tags: { select: { key: true } } },
+        },
+        servers: {
           select: {
-            product: { select: { key: true, name: true } },
+            id:                   true,
+            hetznerServerId:      true,
+            hetznerApiToken:      true,
+            oracleInstanceId:     true,
+            oracleInstanceRegion: true,
           },
+          take: 1,
         },
       },
     });
 
-    const data: ServerOut[] = await Promise.all(
-      servers.map(async (sv): Promise<ServerOut> => {
-        const token = (sv.hetznerApiToken ?? "").trim();
-        const hetznerServerId = (sv.hetznerServerId ?? "").trim();
+    // Fetch all locations for display
+    const allLocations = await prisma.location.findMany({
+      select: { code: true, name: true, countryCode: true },
+    });
+    const locationMap = new Map(allLocations.map(l => [l.code, l]));
 
-        // defaults (blank fields)
-        let name: string | null = null;
-        let status: string | null = null;
-        let ipv4: string | null = null;
-        let ipv6: string | null = null;
+    // For each subscription, fetch live server data if provisioned
+    const data = await Promise.all(
+      subscriptions.map(async (sub) => {
+        const server = sub.servers[0] ?? null;
+
+        const isHetzner = !!server?.hetznerServerId;
+        const isOracle  = !!server?.oracleInstanceId;
+        const provider  = isHetzner ? "HETZNER" : isOracle ? "ORACLE" : "UNKNOWN";
+
+        let name:     string | null = null;
+        let status:   string | null = "N/A";
+        let ipv4:     string | null = null;
+        let ipv6:     string | null = null;
         let location: string | null = null;
-        let vcpu: number | null = null;
-        let ramGb: number | null = null;
-        let diskGb: number | null = null;
+        let vcpu:     number | null = null;
+        let ramGb:    number | null = null;
+        let diskGb:   number | null = null;
 
-        if (!token || !hetznerServerId) {
-          status = "NA";
-        } else {
+        if (isHetzner && server?.hetznerApiToken) {
           try {
-            const core = await getServerCore(token, hetznerServerId);
-            name = core.name;
-            status = core.status;
-            ipv4 = core.ipv4;
-            ipv6 = core.ipv6;
+            const core = await getServerCore(server.hetznerApiToken, server.hetznerServerId!);
+            name     = core.name;
+            status   = core.status;
+            ipv4     = core.ipv4;
+            ipv6     = core.ipv6;
             location = core.location;
-            vcpu = core.vcpu;
-            ramGb = core.ramGb;
-            diskGb = core.diskGb;
+            vcpu     = core.vcpu;
+            ramGb    = core.ramGb;
+            diskGb   = core.diskGb;
           } catch {
-            // invalid token / invalid server id => NA + blanks
-            status = "NA";
+            status = "N/A";
           }
         }
 
         return {
-          id: sv.id,
-          subscriptionId: sv.subscriptionId,
-          productKey: sv.subscription?.product?.key ?? null,
-          productName: sv.subscription?.product?.name ?? null,
-          hetznerServerId: sv.hetznerServerId,
-          name,
-          status,
-          ipv4,
-          ipv6,
-          location,
-          vcpu,
-          ramGb,
-          diskGb,
+          // Subscription fields
+          subscriptionId:     sub.id,
+          subscriptionStatus: String(sub.status),
+          paymentStatus:      String(sub.paymentStatus),
+          billingPeriod:      String(sub.billingPeriod),
+          periodEnd:          sub.currentPeriodEnd?.toISOString() ?? null,
+          locationCode:       sub.locationCode ?? null,
+          templateSlug:       sub.templateSlug ?? null,
+          productKey:         sub.product.key,
+          productName:        sub.product.name,
+          createdAt:          sub.createdAt.toISOString(),
+          os:                 sub.product.tags.map((t: any) => t.key.toLowerCase()).includes("windows") ? "Windows" : sub.product.tags.map((t: any) => t.key.toLowerCase()).includes("linux") ? "Linux" : null,
+          locationDisplay:    (() => {
+            const code = sub.locationCode;
+            if (!code) return null;
+            const loc = locationMap.get(code);
+            if (!loc) return code;
+            return loc.countryCode ? `${loc.countryCode} - ${loc.name}` : loc.name;
+          })(),
+          // Server fields
+          serverId:           server?.id ?? null,
+          provider,
+          provisioned:        !!server,
+          // Live provider data
+          name, status, ipv4, ipv6, location, vcpu, ramGb, diskGb,
         };
       })
     );
 
     return NextResponse.json({ ok: true, data });
-  } catch {
-    return NextResponse.json({ ok: false, error: "Request failed" }, { status: 500 });
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: e.message ?? "Request failed" }, { status: 500 });
   }
 }
