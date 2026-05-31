@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getServerCore } from "@/lib/hetzner";
+import { getOracleInstanceSummary } from "@/lib/oracle/compute";
 
 export async function GET() {
   try {
@@ -42,8 +43,9 @@ export async function GET() {
             id:                   true,
             hetznerServerId:      true,
             hetznerApiToken:      true,
-            oracleInstanceId:     true,
-            oracleInstanceRegion: true,
+            oracleInstanceId:      true,
+            oracleInstanceRegion:  true,
+            oracleCompartmentOcid: true,
           },
           take: 1,
         },
@@ -88,6 +90,23 @@ export async function GET() {
           } catch {
             status = "N/A";
           }
+        } else if (isOracle && server?.oracleInstanceId && server?.oracleInstanceRegion) {
+          try {
+            const o  = await getOracleInstanceSummary({
+              instanceOcid:    server.oracleInstanceId,
+              regionCode:      server.oracleInstanceRegion,
+              compartmentOcid: server.oracleCompartmentOcid ?? undefined,
+            });
+            name     = o.name;
+            status   = o.status;
+            ipv4     = o.ipv4;
+            location = o.location;
+            vcpu     = o.vcpu;
+            ramGb    = o.ramGb;
+            diskGb   = o.diskGb;
+          } catch {
+            status = "N/A";
+          }
         }
 
         return {
@@ -101,6 +120,11 @@ export async function GET() {
           templateSlug:       sub.templateSlug ?? null,
           productKey:         sub.product.key,
           productName:        sub.product.name,
+          serverName:         (() => {
+            const firstLine = sub.productDetails ? sub.productDetails.split('\n')[0].trim() : null;
+            if (!firstLine || firstLine === sub.product.name) return null;
+            return firstLine;
+          })(),
           createdAt:          sub.createdAt.toISOString(),
           os:                 sub.product.tags.map((t: any) => t.key.toLowerCase()).includes("windows") ? "Windows" : sub.product.tags.map((t: any) => t.key.toLowerCase()).includes("linux") ? "Linux" : null,
           locationDisplay:    (() => {

@@ -239,10 +239,14 @@ function SidebarContent({
 
   const NAV: NavItem[] = [
     { id: "dashboard",  label: "Dashboard",          icon: "dashboard", href: "/dashboard" },
-    { id: "servers",    label: "Cloud Servers",       icon: "server",    href: "/dashboard/servers" },
+    { id: "servers", label: "Compute Instances", icon: "server", href: "/dashboard/servers" },
+    { id: "servers",    label: "GPU Instances",       icon: "ai",    href: "/dashboard/gpu" },
     { id: "storage",    label: "Storage",             icon: "documents", href: "/dashboard/storage" },
     { id: "backup",     label: "Backup",              icon: "backup",    href: "/dashboard/backup" },
-    { id: "network",    label: "Network & Public IP", icon: "network",   href: "/dashboard/network" },
+    { id: "network", label: "Network & Public IP", icon: "network", href: "/dashboard/network" },
+    { id: "servers", label: "Database", icon: "database", href: "/dashboard/database" },
+    { id: "servers", label: "Hybrid & Multi Cloud", icon: "cloud", href: "/dashboard/multicloud" },
+    { id: "servers",    label: "Analytics & AI",       icon: "database",    href: "/dashboard/aai" },
     { id: "email",      label: "Email & Productivity",icon: "mail",      href: "/dashboard/email" },
     { id: "security",   label: "Security",            icon: "lock",      href: "/dashboard/security" },
     { id: "domains",    label: "Domain & DNS",        icon: "domain",    href: "/dashboard/domains" },

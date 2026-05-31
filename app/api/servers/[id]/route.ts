@@ -19,22 +19,23 @@ export async function GET(
   const server = await prisma.server.findFirst({
     where: { id: serverId, userId: user.id },
     select: {
-      id:              true,
-      subscriptionId:  true,
-      hetznerServerId: true,
-      hetznerApiToken: true,
+      id:               true,
+      subscriptionId:   true,
+      hetznerServerId:  true,
+      hetznerApiToken:  true,
       oracleInstanceId: true,
-      createdAt:       true,
-      updatedAt:       true,
+      createdAt:        true,
+      updatedAt:        true,
       subscription: {
         select: {
-          status:        true,
-          paymentStatus: true,
-          billingPeriod: true,
+          status:             true,
+          paymentStatus:      true,
+          billingPeriod:      true,
           currentPeriodStart: true,
           currentPeriodEnd:   true,
-          locationCode:  true,
-          templateSlug:  true,
+          locationCode:       true,
+          templateSlug:       true,
+          productDetails:     true,
           product: { select: { key: true, name: true } },
         },
       },
@@ -43,7 +44,17 @@ export async function GET(
 
   if (!server) return NextResponse.json({ ok: false, error: "SERVER_NOT_FOUND" }, { status: 404 });
 
-  // Attempt to fetch live data from provider — fail gracefully
+  // Derive serverName from first line of productDetails
+  // Exclude if it equals the product name (old data artifact)
+  const serverName = (() => {
+    const firstLine = server.subscription?.productDetails
+      ? server.subscription.productDetails.split('\n')[0].trim()
+      : null;
+    const productName = server.subscription?.product?.name ?? null;
+    if (!firstLine || firstLine === productName) return null;
+    return firstLine;
+  })();
+
   let name:     string | null = null;
   let status:   string | null = "N/A";
   let ipv4:     string | null = null;
@@ -72,18 +83,19 @@ export async function GET(
   return NextResponse.json({
     ok: true,
     server: {
-      id:              server.id,
-      subscriptionId:  server.subscriptionId,
-      hetznerServerId: server.hetznerServerId,
-      provider:        server.hetznerServerId ? "HETZNER" : server.oracleInstanceId ? "ORACLE" : "UNKNOWN",
-      productKey:      server.subscription?.product?.key  ?? null,
-      productName:     server.subscription?.product?.name ?? null,
-      paymentStatus:   server.subscription?.paymentStatus ? String(server.subscription.paymentStatus) : null,
-      subscriptionStatus: server.subscription?.status     ? String(server.subscription.status)        : null,
-      billingPeriod:   server.subscription?.billingPeriod ? String(server.subscription.billingPeriod) : null,
-      periodEnd:       server.subscription?.currentPeriodEnd?.toISOString() ?? null,
-      locationCode:    server.subscription?.locationCode  ?? null,
-      templateSlug:    server.subscription?.templateSlug  ?? null,
+      id:                 server.id,
+      subscriptionId:     server.subscriptionId,
+      hetznerServerId:    server.hetznerServerId,
+      provider:           server.hetznerServerId ? "HETZNER" : server.oracleInstanceId ? "ORACLE" : "UNKNOWN",
+      productKey:         server.subscription?.product?.key  ?? null,
+      productName:        server.subscription?.product?.name ?? null,
+      serverName,
+      paymentStatus:      server.subscription?.paymentStatus ? String(server.subscription.paymentStatus) : null,
+      subscriptionStatus: server.subscription?.status        ? String(server.subscription.status)        : null,
+      billingPeriod:      server.subscription?.billingPeriod ? String(server.subscription.billingPeriod) : null,
+      periodEnd:          server.subscription?.currentPeriodEnd?.toISOString() ?? null,
+      locationCode:       server.subscription?.locationCode  ?? null,
+      templateSlug:       server.subscription?.templateSlug  ?? null,
       name, status, ipv4, ipv6, location, vcpu, ramGb, diskGb,
       createdAt: server.createdAt.toISOString(),
       updatedAt: server.updatedAt.toISOString(),

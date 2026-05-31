@@ -812,21 +812,60 @@ function BillingTab({ sub, addons, currency, renewalData, onChanged }: { sub: Su
 
 // ─── Details tab ────────────────────────────────────────────────────────────────
 function DetailsTab({ sub, onChanged }: { sub: SubRow; onChanged: () => void }) {
-  const [details, setDetails] = useState(sub.productDetails ?? "");
-  const [note,    setNote]    = useState(sub.productNote    ?? "");
-  const [busy,    setBusy]    = useState(false);
-  const [saved,   setSaved]   = useState(false);
-  const [msg,     setMsg]     = useState<string | null>(null);
+  const [details,      setDetails]      = useState(sub.productDetails ?? "");
+  const [note,         setNote]         = useState(sub.productNote    ?? "");
+  const [locationCode, setLocationCode] = useState(sub.locationCode   ?? "");
+  const [busy,         setBusy]         = useState(false);
+  const [saved,        setSaved]        = useState(false);
+  const [msg,          setMsg]          = useState<string | null>(null);
+
+  const isPlan = sub.product.type === "plan";
+
+  function getName() { return details.split("\n")[0] ?? ""; }
+  function setName(v: string) {
+    const lines = details.split("\n");
+    lines[0] = v;
+    setDetails(lines.join("\n"));
+  }
+  function getDetails() {
+    if (!isPlan) return details;
+    return details.split("\n").slice(1).join("\n");
+  }
+  function setDetailsOnly(v: string) {
+    if (!isPlan) { setDetails(v); return; }
+    const name = details.split("\n")[0] ?? "";
+    setDetails([name, v].join("\n"));
+  }
 
   async function save() {
     setBusy(true); setMsg(null);
     try {
+      // Validate location code if changed
+      const trimmedCode = locationCode.trim().toUpperCase();
+      if (trimmedCode && trimmedCode !== (sub.locationCode ?? "").toUpperCase()) {
+        const locResp = await fetch(`/api/admin/catalog/locations`, { cache: "no-store" });
+        const locData = await locResp.json().catch(() => null);
+        const locations: { code: string }[] = locData?.data ?? [];
+        const valid = locations.some(l => l.code.toUpperCase() === trimmedCode);
+        if (!valid) {
+          setMsg(`Location code "${trimmedCode}" not found. Check admin catalog locations.`);
+          setBusy(false); return;
+        }
+      }
+
       const r = await fetch("/api/admin/subscriptions/update-details", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subscriptionId: sub.id, productDetails: details, productNote: note }),
+        body: JSON.stringify({
+          subscriptionId: sub.id,
+          productDetails: details,
+          productNote:    note,
+          locationCode:   trimmedCode || null,
+        }),
       });
       const j = await r.json().catch(() => null) as unknown;
-      if (!r.ok || !isRecord(j) || !readBoolean(j, "ok")) { setMsg(isRecord(j)?(readString(j,"error")??"Save failed"):"Save failed"); return; }
+      if (!r.ok || !isRecord(j) || !readBoolean(j, "ok")) {
+        setMsg(isRecord(j) ? (readString(j, "error") ?? "Save failed") : "Save failed"); return;
+      }
       setSaved(true); setTimeout(() => setSaved(false), 2000); onChanged();
     } catch { setMsg("Network error"); }
     finally { setBusy(false); }
@@ -834,8 +873,37 @@ function DetailsTab({ sub, onChanged }: { sub: SubRow; onChanged: () => void }) 
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div><span style={LBL}>Customer-visible Details</span><textarea rows={3} value={details} onChange={e => setDetails(e.target.value)} style={{ ...INP, resize: "vertical" as const }} placeholder="e.g. domain, username…" /></div>
-      <div><span style={LBL}>Note</span><textarea rows={3} value={note} onChange={e => setNote(e.target.value)} style={{ ...INP, resize: "vertical" as const }} placeholder="Extra instructions…" /></div>
+
+      {isPlan && (
+        <div>
+          <span style={LBL}>Server / Subscription Name</span>
+          <input value={getName()} onChange={e => setName(e.target.value)} style={INP} placeholder="e.g. Production Server, Dev Server…" />
+          <div style={{ fontSize: 10, color: C.faint, marginTop: 3 }}>Shown in customer portal as the server name</div>
+        </div>
+      )}
+
+      <div>
+        <span style={LBL}>Location Code</span>
+        <input
+          value={locationCode}
+          onChange={e => setLocationCode(e.target.value.toUpperCase())}
+          style={INP}
+          placeholder="e.g. JED, RUH, EUR"
+          maxLength={20}
+        />
+        <div style={{ fontSize: 10, color: C.faint, marginTop: 3 }}>
+          Must match an existing location code — validated on save
+        </div>
+      </div>
+
+      <div>
+        <span style={LBL}>Customer-visible Details</span>
+        <textarea rows={3} value={getDetails()} onChange={e => setDetailsOnly(e.target.value)} style={{ ...INP, resize: "vertical" as const }} placeholder="e.g. domain, username…" />
+      </div>
+      <div>
+        <span style={LBL}>Note</span>
+        <textarea rows={3} value={note} onChange={e => setNote(e.target.value)} style={{ ...INP, resize: "vertical" as const }} placeholder="Extra instructions…" />
+      </div>
       {msg && <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:"#dc2626" }}><Icon name="alertCircle" size={13} color="#dc2626" />{msg}</div>}
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <SaveBtn busy={busy} saved={saved} activeLabel="Save Details" onClick={save} />

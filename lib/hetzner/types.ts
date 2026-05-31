@@ -7,7 +7,9 @@ export type HetznerServerCore = {
   status: string;
 
   ipv4: string | null;
+  ipv4Reserved: boolean | null;   // true = floating/reserved, false = ephemeral
   ipv6: string | null;
+  additionalIps: string[];        // additional public IPs on the server
 
   location: string | null;
 
@@ -48,6 +50,7 @@ export type HetznerFirewallDetails = {
 
 export type HetznerPrivateNetItem = {
   networkId: number;
+  name?: string | null;
   ip: string;
   aliasIps: string[];
   macAddress: string | null;
@@ -64,8 +67,8 @@ export type HetznerVolumeItem = {
 
 export type HetznerServerFull = {
   core: HetznerServerCore;
-  backups: HetznerImageItem[]; // max 7
-  snapshots: HetznerImageItem[]; // max 5
+  backups: HetznerImageItem[];
+  snapshots: HetznerImageItem[];
   firewalls: HetznerFirewallDetails[];
   privateNetworks: HetznerPrivateNetItem[];
   volumes: HetznerVolumeItem[];

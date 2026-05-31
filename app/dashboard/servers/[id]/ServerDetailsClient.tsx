@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { colors } from "@/lib/ui/tokens";
 
 type ServerDetail = {
@@ -19,6 +19,7 @@ type ServerDetail = {
   periodEnd:          string | null;
   locationCode:       string | null;
   templateSlug:       string | null;
+  serverName:         string | null;
   name:               string | null;
   status:             string | null;
   ipv4:               string | null;
@@ -98,6 +99,81 @@ function Skeleton() {
   );
 }
 
+// ─── Inline name edit for detail page ─────────────────────────────────────────
+function ServerNameInline({ serverId, subscriptionId, serverName, fallback, onSaved }: {
+  serverId: string | null;
+  subscriptionId: string | null;
+  serverName: string | null;
+  fallback: string;
+  onSaved: (name: string | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value,   setValue]   = useState(serverName ?? "");
+  const [saving,  setSaving]  = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setValue(serverName ?? ""); }, [serverName]);
+  useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing]);
+
+  async function save() {
+    if (!subscriptionId) return;
+    setSaving(true);
+    try {
+      const res  = await fetch(`/api/customer/subscriptions/${subscriptionId}/name`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: value.trim() }),
+      });
+      const data = await res.json().catch(() => null);
+      if (data?.ok) { onSaved(data.serverName); setEditing(false); }
+    } catch { /**/ }
+    setSaving(false);
+  }
+
+  function cancel() { setValue(serverName ?? ""); setEditing(false); }
+
+  if (editing) {
+    return (
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <input ref={inputRef} value={value} onChange={e => setValue(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") void save(); if (e.key === "Escape") cancel(); }}
+            style={{ fontSize: 20, fontWeight: 700, padding: "4px 10px", border: "2px solid #318774", outline: "none", fontFamily: "inherit", width: 260 }} />
+          <button onClick={() => void save()} disabled={saving}
+            style={{ fontSize: 12, fontWeight: 600, padding: "5px 14px", background: "#318774", color: "#fff", border: "none", cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
+            {saving ? "…" : "Save"}
+          </button>
+          <button onClick={cancel}
+            style={{ fontSize: 12, padding: "5px 10px", background: "none", border: "1px solid #e5e7eb", cursor: "pointer", fontFamily: "inherit", color: "#6b7280" }}>
+            Cancel
+          </button>
+        </div>
+        <div style={{ fontSize: 11, color: "#9ca3af" }}>Enter to save · Esc to cancel</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <h1 style={{ fontSize: 22, fontWeight: 700, color: "#111827", margin: 0 }}>
+        {serverName || fallback}
+      </h1>
+      {subscriptionId && (
+        <button onClick={() => setEditing(true)}
+          title={serverName ? "Edit name" : "Add name"}
+          style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 4px", opacity: 0.5, fontSize: 14, lineHeight: 1 }}>
+          ✏️
+        </button>
+      )}
+      {!serverName && subscriptionId && (
+        <button onClick={() => setEditing(true)}
+          style={{ fontSize: 12, color: "#318774", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", textDecoration: "underline", padding: 0 }}>
+          + Add name
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function ServerDetailsClient() {
   const params = useParams();
   const router = useRouter();
@@ -159,9 +235,17 @@ export default function ServerDetailsClient() {
           </Link>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-              <h1 style={{ fontSize: 22, fontWeight: 700, color: "#111827", margin: 0 }}>
-                {loading ? "Loading…" : (server?.name ?? server?.productName ?? `Server`)}
-              </h1>
+              {loading ? (
+                <h1 style={{ fontSize: 22, fontWeight: 700, color: "#111827", margin: 0 }}>Loading…</h1>
+              ) : (
+                <ServerNameInline
+                  serverId={server?.id ?? null}
+                  subscriptionId={server?.subscriptionId ?? null}
+                  serverName={server?.serverName ?? null}
+                  fallback={server?.productName ?? "Server"}
+                  onSaved={(name) => setServer(prev => prev ? { ...prev, serverName: name } : prev)}
+                />
+              )}
               {!loading && <StatusBadge status={server?.status ?? null} />}
               {!loading && <PayBadge status={server?.paymentStatus ?? null} />}
             </div>
@@ -203,7 +287,7 @@ export default function ServerDetailsClient() {
         {tab === "overview" && (
           <>
             <Section title="Server Info">
-              <InfoRow label="Server Name">{V(server?.name)}</InfoRow>
+              <InfoRow label="Server Name">{loading ? <Skeleton /> : <span>{server?.serverName ?? "—"}</span>}</InfoRow>
               <InfoRow label="Product">{V(server?.productName)}</InfoRow>
               <InfoRow label="Product Key">{V(server?.productKey)}</InfoRow>
               <InfoRow label="Provider">{V(server?.provider)}</InfoRow>

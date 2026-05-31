@@ -2,7 +2,7 @@
 // app/dashboard/servers/ServersClient.tsx
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { colors } from "@/lib/ui/tokens";
 
 type ServerRow = {
@@ -51,7 +51,76 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-const COLS = "minmax(160px,2fr) 90px 130px 90px 160px 100px 110px 100px 120px";
+const COLS = "minmax(150px,1.5fr) 140px 85px 130px 75px 150px 100px 95px 85px 105px";
+
+// ─── Inline name cell ─────────────────────────────────────────────────────────
+function ServerNameCell({ subscriptionId, serverName, provisioned, onSaved }: {
+  subscriptionId: string;
+  serverName: string | null;
+  provisioned: boolean;
+  onSaved: (name: string | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value,   setValue]   = useState(serverName ?? "");
+  const [saving,  setSaving]  = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const res  = await fetch(`/api/customer/subscriptions/${subscriptionId}/name`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: value.trim() }),
+      });
+      const data = await res.json().catch(() => null);
+      if (data?.ok) { onSaved(data.serverName); setEditing(false); }
+    } catch { /**/ }
+    setSaving(false);
+  }
+
+  function cancel() { setValue(serverName ?? ""); setEditing(false); }
+
+  if (editing) {
+    return (
+      <div style={{ paddingRight: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <input ref={inputRef} value={value} onChange={e => setValue(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") void save(); if (e.key === "Escape") cancel(); }}
+            style={{ fontSize: 12, padding: "3px 7px", border: "1px solid #318774", outline: "none", fontFamily: "inherit", width: 140 }} />
+          <button onClick={() => void save()} disabled={saving}
+            style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", background: "#318774", color: "#fff", border: "none", cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
+            {saving ? "…" : "Save"}
+          </button>
+          <button onClick={cancel}
+            style={{ fontSize: 11, padding: "3px 6px", background: "none", border: "1px solid #e5e7eb", cursor: "pointer", fontFamily: "inherit", color: "#6b7280" }}>
+            ✕
+          </button>
+        </div>
+        <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 3 }}>Enter to save · Esc to cancel</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ paddingRight: 8 }}>
+      {serverName ? (
+        <div style={{ fontSize: 13, fontWeight: 600, color: "#111827", marginBottom: 2 }}>
+          {serverName}
+        </div>
+      ) : (
+        <button onClick={() => setEditing(true)}
+          style={{ fontSize: 11, color: "#318774", background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "inherit", textDecoration: "underline", marginBottom: 2 }}>
+          + Add name
+        </button>
+      )}
+      {!provisioned && (
+        <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>Not provisioned</div>
+      )}
+    </div>
+  );
+}
 
 export default function ServersClient() {
   const [loading, setLoading] = useState(true);
@@ -117,9 +186,10 @@ export default function ServersClient() {
             <div style={{ background: "#fff", minWidth: 1000 }}>
 
               {/* Header */}
-              <div style={{ display: "grid", gridTemplateColumns: COLS, padding: "9px 16px", background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
+              <div style={{ display: "grid", gridTemplateColumns: COLS, gap: "0 12px", padding: "9px 16px", background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
                 {[
                   { label: "Name"           },
+                  { label: "Instance ID"    },
                   { label: "State"          },
                   { label: "Public IP"      },
                   { label: "Type"           },
@@ -137,8 +207,9 @@ export default function ServersClient() {
 
               {/* Skeletons */}
               {loading && [1,2,3].map(i => (
-                <div key={i} style={{ display: "grid", gridTemplateColumns: COLS, padding: "14px 16px", borderBottom: "1px solid #f3f4f6", alignItems: "center", minWidth: 1000 }}>
+                <div key={i} style={{ display: "grid", gridTemplateColumns: COLS, gap: "0 12px", padding: "14px 16px", borderBottom: "1px solid #f3f4f6", alignItems: "center", minWidth: 1000 }}>
                   <div><Sk w="60%" h={13} /><br /><Sk w="40%" h={10} /></div>
+                  <Sk w="110px" h={12} />
                   <Sk w="50px" h={22} />
                   <Sk w="100px" h={12} />
                   <Sk w="60px" h={12} />
@@ -168,31 +239,35 @@ export default function ServersClient() {
 
                 return (
                   <div key={s.subscriptionId} className="cy-srv-row"
-                    style={{ display: "grid", gridTemplateColumns: COLS, padding: "12px 16px", borderBottom: isLast ? "none" : "1px solid #f3f4f6", alignItems: "center", transition: "background 0.1s", minWidth: 1000 }}>
+                    style={{ display: "grid", gridTemplateColumns: COLS, gap: "0 12px", padding: "12px 16px", borderBottom: isLast ? "none" : "1px solid #f3f4f6", alignItems: "center", transition: "background 0.1s", minWidth: 1000 }}>
 
                     {/* Name */}
-                    <div style={{ paddingRight: 8 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "#111827", whiteSpace: "nowrap" }}>
-                        {s.name ?? s.productName}
-                      </div>
-                      <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, fontFamily: "monospace" }}>
-                        {s.subscriptionId}
-                      </div>
-                      {!s.provisioned && (
-                        <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 1 }}>Not provisioned</div>
-                      )}
-                    </div>
+                    <ServerNameCell
+                      subscriptionId={s.subscriptionId}
+                      serverName={s.serverName ?? null}
+                      provisioned={s.provisioned}
+                      onSaved={(name) => {
+                        setServers(prev => prev.map(r =>
+                          r.subscriptionId === s.subscriptionId ? { ...r, serverName: name } : r
+                        ));
+                      }}
+                    />
+
+                    {/* Instance ID */}
+                    <span style={{ fontSize: 11, fontFamily: "inherit", color: "#6b7280" }}>
+                      ci-{s.subscriptionId.slice(-15)}
+                    </span>
 
                     {/* State */}
                     <div><StateBadge status={s.provisioned ? s.status : "N/A"} /></div>
 
                     {/* Public IP */}
-                    <span style={{ fontSize: 12, fontFamily: "monospace", color: "#374151" }}>
+                    <span style={{ fontSize: 12, fontFamily: "inherit", color: "#374151" }}>
                       {s.ipv4 ?? "—"}
                     </span>
 
                     {/* Type */}
-                    <span style={{ fontSize: 12, fontFamily: "monospace", color: "#374151", textTransform: "uppercase" }}>
+                    <span style={{ fontSize: 12, fontFamily: "inherit", color: "#374151", textTransform: "uppercase" }}>
                       {s.productKey}
                     </span>
 
@@ -214,12 +289,12 @@ export default function ServersClient() {
                     {/* Payment */}
                     <div>
                       {isPaid ? (
-                        <span style={{ display: "inline-block", fontSize: 11, fontWeight: 600, padding: "2px 8px", background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac", textTransform: "uppercase" }}>
+                        <span style={{ display: "inline-block", fontSize: 11, fontWeight: 600, padding: "3px 0", width: 72, textAlign: "center", background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac", textTransform: "uppercase" }}>
                           Paid
                         </span>
                       ) : (
                         <Link href="/dashboard/invoices"
-                          style={{ display: "inline-flex", alignItems: "center", fontSize: 11, fontWeight: 600, padding: "2px 10px", background: "#fffbeb", color: "#b45309", border: "1px solid #fcd34d", textDecoration: "none", whiteSpace: "nowrap" }}>
+                          style={{ display: "inline-block", fontSize: 11, fontWeight: 600, padding: "3px 0", width: 72, textAlign: "center", background: "#fff", color: "#111827", border: "1px solid #d1d5db", textDecoration: "none", whiteSpace: "nowrap" }}>
                           Pay Now
                         </Link>
                       )}
@@ -227,16 +302,10 @@ export default function ServersClient() {
 
                     {/* Actions */}
                     <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                      {s.serverId ? (
-                        <Link href={`/dashboard/servers/${encodeURIComponent(s.serverId)}`}
-                          style={{ display: "inline-flex", alignItems: "center", fontSize: 12, fontWeight: 600, padding: "5px 12px", background: "#fff", color: colors.primary, border: `1px solid ${colors.primary}44`, textDecoration: "none" }}>
-                          View
-                        </Link>
-                      ) : (
-                        <span style={{ display: "inline-flex", alignItems: "center", fontSize: 12, fontWeight: 600, padding: "5px 12px", background: "#f9fafb", color: "#9ca3af", border: "1px solid #e5e7eb", cursor: "not-allowed" }}>
-                          View
-                        </span>
-                      )}
+                      <Link href={`/dashboard/servers/sub/${encodeURIComponent(s.subscriptionId)}`}
+                        style={{ display: "inline-flex", alignItems: "center", fontSize: 12, fontWeight: 600, padding: "5px 12px", background: "#fff", color: colors.primary, border: `1px solid ${colors.primary}44`, textDecoration: "none" }}>
+                        View
+                      </Link>
                     </div>
                   </div>
                 );
