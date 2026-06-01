@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getServerCore, getServerFull, listFloatingIpsForServer } from "@/lib/hetzner";
 import type { HetznerImageItem, HetznerFirewallDetails, HetznerPrivateNetItem, HetznerVolumeItem } from "@/lib/hetzner";
-import { getOracleInstanceSummary } from "@/lib/oracle/compute";
+import { getOracleInstanceSummary, getOracleSecurityRules } from "@/lib/oracle/compute";
 
 export async function GET(
   _req: NextRequest,
@@ -41,11 +41,11 @@ export async function GET(
       },
       servers: {
         select: {
-          id:                   true,
-          hetznerServerId:      true,
-          hetznerApiToken:      true,
-          oracleInstanceId:     true,
-          oracleInstanceRegion: true,
+          id:                    true,
+          hetznerServerId:       true,
+          hetznerApiToken:       true,
+          oracleInstanceId:      true,
+          oracleInstanceRegion:  true,
           oracleCompartmentOcid: true,
         },
         take: 1,
@@ -55,7 +55,6 @@ export async function GET(
 
   if (!sub) return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
 
-  // Derive serverName — first line of productDetails, exclude if equals product name
   const serverName = (() => {
     const firstLine = sub.productDetails ? sub.productDetails.split('\n')[0].trim() : null;
     if (!firstLine || firstLine === sub.product.name) return null;
@@ -68,7 +67,6 @@ export async function GET(
   const provider    = isHetzner ? "HETZNER" : isOracle ? "ORACLE" : null;
   const provisioned = !!server;
 
-  // Fetch OS template display info
   const templateInfo = sub.templateSlug
     ? await prisma.osTemplate.findFirst({
         where:  { slug: sub.templateSlug },
@@ -79,7 +77,6 @@ export async function GET(
     ? [templateInfo.family, templateInfo.name].filter(Boolean).join(" — ")
     : (sub.templateSlug ?? null);
 
-  // Fetch location display name
   const locRecord = sub.locationCode
     ? await prisma.location.findFirst({
         where:  { code: sub.locationCode },
@@ -90,29 +87,28 @@ export async function GET(
     ? (locRecord.countryCode ? `${locRecord.countryCode} - ${locRecord.name}` : locRecord.name)
     : (sub.locationCode ?? null);
 
-  // OS from product tags
   const tagKeys = sub.product.tags.map(t => t.key.toLowerCase());
   const os = tagKeys.includes("windows") ? "Windows" : tagKeys.includes("linux") ? "Linux" : null;
 
   // Live provider data — graceful fallback
-  let liveStatus:   string | null = null;
-  let liveIpv4:     string | null = null;
-  let liveIpv6:     string | null = null;
-  let liveLocation: string | null = null;
-  let liveVcpu:     number | null = null;
-  let liveRamGb:    number | null = null;
-  let liveDiskGb:   number | null = null;
-  let liveHostname:       string | null              = null;
-  let livePrivateIp:      string | null              = null;
-  let liveIpv4Reserved:   boolean | null             = null;
-  let liveIpv6Reserved:   boolean | null             = null;
-  let liveAdditionalIps:  string[]                   = [];
-  let liveAdditionalDisk: number | null              = null;
-  let liveBackups:        HetznerImageItem[]         = [];
-  let liveSnapshots:      HetznerImageItem[]         = [];
-  let liveFirewalls:      HetznerFirewallDetails[]   = [];
-  let livePrivateNets:    HetznerPrivateNetItem[]    = [];
-  let liveVolumes:        HetznerVolumeItem[]        = [];
+  let liveStatus:         string | null            = null;
+  let liveIpv4:           string | null            = null;
+  let liveIpv6:           string | null            = null;
+  let liveLocation:       string | null            = null;
+  let liveVcpu:           number | null            = null;
+  let liveRamGb:          number | null            = null;
+  let liveDiskGb:         number | null            = null;
+  let liveHostname:       string | null            = null;
+  let livePrivateIp:      string | null            = null;
+  let liveIpv4Reserved:   boolean | null           = null;
+  let liveIpv6Reserved:   boolean | null           = null;
+  let liveAdditionalIps:  string[]                 = [];
+  let liveAdditionalDisk: number | null            = null;
+  let liveBackups:        HetznerImageItem[]       = [];
+  let liveSnapshots:      HetznerImageItem[]       = [];
+  let liveFirewalls:      HetznerFirewallDetails[] = [];
+  let livePrivateNets:    HetznerPrivateNetItem[]  = [];
+  let liveVolumes:        HetznerVolumeItem[]      = [];
 
   if (isHetzner && server?.hetznerApiToken) {
     try {
@@ -129,26 +125,20 @@ export async function GET(
       liveBackups   = full.backups;
       liveSnapshots = full.snapshots;
       liveFirewalls = full.firewalls;
-      liveVolumes     = full.volumes;
+      liveVolumes   = full.volumes;
       livePrivateIp   = full.privateNetworks[0]?.ip ?? null;
       livePrivateNets = full.privateNetworks;
-      liveIpv4Reserved   = full.core.ipv4Reserved ?? null;
-      // Fetch floating IPs — reserved IPs that persist after server deletion
+      liveIpv4Reserved = full.core.ipv4Reserved ?? null;
       try {
-        const floatingData  = await listFloatingIpsForServer(server.hetznerApiToken!, String(server.hetznerServerId!));
-        liveAdditionalIps   = floatingData.ips.map(f => f.ip);
-
-        // If primary IPv4 matches a floating IP → it is reserved
+        const floatingData = await listFloatingIpsForServer(server.hetznerApiToken!, String(server.hetznerServerId!));
+        liveAdditionalIps  = floatingData.ips.map(f => f.ip);
         if (liveIpv4 && floatingData.ips.some(f => f.ip === liveIpv4 && f.type === "ipv4")) {
           liveIpv4Reserved = true;
         } else if (liveIpv4) {
           liveIpv4Reserved = false;
         }
-
-        // IPv6 reserved check — floating IPv6
         const floatingIpv6 = floatingData.ips.find(f => f.type === "ipv6");
         if (liveIpv6 && floatingIpv6) {
-          // Compare base addresses (strip prefix)
           const liveBase     = liveIpv6.replace(/\/\d+$/, "").toLowerCase();
           const floatingBase = floatingIpv6.ip.replace(/\/\d+$/, "").toLowerCase();
           liveIpv6Reserved   = liveBase === floatingBase ? true : false;
@@ -160,23 +150,98 @@ export async function GET(
     } catch {
       liveStatus = "N/A";
     }
+
   } else if (isOracle && server?.oracleInstanceId && server?.oracleInstanceRegion) {
     try {
-      const o      = await getOracleInstanceSummary({
+      const o = await getOracleInstanceSummary({
         instanceOcid:    server.oracleInstanceId,
         regionCode:      server.oracleInstanceRegion,
         compartmentOcid: server.oracleCompartmentOcid ?? undefined,
       });
-      liveStatus         = o.status;
-      liveIpv4           = o.ipv4;
-      liveLocation       = o.location;
-      liveVcpu           = o.vcpu;
-      liveRamGb          = o.ramGb;
-      liveDiskGb         = o.diskGb;
-      liveHostname       = o.name;
-      liveIpv4Reserved   = o.ipv4Reserved ?? null;
-      liveAdditionalIps  = o.additionalIps ?? [];
+
+      liveStatus        = o.status;
+      liveIpv4          = o.ipv4;
+      liveLocation      = o.location;
+      liveVcpu          = o.vcpu;
+      liveRamGb         = o.ramGb;
+      liveDiskGb        = o.diskGb;
+      liveHostname      = o.name;
+      liveIpv4Reserved  = o.ipv4Reserved ?? null;
+      liveAdditionalIps = o.additionalIps ?? [];
       liveAdditionalDisk = o.additionalDiskGb ?? null;
+
+      // Map Oracle privateNetworkExists → privateNetworks array
+      if (o.privateNetworkExists) {
+        livePrivateIp = liveIpv4; // Oracle private IP is separate — best we have without extra call
+        livePrivateNets = [{
+          networkId:  0,
+          ip:         liveIpv4 ?? "N/A",
+          aliasIps:   [],
+          macAddress: null,
+        }];
+      }
+
+      // Map Oracle volumesExists → volumes array (count only, no detail without extra call)
+      if (o.volumesExists) {
+        liveVolumes = [{
+          id:          0,
+          name:        "Block Volume",
+          sizeGb:      o.additionalDiskGb ?? null,
+          linuxDevice: null,
+          format:      null,
+          status:      "available",
+        }];
+      }
+
+      // Map Oracle backups → backups array
+      if (o.backupBootExists) {
+        liveBackups = [{
+          id:          0,
+          type:        "backup",
+          description: "Boot Volume Backup",
+          created:     new Date().toISOString(), // exact date not available without extra call
+          status:      "available",
+          sizeGb:      null,
+        }];
+      }
+      if (o.backupBlockExists) {
+        liveBackups = [...liveBackups, {
+          id:          1,
+          type:        "backup",
+          description: "Block Volume Backup",
+          created:     new Date().toISOString(),
+          status:      "available",
+          sizeGb:      null,
+        }];
+      }
+
+      // Firewalls — fetch Oracle Security List rules
+      try {
+        if (server?.oracleCompartmentOcid) {
+          const oracleFws = await getOracleSecurityRules({
+            instanceOcid:    server.oracleInstanceId!,
+            regionCode:      server.oracleInstanceRegion!,
+            compartmentOcid: server.oracleCompartmentOcid,
+          });
+          // Map OracleFirewall → HetznerFirewallDetails shape (same structure)
+          liveFirewalls = oracleFws.map(fw => ({
+            id:    0,
+            name:  fw.name,
+            rules: fw.rules.map(r => ({
+              direction:      r.direction,
+              protocol:       r.protocol,
+              port:           r.port,
+              sourceIps:      r.sourceIps,
+              destinationIps: r.destinationIps,
+              description:    r.description,
+            })),
+          }));
+        }
+      } catch {
+        // Security list fetch failed — leave empty, don't break the page
+        liveFirewalls = [];
+      }
+
     } catch {
       liveStatus = "N/A";
     }
@@ -185,7 +250,6 @@ export async function GET(
   return NextResponse.json({
     ok: true,
     server: {
-      // Subscription fields
       subscriptionId:     sub.id,
       subscriptionStatus: String(sub.status),
       paymentStatus:      String(sub.paymentStatus),
@@ -194,20 +258,18 @@ export async function GET(
       locationCode:       sub.locationCode ?? null,
       locationDisplay,
       templateSlug:       sub.templateSlug ?? null,
-      templateDisplay,    
+      templateDisplay,
       productKey:         sub.product.key,
       productName:        sub.product.name,
       serverName,
       os,
       createdAt:          sub.createdAt.toISOString(),
-      // Server / provisioning fields
       serverId:           server?.id ?? null,
       provider,
       provisioned,
       hetznerServerId:    server?.hetznerServerId ?? null,
       oracleInstanceId:   server?.oracleInstanceId ?? null,
       oracleRegion:       server?.oracleInstanceRegion ?? null,
-      // Live data from provider
       status:             liveStatus,
       hostname:           liveHostname,
       ipv4:               liveIpv4,

@@ -1,4 +1,4 @@
-// FILE: lib/cloud/oracle/compute.ts
+// FILE: lib/oracle/compute.ts
 
 import * as core from "oci-core";
 import { getOracleProvider } from "./client";
@@ -72,8 +72,7 @@ async function getVnicDetails(args: {
     return { ip: null, ipv4Reserved: null, hasPrivateNetwork: null, firewallExists: null, additionalIps: [] };
   }
 
-  // Primary VNIC is typically the first one
-  const primaryVnicId   = attachments[0]?.vnicId ?? null;
+  const primaryVnicId    = attachments[0]?.vnicId ?? null;
   const secondaryVnicIds = attachments.slice(1).map(a => a.vnicId).filter((v): v is string => !!v);
 
   if (!primaryVnicId) {
@@ -87,25 +86,38 @@ async function getVnicDetails(args: {
   const privateIp = vnic.privateIp ?? null;
   const ip        = publicIp ?? privateIp;
 
-  const nsgIds       = vnic.nsgIds;
+  const nsgIds         = vnic.nsgIds;
   const firewallExists = Array.isArray(nsgIds) ? nsgIds.length > 0 : null;
 
-  // Determine if the public IP is reserved — check the public IP object's lifetime
+  // Determine if the public IP is reserved.
+  // Oracle separates public IPs into two scopes:
+  //   Region           → Reserved IPs (persist after instance termination)
+  //   AvailabilityDomain → Ephemeral IPs (lost when instance is terminated)
   let ipv4Reserved: boolean | null = null;
   if (publicIp) {
     try {
-      // List public IPs assigned to this private IP to check lifetime
-      const pubIpList = await args.vcn.listPublicIps({
-        compartmentId:  args.compartmentOcid,
-        scope:          core.models.ListPublicIpsRequest.Scope.AvailabilityDomain,
-        availabilityDomain: vnic.availabilityDomain ?? "",
+      // Check Region scope first — reserved IPs live here
+      const regionalIps  = await args.vcn.listPublicIps({
+        compartmentId: args.compartmentOcid,
+        scope:         core.models.ListPublicIpsRequest.Scope.Region,
       });
-      const matchedIp = pubIpList.items?.find(p => p.ipAddress === publicIp);
-      if (matchedIp) {
-        ipv4Reserved = matchedIp.lifetime === core.models.PublicIp.Lifetime.Reserved;
+      const regionalMatch = regionalIps.items?.find(p => p.ipAddress === publicIp);
+
+      if (regionalMatch) {
+        // Found in Region scope → reserved
+        ipv4Reserved = true;
+      } else {
+        // Not reserved — check AvailabilityDomain scope (ephemeral)
+        const adIps  = await args.vcn.listPublicIps({
+          compartmentId:      args.compartmentOcid,
+          scope:              core.models.ListPublicIpsRequest.Scope.AvailabilityDomain,
+          availabilityDomain: vnic.availabilityDomain ?? "",
+        });
+        const adMatch = adIps.items?.find(p => p.ipAddress === publicIp);
+        // false = confirmed ephemeral, null = can't determine
+        ipv4Reserved = adMatch ? false : null;
       }
     } catch {
-      // fallback — can't determine
       ipv4Reserved = null;
     }
   }
@@ -163,7 +175,6 @@ async function getBootDiskAndVolumes(args: {
     .map(v => v.volumeId)
     .filter((v): v is string => typeof v === "string" && v.length > 0);
 
-  // Fetch size of each additional block volume
   let additionalDiskGb: number | null = null;
   if (volumeIds.length > 0) {
     try {
@@ -227,29 +238,29 @@ export async function getOracleInstanceSummary(args: {
   regionCode: string;
   compartmentOcid?: string;
 }): Promise<OracleAdminSummary> {
-  const compute     = buildComputeClient(args.regionCode);
-  const instanceId  = args.instanceOcid.trim();
-  const response    = await compute.getInstance({ instanceId });
-  const inst        = response.instance;
-  const shapeCfg    = inst.shapeConfig ?? null;
+  const compute    = buildComputeClient(args.regionCode);
+  const instanceId = args.instanceOcid.trim();
+  const response   = await compute.getInstance({ instanceId });
+  const inst       = response.instance;
+  const shapeCfg   = inst.shapeConfig ?? null;
 
   const base: OracleAdminSummary = {
-    name:             inst.displayName ?? null,
-    status:           inst.lifecycleState ? String(inst.lifecycleState) : null,
-    ipv4:             null,
-    ipv4Reserved:     null,
-    additionalIps:    [],
-    location:         args.regionCode,
-    vcpu:             typeof shapeCfg?.ocpus === "number"        ? shapeCfg.ocpus        : null,
-    ramGb:            typeof shapeCfg?.memoryInGBs === "number"  ? shapeCfg.memoryInGBs  : null,
-    diskGb:           null,
-    additionalDiskGb: null,
-    backupBootExists:    null,
-    backupBlockExists:   null,
-    snapshotExists:      null,
-    firewallExists:      null,
+    name:                 inst.displayName ?? null,
+    status:               inst.lifecycleState ? String(inst.lifecycleState) : null,
+    ipv4:                 null,
+    ipv4Reserved:         null,
+    additionalIps:        [],
+    location:             args.regionCode,
+    vcpu:                 typeof shapeCfg?.vcpus === "number" ? shapeCfg.vcpus : typeof shapeCfg?.ocpus === "number" ? shapeCfg.ocpus * 2 : null,
+    ramGb:                typeof shapeCfg?.memoryInGBs === "number" ? shapeCfg.memoryInGBs : null,
+    diskGb:               null,
+    additionalDiskGb:     null,
+    backupBootExists:     null,
+    backupBlockExists:    null,
+    snapshotExists:       null,
+    firewallExists:       null,
     privateNetworkExists: null,
-    volumesExists:       null,
+    volumesExists:        null,
   };
 
   const compartmentId = args.compartmentOcid?.trim();
@@ -265,24 +276,24 @@ export async function getOracleInstanceSummary(args: {
 
   const backupData = await getBackupFlags({
     block,
-    compartmentOcid:  compartmentId,
-    bootVolumeId:     volumeData.bootVolumeId,
-    volumeIds:        volumeData.volumeIds,
+    compartmentOcid: compartmentId,
+    bootVolumeId:    volumeData.bootVolumeId,
+    volumeIds:       volumeData.volumeIds,
   });
 
   return {
     ...base,
-    ipv4:             netData.ip,
-    ipv4Reserved:     netData.ipv4Reserved,
-    additionalIps:    netData.additionalIps,
-    firewallExists:   netData.firewallExists,
+    ipv4:                 netData.ip,
+    ipv4Reserved:         netData.ipv4Reserved,
+    additionalIps:        netData.additionalIps,
+    firewallExists:       netData.firewallExists,
     privateNetworkExists: netData.hasPrivateNetwork,
-    diskGb:           volumeData.diskGb,
-    additionalDiskGb: volumeData.additionalDiskGb,
-    volumesExists:    volumeData.volumesExists,
-    backupBootExists: backupData.backupBootExists,
-    backupBlockExists: backupData.backupBlockExists,
-    snapshotExists:   null,
+    diskGb:               volumeData.diskGb,
+    additionalDiskGb:     volumeData.additionalDiskGb,
+    volumesExists:        volumeData.volumesExists,
+    backupBootExists:     backupData.backupBootExists,
+    backupBlockExists:    backupData.backupBlockExists,
+    snapshotExists:       null,
   };
 }
 
@@ -299,4 +310,213 @@ export async function rebootOracleInstance(args: {
     ? resp.opcRequestId.trim()
     : null;
   return { requestId };
+}
+
+// ─── Oracle Security List rules mapped to FwRule shape ────────────────────────
+export type OracleFwRule = {
+  direction: "in" | "out";
+  protocol: string;       // tcp, udp, icmp, all
+  port: string | null;    // destination port range e.g. "22" or "8000-9000"
+  sourceIps: string[];
+  destinationIps: string[];
+  description: string | null;
+};
+
+export type OracleFirewall = {
+  id: string;   // security list OCID
+  name: string;
+  rules: OracleFwRule[];
+};
+
+// Oracle protocol numbers → names
+function protoName(proto: string | undefined): string {
+  if (!proto) return "all";
+  switch (proto) {
+    case "6":   return "tcp";
+    case "17":  return "udp";
+    case "1":   return "icmp";
+    case "all": return "all";
+    default:    return proto;
+  }
+}
+
+function portRange(range: { min?: number; max?: number } | null | undefined): string | null {
+  if (!range) return null;
+  const min = range.min;
+  const max = range.max;
+  if (min == null && max == null) return null;
+  if (min === max) return String(min);
+  if (min != null && max != null) return `${min}-${max}`;
+  return String(min ?? max);
+}
+
+export async function getOracleSecurityRules(args: {
+  instanceOcid: string;
+  regionCode: string;
+  compartmentOcid: string;
+}): Promise<OracleFirewall[]> {
+  const compute = buildComputeClient(args.regionCode);
+  const vcn     = buildVcnClient(args.regionCode);
+
+  // 1. Get primary VNIC attachment
+  const vnicAtt = await compute.listVnicAttachments({
+    compartmentId: args.compartmentOcid,
+    instanceId:    args.instanceOcid,
+  });
+  const primaryVnicId = vnicAtt.items?.[0]?.vnicId ?? null;
+  if (!primaryVnicId) return [];
+
+  // 2. Get VNIC → subnet OCID
+  const vnicResp = await vcn.getVnic({ vnicId: primaryVnicId });
+  const subnetId = vnicResp.vnic.subnetId ?? null;
+  if (!subnetId) return [];
+
+  // 3. Get subnet → security list OCIDs
+  const subnetResp     = await vcn.getSubnet({ subnetId });
+  const secListIds     = subnetResp.subnet.securityListIds ?? [];
+  if (secListIds.length === 0) return [];
+
+  // 4. Fetch each security list and map rules
+  const firewalls: OracleFirewall[] = [];
+
+  for (const secListId of secListIds) {
+    const slResp  = await vcn.getSecurityList({ securityListId: secListId });
+    const sl      = slResp.securityList;
+    const rules: OracleFwRule[] = [];
+
+    // Ingress rules
+    for (const r of sl.ingressSecurityRules ?? []) {
+      const proto = protoName(r.protocol);
+      let port: string | null = null;
+      if (proto === "tcp" && r.tcpOptions?.destinationPortRange) {
+        port = portRange(r.tcpOptions.destinationPortRange);
+      } else if (proto === "udp" && r.udpOptions?.destinationPortRange) {
+        port = portRange(r.udpOptions.destinationPortRange);
+      }
+      rules.push({
+        direction:      "in",
+        protocol:       proto,
+        port,
+        sourceIps:      r.source ? [r.source] : [],
+        destinationIps: [],
+        description:    r.description ?? null,
+      });
+    }
+
+    // Egress rules
+    for (const r of sl.egressSecurityRules ?? []) {
+      const proto = protoName(r.protocol);
+      let port: string | null = null;
+      if (proto === "tcp" && r.tcpOptions?.destinationPortRange) {
+        port = portRange(r.tcpOptions.destinationPortRange);
+      } else if (proto === "udp" && r.udpOptions?.destinationPortRange) {
+        port = portRange(r.udpOptions.destinationPortRange);
+      }
+      rules.push({
+        direction:      "out",
+        protocol:       proto,
+        port,
+        sourceIps:      [],
+        destinationIps: r.destination ? [r.destination] : [],
+        description:    r.description ?? null,
+      });
+    }
+
+    firewalls.push({
+      id:    secListId,
+      name:  sl.displayName ?? "Security List",
+      rules,
+    });
+  }
+
+  return firewalls;
+}
+
+// ─── Update Oracle Security List rules ───────────────────────────────────────
+export async function setOracleSecurityRules(args: {
+  instanceOcid: string;
+  regionCode: string;
+  compartmentOcid: string;
+  rules: OracleFwRule[];
+}): Promise<void> {
+  const compute = buildComputeClient(args.regionCode);
+  const vcn     = buildVcnClient(args.regionCode);
+
+  // 1. Get primary VNIC → subnet
+  const vnicAtt = await compute.listVnicAttachments({
+    compartmentId: args.compartmentOcid,
+    instanceId:    args.instanceOcid,
+  });
+  const primaryVnicId = vnicAtt.items?.[0]?.vnicId ?? null;
+  if (!primaryVnicId) throw new Error("No VNIC found for instance");
+
+  const vnicResp = await vcn.getVnic({ vnicId: primaryVnicId });
+  const subnetId = vnicResp.vnic.subnetId ?? null;
+  if (!subnetId) throw new Error("No subnet found for VNIC");
+
+  // 2. Get security list OCID
+  const subnetResp = await vcn.getSubnet({ subnetId });
+  const secListId  = subnetResp.subnet.securityListIds?.[0] ?? null;
+  if (!secListId) throw new Error("No security list found for subnet");
+
+  // 3. Map FwRule → Oracle ingress/egress rule objects
+  const ingressRules: core.models.IngressSecurityRule[] = [];
+  const egressRules:  core.models.EgressSecurityRule[]  = [];
+
+  for (const r of args.rules) {
+    const protocol = (() => {
+      switch (r.protocol) {
+        case "tcp":  return "6";
+        case "udp":  return "17";
+        case "icmp": return "1";
+        case "all":  return "all";
+        default:     return r.protocol;
+      }
+    })();
+
+    // Parse port range string e.g. "80" or "8000-9000"
+    let tcpUdpOptions: core.models.TcpOptions | core.models.UdpOptions | undefined;
+    if ((r.protocol === "tcp" || r.protocol === "udp") && r.port) {
+      const parts = r.port.split("-");
+      const min   = parseInt(parts[0], 10);
+      const max   = parts[1] ? parseInt(parts[1], 10) : min;
+      const range = { min, max };
+      tcpUdpOptions = r.protocol === "tcp"
+        ? { destinationPortRange: range } as core.models.TcpOptions
+        : { destinationPortRange: range } as core.models.UdpOptions;
+    }
+
+    if (r.direction === "in") {
+      const rule: core.models.IngressSecurityRule = {
+        protocol,
+        source:      r.sourceIps[0] ?? "0.0.0.0/0",
+        sourceType:  core.models.IngressSecurityRule.SourceType.CidrBlock,
+        isStateless: false, // always stateful
+        description: r.description ?? undefined,
+      };
+      if (r.protocol === "tcp" && tcpUdpOptions) rule.tcpOptions = tcpUdpOptions as core.models.TcpOptions;
+      if (r.protocol === "udp" && tcpUdpOptions) rule.udpOptions = tcpUdpOptions as core.models.UdpOptions;
+      ingressRules.push(rule);
+    } else {
+      const rule: core.models.EgressSecurityRule = {
+        protocol,
+        destination:     r.destinationIps[0] ?? "0.0.0.0/0",
+        destinationType: core.models.EgressSecurityRule.DestinationType.CidrBlock,
+        isStateless:     false,
+        description:     r.description ?? undefined,
+      };
+      if (r.protocol === "tcp" && tcpUdpOptions) rule.tcpOptions = tcpUdpOptions as core.models.TcpOptions;
+      if (r.protocol === "udp" && tcpUdpOptions) rule.udpOptions = tcpUdpOptions as core.models.UdpOptions;
+      egressRules.push(rule);
+    }
+  }
+
+  // 4. Update security list with new rules
+  await vcn.updateSecurityList({
+    securityListId: secListId,
+    updateSecurityListDetails: {
+      ingressSecurityRules: ingressRules,
+      egressSecurityRules:  egressRules,
+    },
+  });
 }

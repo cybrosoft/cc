@@ -15,7 +15,6 @@ export async function GET() {
     const user = await getSessionUser();
     if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
-    // Fetch all subscriptions for this customer where product is in "Server" category
     const subscriptions = await prisma.subscription.findMany({
       where: {
         userId: user.id,
@@ -40,9 +39,9 @@ export async function GET() {
         },
         servers: {
           select: {
-            id:                   true,
-            hetznerServerId:      true,
-            hetznerApiToken:      true,
+            id:                    true,
+            hetznerServerId:       true,
+            hetznerApiToken:       true,
             oracleInstanceId:      true,
             oracleInstanceRegion:  true,
             oracleCompartmentOcid: true,
@@ -52,13 +51,11 @@ export async function GET() {
       },
     });
 
-    // Fetch all locations for display
     const allLocations = await prisma.location.findMany({
       select: { code: true, name: true, countryCode: true },
     });
     const locationMap = new Map(allLocations.map(l => [l.code, l]));
 
-    // For each subscription, fetch live server data if provisioned
     const data = await Promise.all(
       subscriptions.map(async (sub) => {
         const server = sub.servers[0] ?? null;
@@ -92,7 +89,7 @@ export async function GET() {
           }
         } else if (isOracle && server?.oracleInstanceId && server?.oracleInstanceRegion) {
           try {
-            const o  = await getOracleInstanceSummary({
+            const o = await getOracleInstanceSummary({
               instanceOcid:    server.oracleInstanceId,
               regionCode:      server.oracleInstanceRegion,
               compartmentOcid: server.oracleCompartmentOcid ?? undefined,
@@ -101,6 +98,7 @@ export async function GET() {
             status   = o.status;
             ipv4     = o.ipv4;
             location = o.location;
+            // Use vcpus directly if available (newer shapes), else ocpus * 2
             vcpu     = o.vcpu;
             ramGb    = o.ramGb;
             diskGb   = o.diskGb;
@@ -110,7 +108,6 @@ export async function GET() {
         }
 
         return {
-          // Subscription fields
           subscriptionId:     sub.id,
           subscriptionStatus: String(sub.status),
           paymentStatus:      String(sub.paymentStatus),
@@ -134,11 +131,9 @@ export async function GET() {
             if (!loc) return code;
             return loc.countryCode ? `${loc.countryCode} - ${loc.name}` : loc.name;
           })(),
-          // Server fields
           serverId:           server?.id ?? null,
           provider,
           provisioned:        !!server,
-          // Live provider data
           name, status, ipv4, ipv6, location, vcpu, ramGb, diskGb,
         };
       })

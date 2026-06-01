@@ -78,12 +78,10 @@ export async function setFirewallRules(
       direction:       r.direction,
       protocol:        r.protocol,
       port:            r.port ?? undefined,
-      source_ips:      r.direction === "in"  ? r.sourceIps      : undefined,
-      destination_ips: r.direction === "out" ? r.destinationIps : undefined,
-      description:     r.description ?? undefined,
+      source_ips:      r.sourceIps,       // always send — empty [] for outbound rules
+      destination_ips: r.destinationIps,  // always send — empty [] for inbound rules
     })),
   };
   const raw = await hzFetchJson(token, "POST", `/firewalls/${firewallId}/actions/set_rules`, body);
   if (!isRecord(raw)) throw new Error("500:Invalid Hetzner response");
-  // actions array returned — we don't need to parse it
 }

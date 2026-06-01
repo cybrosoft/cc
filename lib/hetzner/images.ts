@@ -17,14 +17,13 @@ function parseImage(item: unknown, type: "backup" | "snapshot"): HetznerImageIte
 
   const id = item["id"];
   const created = s(item["created"]).trim();
-
   if (!isNum(id) || !created) return null;
 
   const description = s(item["description"]).trim();
   const status = s(item["status"]).trim();
 
-  // may be number (GB) or something else depending on API; treat carefully
-  const sizeGb = isNum(item["image_size"]) ? item["image_size"] : null;
+  const rawSize = item["image_size"];
+  const sizeGb = isNum(rawSize) ? Math.round(rawSize * 100) / 100 : null;
 
   return {
     id,
@@ -36,16 +35,9 @@ function parseImage(item: unknown, type: "backup" | "snapshot"): HetznerImageIte
   };
 }
 
-async function listImagesBoundTo(
-  token: string,
-  type: "backup" | "snapshot",
-  serverId: string,
-  limit: number
-): Promise<HetznerImageItem[]> {
-  const qs = new URLSearchParams();
-  qs.set("type", type);
-  qs.set("bound_to", serverId);
-
+// Backups: bound_to query param works fine for type=backup
+export async function listBackups(token: string, serverId: string): Promise<HetznerImageItem[]> {
+  const qs = new URLSearchParams({ type: "backup", bound_to: serverId });
   const raw = await hzFetchJson(token, "GET", `/images?${qs.toString()}`);
   if (!isRecord(raw)) throw new Error("500:Invalid Hetzner response");
 
@@ -54,18 +46,37 @@ async function listImagesBoundTo(
 
   const parsed: HetznerImageItem[] = [];
   for (const img of images) {
-    const it = parseImage(img, type);
+    const it = parseImage(img, "backup");
     if (it) parsed.push(it);
   }
 
   parsed.sort((a, b) => b.created.localeCompare(a.created));
-  return parsed.slice(0, limit);
+  return parsed.slice(0, 7);
 }
 
-export async function listBackups(token: string, serverId: string): Promise<HetznerImageItem[]> {
-  return listImagesBoundTo(token, "backup", serverId, 7);
-}
-
+// Snapshots: bound_to is null for snapshots — match via created_from.id instead
 export async function listSnapshots(token: string, serverId: string): Promise<HetznerImageItem[]> {
-  return listImagesBoundTo(token, "snapshot", serverId, 5);
+  const serverIdNum = parseInt(serverId, 10);
+  if (isNaN(serverIdNum)) return [];
+
+  const qs = new URLSearchParams({ type: "snapshot" });
+  const raw = await hzFetchJson(token, "GET", `/images?${qs.toString()}`);
+  if (!isRecord(raw)) throw new Error("500:Invalid Hetzner response");
+
+  const images = raw["images"];
+  if (!Array.isArray(images)) return [];
+
+  const parsed: HetznerImageItem[] = [];
+  for (const img of images) {
+    if (!isRecord(img)) continue;
+    // created_from is { id: number, name: string } — the server the snapshot was taken from
+    const createdFrom = img["created_from"];
+    if (!isRecord(createdFrom)) continue;
+    if (createdFrom["id"] !== serverIdNum) continue;
+    const it = parseImage(img, "snapshot");
+    if (it) parsed.push(it);
+  }
+
+  parsed.sort((a, b) => b.created.localeCompare(a.created));
+  return parsed.slice(0, 5);
 }

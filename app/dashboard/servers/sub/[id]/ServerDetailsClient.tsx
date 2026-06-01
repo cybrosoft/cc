@@ -8,12 +8,13 @@ import { colors } from "@/lib/ui/tokens";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type FwRule = {
+  _id: string; // stable client-side identity, never sent to API
   direction: "in" | "out";
   protocol: string;
   port: string | null;
   sourceIps: string[];
   destinationIps: string[];
-  description: string | null;
+  description: string | null; // used by Oracle Security Lists
 };
 
 type ServerDetail = {
@@ -139,9 +140,14 @@ function Sk() {
 }
 
 // ─── Table = flush bordered table inside a Card ───────────────────────────────
-function T({ cols, rows, empty = "No data." }: { cols: string[]; rows: (string | React.ReactNode)[][]; empty?: string }) {
+function T({ cols, rows, empty = "No data.", colWidths }: { cols: string[]; rows: (string | React.ReactNode)[][]; empty?: string; colWidths?: string[] }) {
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, tableLayout: colWidths ? "fixed" : "auto" }}>
+      {colWidths && (
+        <colgroup>
+          {colWidths.map((w, i) => <col key={i} style={{ width: w }} />)}
+        </colgroup>
+      )}
       <thead>
         <tr>
           {cols.map((c, i) => (
@@ -228,19 +234,273 @@ function ServerNameEdit({ subscriptionId, serverName, onSaved }: {
   );
 }
 
+// ─── Port Input with common-ports dropdown ────────────────────────────────────
+const COMMON_PORTS: Array<{ port: string; label: string }> = [
+  { port: "22",   label: "SSH"   },
+  { port: "53",   label: "DNS"   },
+  { port: "80",   label: "HTTP"  },
+  { port: "443",  label: "HTTPS" },
+  { port: "3306", label: "MYSQL" },
+  { port: "5432", label: "PGSQL" },
+];
+
+function PortInput({ value, onChange, inputStyle }: {
+  value: string;
+  onChange: (v: string) => void;
+  inputStyle: React.CSSProperties;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const filtered = value.trim()
+    ? COMMON_PORTS.filter(p =>
+        p.port.startsWith(value.trim()) ||
+        p.label.toLowerCase().startsWith(value.trim().toLowerCase())
+      )
+    : COMMON_PORTS;
+
+  function pick(port: string) {
+    onChange(port);
+    setOpen(false);
+  }
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+        <input
+          value={value}
+          onChange={e => { onChange(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          placeholder="e.g. 80 or 8000-9000"
+          style={{ ...inputStyle, paddingRight: 24 }}
+        />
+        {/* chevron */}
+        <span
+          onClick={() => setOpen(o => !o)}
+          style={{ position: "absolute", right: 7, top: "50%", transform: open ? "translateY(-50%) rotate(180deg)" : "translateY(-50%)", fontSize: 9, color: C.faint, cursor: "pointer", userSelect: "none", lineHeight: 1 }}>
+          ▼
+        </span>
+      </div>
+
+      {open && (
+        <div style={{
+          position: "absolute", top: "100%", left: 0, zIndex: 200,
+          background: C.bg, border: C.border,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.10)",
+          minWidth: 200, marginTop: 2,
+        }}>
+          {/* "any" row */}
+          <div
+            onMouseDown={() => pick("")}
+            style={{
+              padding: "8px 14px", fontSize: 13, cursor: "pointer", color: C.text,
+              borderBottom: C.borderB,
+              background: value === "" ? "#f0fdf4" : C.bg,
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = "#f9fafb")}
+            onMouseLeave={e => (e.currentTarget.style.background = value === "" ? "#f0fdf4" : C.bg)}
+          >
+            any
+          </div>
+
+          {/* common port rows */}
+          {filtered.map(p => (
+            <div
+              key={p.port}
+              onMouseDown={() => pick(p.port)}
+              style={{
+                padding: "7px 14px", fontSize: 13, cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                borderBottom: C.borderB,
+                background: value === p.port ? "#f0fdf4" : C.bg,
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = "#f9fafb")}
+              onMouseLeave={e => (e.currentTarget.style.background = value === p.port ? "#f0fdf4" : C.bg)}
+            >
+              <span style={{ color: C.text }}>{p.port}</span>
+              <span style={{
+                fontSize: 10, fontWeight: 600, padding: "2px 7px",
+                background: "#f3f4f6", color: C.muted,
+                border: "1px solid #e5e7eb", letterSpacing: "0.04em",
+              }}>
+                {p.label}
+              </span>
+            </div>
+          ))}
+
+          {/* empty filtered state */}
+          {filtered.length === 0 && (
+            <div style={{ padding: "8px 14px", fontSize: 12, color: C.faint }}>
+              Custom port — press Enter or click away
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ─── IP Input with checkbox multi-select dropdown ────────────────────────────
+const COMMON_IPS = [
+  { cidr: "0.0.0.0/0", label: "All IPv4" },
+  { cidr: "::/0",      label: "All IPv6" },
+];
+
+function IpInput({ value, onChange, inputStyle, err, isOracle = false }: {
+  value: string;
+  onChange: (v: string) => void;
+  inputStyle: React.CSSProperties;
+  err?: string | null;
+  isOracle?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const currentCidrs = value.split(",").map(s => s.trim()).filter(Boolean);
+  const visibleIps = isOracle ? COMMON_IPS.filter(p => p.cidr !== "::/0") : COMMON_IPS;
+
+  function toggle(cidr: string) {
+    const next = currentCidrs.includes(cidr)
+      ? currentCidrs.filter(c => c !== cidr)
+      : [...currentCidrs, cidr];
+    onChange(next.join(", "));
+    // keep dropdown open so user can pick multiple
+  }
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+        <input
+          value={value}
+          onChange={e => { onChange(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          placeholder="0.0.0.0/0, ::/0"
+          style={{ ...inputStyle, paddingRight: 24 }}
+        />
+        <span
+          onClick={() => setOpen(o => !o)}
+          style={{ position: "absolute", right: 7, top: "50%", transform: open ? "translateY(-50%) rotate(180deg)" : "translateY(-50%)", fontSize: 9, color: C.faint, cursor: "pointer", userSelect: "none", lineHeight: 1 }}>
+          ▼
+        </span>
+      </div>
+
+      {open && (
+        <div style={{
+          position: "absolute", top: "100%", left: 0, zIndex: 200,
+          background: C.bg, border: C.border,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.10)",
+          minWidth: 240, marginTop: 2,
+        }}>
+          {visibleIps.map((p, i) => {
+            const checked = currentCidrs.includes(p.cidr);
+            return (
+              <div
+                key={p.cidr}
+                onMouseDown={e => { e.preventDefault(); toggle(p.cidr); }}
+                style={{
+                  padding: "8px 14px", fontSize: 13, cursor: "pointer",
+                  display: "flex", alignItems: "center", gap: 10,
+                  borderBottom: i < visibleIps.length - 1 ? C.borderB : "none",
+                  background: checked ? "#f0fdf4" : C.bg,
+                  userSelect: "none",
+                }}
+                onMouseEnter={e => { if (!checked) e.currentTarget.style.background = "#f9fafb"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = checked ? "#f0fdf4" : C.bg; }}
+              >
+                {/* checkbox */}
+                <span style={{
+                  width: 15, height: 15, flexShrink: 0,
+                  border: `1.5px solid ${checked ? "#318774" : "#d1d5db"}`,
+                  background: checked ? "#318774" : C.bg,
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  {checked && <span style={{ color: "#fff", fontSize: 10, lineHeight: 1, fontWeight: 700 }}>✓</span>}
+                </span>
+                <span style={{ fontFamily: "monospace", fontSize: 12, color: C.text, flex: 1 }}>{p.cidr}</span>
+                <span style={{
+                  fontSize: 10, fontWeight: 600, padding: "2px 7px",
+                  background: "#f3f4f6", color: C.muted,
+                  border: "1px solid #e5e7eb", letterSpacing: "0.04em",
+                }}>
+                  {p.label}
+                </span>
+              </div>
+            );
+          })}
+          <div style={{ padding: "7px 14px", borderTop: C.border, fontSize: 11, color: C.faint }}>
+            Or type a custom IP / CIDR above
+          </div>
+        </div>
+      )}
+      {err && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>{err}</div>}
+    </div>
+  );
+}
+
+
+const PORT_TYPE_MAP: Record<string, string> = {
+  "22":   "SSH",
+  "53":   "DNS",
+  "80":   "HTTP",
+  "443":  "HTTPS",
+  "3306": "MYSQL",
+  "5432": "PGSQL",
+};
+
+function portTypeLabel(port: string | null): string | null {
+  if (!port) return null;
+  // exact match only (not ranges)
+  return PORT_TYPE_MAP[port.trim()] ?? null;
+}
+
+function TypeBadge({ port }: { port: string | null }) {
+  const label = portTypeLabel(port);
+  if (!label) return <span style={{ color: C.faint }}>—</span>;
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 600, padding: "2px 7px",
+      background: "#f3f4f6", color: C.muted,
+      border: "1px solid #e5e7eb", letterSpacing: "0.04em",
+    }}>
+      {label}
+    </span>
+  );
+}
+
 // ─── Firewall Tab ─────────────────────────────────────────────────────────────
 const PROTOCOLS = ["tcp", "udp", "icmp", "esp", "gre"];
 
 function emptyRule(direction: "in" | "out"): FwRule {
-  return { direction, protocol: "tcp", port: "", sourceIps: [], destinationIps: [], description: null };
+  return { _id: crypto.randomUUID(), direction, protocol: "tcp", port: "", sourceIps: [], destinationIps: [], description: null };
 }
 
 // New rule row — state lifted to RulesCard, no inline buttons
-function NewRuleRow({ direction, newRule, setNewRule, err }: {
+function NewRuleRow({ direction, newRule, setNewRule, err, isOracle = false }: {
   direction: "in" | "out";
   newRule: FwRule;
   setNewRule: (r: FwRule) => void;
   err: string | null;
+  isOracle?: boolean;
 }) {
   const showPort = !["icmp","esp","gre"].includes(newRule.protocol);
   const ips = direction === "in" ? newRule.sourceIps.join(", ") : newRule.destinationIps.join(", ");
@@ -258,51 +518,58 @@ function NewRuleRow({ direction, newRule, setNewRule, err }: {
       <td style={{ padding: "8px 16px", borderBottom: C.borderB }}>
         {showPort ? (
           <>
-            <input value={newRule.port ?? ""} onChange={e => setNewRule({ ...newRule, port: e.target.value })} placeholder="e.g. 80 or 8000-9000" style={inp} />
+            <PortInput
+              value={newRule.port ?? ""}
+              onChange={v => setNewRule({ ...newRule, port: v })}
+              inputStyle={inp}
+            />
             <div style={{ fontSize: 11, color: C.faint, marginTop: 3 }}>Enter a single port (80) or a port range (8000-9000)</div>
           </>
         ) : <span style={{ color: C.faint, fontSize: 12 }}>—</span>}
       </td>
       <td style={{ padding: "8px 16px", borderBottom: C.borderB }}>
-        <input value={ips}
-          onChange={e => {
-            const list = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
+        <IpInput
+          value={ips}
+          onChange={v => {
+            const list = v.split(",").map(s => s.trim()).filter(Boolean);
             setNewRule({ ...newRule, sourceIps: direction === "in" ? list : [], destinationIps: direction === "out" ? list : [] });
           }}
-          placeholder="0.0.0.0/0, ::/0" style={inp} />
-        <div style={{ fontSize: 11, color: C.faint, marginTop: 3 }}>Enter one or more IP addresses or CIDR ranges, separated by commas. Use 0.0.0.0/0 for all IPv4, ::/0 for all IPv6.</div>
-        {err && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>{err}</div>}
+          inputStyle={inp}
+          err={err}
+        />
+        <div style={{ fontSize: 11, color: C.faint, marginTop: 3 }}>Enter one or more IPs or CIDR ranges separated by commas, or pick from the list.</div>
       </td>
       <td style={{ padding: "8px 16px", borderBottom: C.borderB }}>
-        <input value={newRule.description ?? ""}
-          onChange={e => setNewRule({ ...newRule, description: e.target.value || null })}
-          placeholder="Optional" style={inp} />
+        {isOracle ? (
+          <input value={newRule.description ?? ""}
+            onChange={e => setNewRule({ ...newRule, description: e.target.value || null })}
+            placeholder="Optional" style={inp} />
+        ) : (
+          <TypeBadge port={newRule.port ?? null} />
+        )}
       </td>
       <td style={{ borderBottom: C.borderB }}></td>
     </tr>
   );
 }
 
-function InlineRuleRow({ rule, direction, onSave, onCancel }: {
-  rule: FwRule; direction: "in" | "out";
-  onSave: (r: FwRule) => void; onCancel: () => void;
-}) { return null; } // kept for type compat, unused
-
-function RulesCard({ title, rules, direction, subscriptionId, allRules, setAllRules, onSaved }: {
+function RulesCard({ title, rules, direction, subscriptionId, allRules, setAllRules, onSaved, readOnly = false, provider }: {
   title: string;
-  rules: Array<FwRule & { idx: number }>;
+  rules: FwRule[];
   direction: "in" | "out";
   subscriptionId: string;
   allRules: FwRule[];
   setAllRules: (r: FwRule[]) => void;
   onSaved: () => void;
+  readOnly?: boolean;
+  provider?: string | null;
 }) {
   const [editing,    setEditing]    = useState(false);
   const [adding,     setAdding]     = useState(false);
   const [newRule,    setNewRule]    = useState<FwRule>(emptyRule(direction));
   const [newErr,     setNewErr]     = useState<string | null>(null);
-  const [editVals,   setEditVals]   = useState<Record<number, FwRule>>({});
-  const [confirmIdx, setConfirmIdx] = useState<number | null>(null);
+  const [editVals,   setEditVals]   = useState<Record<string, FwRule>>({});
+  const [confirmId,  setConfirmId]  = useState<string | null>(null);
   const [saving,     setSaving]     = useState(false);
   const [msg,        setMsg]        = useState<string | null>(null);
   const [msgOk,      setMsgOk]      = useState(true);
@@ -310,20 +577,20 @@ function RulesCard({ title, rules, direction, subscriptionId, allRules, setAllRu
   const ipCol = direction === "in" ? "Source IPs" : "Destination IPs";
 
   function enterEdit() {
-    const vals: Record<number, FwRule> = {};
-    rules.forEach(r => { vals[r.idx] = { ...r }; });
+    const vals: Record<string, FwRule> = {};
+    rules.forEach(r => { vals[r._id] = { ...r }; });
     setEditVals(vals);
     setEditing(true);
     setAdding(false);
   }
-  function exitEdit() { setEditing(false); setAdding(false); setNewRule(emptyRule(direction)); setNewErr(null); setConfirmIdx(null); }
+  function exitEdit() { setEditing(false); setAdding(false); setNewRule(emptyRule(direction)); setNewErr(null); setConfirmId(null); }
 
-  function updateEditVal(idx: number, field: keyof FwRule, value: unknown) {
-    setEditVals(prev => ({ ...prev, [idx]: { ...prev[idx], [field]: value } }));
+  function updateEditVal(id: string, field: keyof FwRule, value: unknown) {
+    setEditVals(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
   }
 
   function applyEdits() {
-    const updated = allRules.map((r, i) => editVals[i] ? { ...editVals[i] } : r);
+    const updated = allRules.map(r => editVals[r._id] ? { ...editVals[r._id] } : r);
     setAllRules(updated);
     exitEdit();
   }
@@ -338,18 +605,20 @@ function RulesCard({ title, rules, direction, subscriptionId, allRules, setAllRu
     setAdding(false);
     setNewRule(emptyRule(direction));
     setNewErr(null);
-    // Auto-save to Hetzner
     void saveRules(updatedRules);
   }
   function cancelAdd() { setAdding(false); setNewRule(emptyRule(direction)); setNewErr(null); }
-  function deleteRule(idx: number) { setAllRules(allRules.filter((_, i) => i !== idx)); setConfirmIdx(null); }
+  function deleteRule(id: string) { const updated = allRules.filter(r => r._id !== id); setAllRules(updated); setConfirmId(null); void saveRules(updated); }
 
   async function saveRules(rulesToSave: FwRule[]) {
     setSaving(true); setMsg(null);
+    const endpoint = provider === "ORACLE"
+      ? `/api/customer/servers/${subscriptionId}/oracle-firewall`
+      : `/api/customer/servers/${subscriptionId}/firewall`;
     try {
-      const res  = await fetch(`/api/customer/servers/${subscriptionId}/firewall`, {
+      const res  = await fetch(endpoint, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rules: rulesToSave }),
+        body: JSON.stringify({ rules: rulesToSave.map(({ _id, ...rest }) => rest) }),
       });
       const data = await res.json().catch(() => null);
       if (data?.ok) { setMsgOk(true); setMsg("Saved."); onSaved(); exitEdit(); }
@@ -360,7 +629,7 @@ function RulesCard({ title, rules, direction, subscriptionId, allRules, setAllRu
 
   async function save() {
     const finalRules = editing
-      ? allRules.map((r, i) => editVals[i] ? { ...editVals[i] } : r)
+      ? allRules.map(r => editVals[r._id] ? { ...editVals[r._id] } : r)
       : allRules;
     if (editing) applyEdits();
     await saveRules(finalRules);
@@ -380,12 +649,19 @@ function RulesCard({ title, rules, direction, subscriptionId, allRules, setAllRu
     </>
   );
 
-  // Always 5 cols so InlineRuleRow (which has 5 tds) always fits
-  const cols = ["Protocol", "Port Range", ipCol, "Description", ""];
+  const isOracle = provider === "ORACLE";
+  const cols = ["Protocol", "Port Range", ipCol, isOracle ? "Description" : "Type", ""];
 
   return (
     <Card title={title} action={action}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, tableLayout: "fixed" }}>
+        <colgroup>
+          <col style={{ width: "15%" }} />
+          <col style={{ width: "25%" }} />
+          <col style={{ width: "42%" }} />
+          <col style={{ width: "12%" }} />
+          <col style={{ width: "6%" }} />
+        </colgroup>
         <thead>
           <tr>
             {cols.map((col, i) => (
@@ -397,7 +673,7 @@ function RulesCard({ title, rules, direction, subscriptionId, allRules, setAllRu
         </thead>
         <tbody>
           {adding && (
-            <NewRuleRow direction={direction} newRule={newRule} setNewRule={setNewRule} err={newErr} />
+            <NewRuleRow direction={direction} newRule={newRule} setNewRule={setNewRule} err={newErr} isOracle={isOracle} />
           )}
           {rules.length === 0 && !adding && (
             <tr><td colSpan={cols.length} style={{ padding: "14px 16px", fontSize: 13, color: C.muted }}>No rules.</td></tr>
@@ -406,53 +682,69 @@ function RulesCard({ title, rules, direction, subscriptionId, allRules, setAllRu
             const isLast = rowI === rules.length - 1;
             const borderB = isLast && !adding ? "none" : C.borderB;
             if (editing) {
-              const ev = editVals[r.idx] ?? r;
+              const ev = editVals[r._id] ?? r;
               const showPort = !["icmp","esp","gre"].includes(ev.protocol);
               const ips = direction === "in" ? ev.sourceIps.join(", ") : ev.destinationIps.join(", ");
               return (
-                <tr key={r.idx} style={{ background: "#fffbeb" }}>
+                <tr key={r._id} style={{ background: "#fffbeb" }}>
                   <td style={{ padding: "6px 16px", borderBottom: borderB }}>
-                    <select value={ev.protocol} onChange={e => updateEditVal(r.idx, "protocol", e.target.value)} style={{ ...inp, width: 80 }}>
+                    <select value={ev.protocol} onChange={e => updateEditVal(r._id, "protocol", e.target.value)} style={{ ...inp, width: 80 }}>
                       {PROTOCOLS.map(p => <option key={p} value={p}>{p.toUpperCase()}</option>)}
                     </select>
                   </td>
                   <td style={{ padding: "6px 16px", borderBottom: borderB }}>
                     {showPort ? (
                       <div>
-                        <input value={ev.port ?? ""} onChange={e => updateEditVal(r.idx, "port", e.target.value)} placeholder="e.g. 80 or 8000-9000" style={inp} />
+                        <PortInput
+                          value={ev.port ?? ""}
+                          onChange={v => updateEditVal(r._id, "port", v)}
+                          inputStyle={inp}
+                        />
                         <div style={{ fontSize: 11, color: C.faint, marginTop: 3 }}>Enter a single port (80) or a port range (8000-9000)</div>
                       </div>
                     ) : <span style={{ color: C.faint, fontSize: 12 }}>—</span>}
                   </td>
                   <td style={{ padding: "6px 16px", borderBottom: borderB }}>
-                    <input value={ips} onChange={e => {
-                      const list = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
-                      updateEditVal(r.idx, direction === "in" ? "sourceIps" : "destinationIps", list);
-                    }} placeholder="0.0.0.0/0, ::/0" style={inp} />
+                    <IpInput
+                      value={ips}
+                      onChange={v => {
+                        const list = v.split(",").map(s => s.trim()).filter(Boolean);
+                        updateEditVal(r._id, direction === "in" ? "sourceIps" : "destinationIps", list);
+                      }}
+                      inputStyle={inp}
+                      isOracle={isOracle}
+                    />
+                    <div style={{ fontSize: 11, color: C.faint, marginTop: 3 }}>Enter one or more IPs or CIDR ranges separated by commas, or pick from the list.</div>
                   </td>
                   <td style={{ padding: "6px 16px", borderBottom: borderB }}>
-                    <input value={ev.description ?? ""} onChange={e => updateEditVal(r.idx, "description", e.target.value || null)} placeholder="Optional" style={inp} />
+                    {isOracle ? (
+                      <input value={ev.description ?? ""}
+                        onChange={e => updateEditVal(ev._id, "description", e.target.value || null)}
+                        placeholder="Optional" style={inp} />
+                    ) : (
+                      <TypeBadge port={ev.port ?? null} />
+                    )}
                   </td>
                   <td style={{ padding: "6px 16px", borderBottom: borderB, whiteSpace: "nowrap" as const }}>
-                    {confirmIdx === r.idx ? (
+                    {confirmId === r._id ? (
                       <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ fontSize: 11, color: C.muted }}>Delete?</span>
-                        <Btn onClick={() => deleteRule(r.idx)} danger>Yes</Btn>
-                        <Btn onClick={() => setConfirmIdx(null)}>No</Btn>
+                        <Btn onClick={() => deleteRule(r._id)} danger>Yes</Btn>
+                        <Btn onClick={() => setConfirmId(null)}>No</Btn>
                       </span>
                     ) : (
-                      <Btn onClick={() => setConfirmIdx(r.idx)} danger>Delete</Btn>
+                      <Btn onClick={() => setConfirmId(r._id)} danger>Delete</Btn>
                     )}
                   </td>
                 </tr>
               );
             }
             return (
-              <tr key={r.idx}>
+              <tr key={r._id}>
                 <td style={{ padding: "9px 16px", color: C.text, borderBottom: borderB }}>{r.protocol.toUpperCase()}</td>
-                <td style={{ padding: "9px 16px", color: C.text, borderBottom: borderB }}>{r.port ?? "Any"}</td>
+                <td style={{ padding: "9px 16px", color: C.text, borderBottom: borderB }}>{r.port || "Any"}</td>
                 <td style={{ padding: "9px 16px", color: C.text, borderBottom: borderB }}>{(direction === "in" ? r.sourceIps : r.destinationIps).join(", ") || "Any"}</td>
-                <td style={{ padding: "9px 16px", color: C.text, borderBottom: borderB }}>{r.description ?? "—"}</td>
+                <td style={{ padding: "9px 16px", borderBottom: borderB }}>{isOracle ? <span style={{ color: C.muted, fontSize: 12 }}>{r.description ?? "—"}</span> : <TypeBadge port={r.port ?? null} />}</td>
                 <td style={{ borderBottom: borderB }}></td>
               </tr>
             );
@@ -463,26 +755,30 @@ function RulesCard({ title, rules, direction, subscriptionId, allRules, setAllRu
   );
 }
 
-function FirewallTab({ subscriptionId, firewalls, loading, privateNetworks, onSaved }: {
+function FirewallTab({ subscriptionId, firewalls, loading, privateNetworks, onSaved, provider }: {
   subscriptionId: string;
   firewalls: Array<{ id: number; name: string; rules: FwRule[] }>;
   loading: boolean;
   privateNetworks: Array<{ networkId: number; ip: string; aliasIps: string[]; macAddress: string | null }>;
   onSaved: () => void;
+  provider: string | null;
 }) {
   const fw = firewalls[0] ?? null;
-  const [rules, setRules] = useState<FwRule[]>(fw?.rules ?? []);
-  useEffect(() => { setRules(fw?.rules ?? []); }, [fw]);
+  function tagRules(raw: FwRule[]): FwRule[] {
+    return raw.map(r => ({ ...r, _id: r._id || crypto.randomUUID() }));
+  }
+  const [rules, setRules] = useState<FwRule[]>(tagRules(fw?.rules ?? []));
+  useEffect(() => { setRules(tagRules(fw?.rules ?? [])); }, [fw]);
 
   if (loading) return <Card title="Network & Firewall"><Sk /></Card>;
   if (!fw)     return <Card title="Network & Firewall"><div style={{ padding: "8px 0", fontSize: 13, color: C.muted }}>No firewall attached to this server.</div></Card>;
 
-  const inbound  = rules.map((r, i) => ({ ...r, idx: i })).filter(r => r.direction === "in");
-  const outbound = rules.map((r, i) => ({ ...r, idx: i })).filter(r => r.direction === "out");
+  const inbound  = rules.filter(r => r.direction === "in");
+  const outbound = rules.filter(r => r.direction === "out");
 
   return (<>
-    <RulesCard title="Inbound Rules"  rules={inbound}  direction="in"  subscriptionId={subscriptionId} allRules={rules} setAllRules={setRules} onSaved={onSaved} />
-    <RulesCard title="Outbound Rules" rules={outbound} direction="out" subscriptionId={subscriptionId} allRules={rules} setAllRules={setRules} onSaved={onSaved} />
+    <RulesCard title="Inbound Rules"  rules={inbound}  direction="in"  subscriptionId={subscriptionId} allRules={rules} setAllRules={setRules} onSaved={onSaved} readOnly={false} provider={provider} />
+    <RulesCard title="Outbound Rules" rules={outbound} direction="out" subscriptionId={subscriptionId} allRules={rules} setAllRules={setRules} onSaved={onSaved} readOnly={false} provider={provider} />
     <Card title="Private Networks">
       {!privateNetworks.length ? (
         <div style={{ padding: "14px 16px", fontSize: 13, color: C.muted }}>No private networks attached.</div>
@@ -553,30 +849,28 @@ export default function ServerDetailsClient() {
     <div className="cy-page-content">
       <div className="cy-dash-wrap">
 
-        <Link href="/dashboard/servers" style={{ fontSize: 12, color: C.muted, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4, marginBottom: 10 }}>
-          ← Cloud Servers
-        </Link>
-
         {/* Header */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 20 }}>
           <div>
             {loading ? (
               <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: "0 0 8px" }}>Loading…</h1>
             ) : (
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0 }}>
-                  {server?.serverName || server?.productName || "Server"}
-                </h1>
-                <span style={{ fontSize: 15, color: C.muted }}>ID: ci-{id.slice(-15)}</span>
-                <StatusBadge status={server?.provisioned ? server.status : "Not Provisioned"} />
-                {server?.paymentStatus !== "PAID" && <PayBadge status={server?.paymentStatus ?? null} />}
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0 }}>
+                    {server?.serverName || server?.productName || "Server"}
+                  </h1>
+                  <StatusBadge status={server?.provisioned ? server.status : "Not Provisioned"} />
+                  {server?.paymentStatus !== "PAID" && <PayBadge status={server?.paymentStatus ?? null} />}
+                </div>
+                <p style={{ fontSize: 13, color: C.faint, margin: "4px 0 0" }}>Cloud Servers · ci-{id.slice(-15)}</p>
               </div>
             )}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={() => void load()} disabled={loading}
-              style={{ height: 32, padding: "0 14px", fontSize: 12, background: C.bg, border: C.border, cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit", color: C.text, opacity: loading ? 0.6 : 1 }}>
-              ↻ Refresh
+              style={{ height: 32, padding: "0 14px", fontSize: 12, background: C.bg, border: C.border, cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit", color: C.text, opacity: loading ? 0.6 : 1, display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 16, lineHeight: 1 }}>↻</span> Refresh
             </button>
             {server?.provisioned && (
               <button onClick={() => void restart()} disabled={restartBusy || loading}
@@ -633,8 +927,8 @@ export default function ServerDetailsClient() {
                   ? <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       Not Reserved
                       {!server?.additionalIps?.length && <>
-                        <span title="IP may be lost if instance is terminated" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 15, height: 15, borderRadius: "50%", background: "#e5e7eb", color: "#374151", fontSize: 9, fontWeight: 700, cursor: "help" }}>!</span>
-                        <span style={{ fontSize: 11, color: C.muted }}>IP may be lost if instance is terminated</span>
+                        <span title="This IP address is not reserved and may be lost if the server is rebuilt or terminated." style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 15, height: 15, borderRadius: "50%", background: "#e5e7eb", color: "#374151", fontSize: 9, fontWeight: 700, cursor: "help" }}>!</span>
+                        <span style={{ fontSize: 11, color: C.muted }}>This IP address is not reserved and may be lost if the server is rebuilt or terminated.</span>
                       </>}
                     </span>
                   : <span>N/A</span>
@@ -649,8 +943,8 @@ export default function ServerDetailsClient() {
                     ? <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         Not Reserved
                         {!server?.additionalIps?.length && <>
-                          <span title="IP may be lost if instance is terminated" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 15, height: 15, borderRadius: "50%", background: "#e5e7eb", color: "#374151", fontSize: 9, fontWeight: 700, cursor: "help" }}>!</span>
-                          <span style={{ fontSize: 11, color: C.muted }}>IP may be lost if instance is terminated</span>
+                          <span title="This IP address is not reserved and may be lost if the server is rebuilt or terminated." style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 15, height: 15, borderRadius: "50%", background: "#e5e7eb", color: "#374151", fontSize: 9, fontWeight: 700, cursor: "help" }}>!</span>
+                          <span style={{ fontSize: 11, color: C.muted }}>This IP address is not reserved and may be lost if the server is rebuilt or terminated.</span>
                         </>}
                       </span>
                     : <span>N/A</span>
@@ -689,6 +983,7 @@ export default function ServerDetailsClient() {
             loading={loading}
             privateNetworks={server?.privateNetworks ?? []}
             onSaved={() => void load()}
+            provider={server?.provider ?? null}
           />
         )}
 
@@ -696,14 +991,14 @@ export default function ServerDetailsClient() {
         {tab === "backups" && (<>
           <Card title="Backups">
             {loading ? <div style={{ padding: 16 }}><Sk /></div> : (
-              <T cols={["Description", "Created", "Size", "Status"]}
+              <T colWidths={["50%", "20%", "15%", "15%"]} cols={["Description", "Created", "Size", "Status"]}
                 rows={server?.backups?.length ? server.backups.map(b => [b.description ?? "—", fmtDate(b.created), b.sizeGb != null ? `${b.sizeGb} GB` : "N/A", b.status ?? "N/A"]) : []}
                 empty="No backups available." />
             )}
           </Card>
           <Card title="Snapshots">
             {loading ? <div style={{ padding: 16 }}><Sk /></div> : (
-              <T cols={["Description", "Created", "Size", "Status"]}
+              <T colWidths={["50%", "20%", "15%", "15%"]} cols={["Description", "Created", "Size", "Status"]}
                 rows={server?.snapshots?.length ? server.snapshots.map(s => [s.description ?? "—", fmtDate(s.created), s.sizeGb != null ? `${s.sizeGb} GB` : "N/A", s.status ?? "N/A"]) : []}
                 empty="No snapshots available." />
             )}
