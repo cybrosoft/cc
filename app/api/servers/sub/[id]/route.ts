@@ -166,18 +166,20 @@ export async function GET(
       liveRamGb         = o.ramGb;
       liveDiskGb        = o.diskGb;
       liveHostname      = o.name;
-      liveIpv4Reserved  = o.ipv4Reserved ?? null;
+      liveIpv4Reserved  = o.ipv4Reserved ?? false; // Oracle default is ephemeral
       liveAdditionalIps = o.additionalIps ?? [];
       liveAdditionalDisk = o.additionalDiskGb ?? null;
 
-      // Map Oracle privateNetworkExists → privateNetworks array
-      if (o.privateNetworkExists) {
-        livePrivateIp = liveIpv4; // Oracle private IP is separate — best we have without extra call
+      // Map Oracle private network details
+      if (o.privateIp) {
+        livePrivateIp = o.privateIp;
+        // Use VNIC display name last 4 chars as readable network identifier
+        const vnicSuffix = o.networkName ? o.networkName.slice(-4).toUpperCase() : "????";
         livePrivateNets = [{
           networkId:  0,
-          ip:         liveIpv4 ?? "N/A",
-          aliasIps:   [],
-          macAddress: null,
+          ip:         o.privateIp,
+          aliasIps:   [`NID-${vnicSuffix}`], // carry display ID for UI
+          macAddress: o.macAddress ?? null,
         }];
       }
 
@@ -214,6 +216,9 @@ export async function GET(
           sizeGb:      null,
         }];
       }
+
+      // Custom Images → snapshots (disabled pending OCI API research)
+      liveSnapshots = [];
 
       // Firewalls — fetch Oracle Security List rules
       try {

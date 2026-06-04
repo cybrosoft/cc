@@ -785,7 +785,14 @@ function FirewallTab({ subscriptionId, firewalls, loading, privateNetworks, onSa
       ) : (
         <T
           cols={["Network ID", "IP", "Alias IPs", "MAC Address"]}
-          rows={privateNetworks.map(n => [String(n.networkId), n.ip, n.aliasIps.join(", ") || "N/A", n.macAddress ?? "N/A"])}
+          rows={privateNetworks.map(n => [
+            provider === "ORACLE"
+              ? (n.aliasIps[0] ?? "N/A")   // aliasIps[0] carries "NID-XXXX" for Oracle
+              : String(n.networkId),
+            n.ip,
+            provider === "ORACLE" ? "N/A" : (n.aliasIps.join(", ") || "N/A"),
+            n.macAddress ?? "N/A",
+          ])}
         />
       )}
     </Card>

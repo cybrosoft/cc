@@ -7,6 +7,10 @@ export type OracleAdminSummary = {
   name: string | null;
   status: string | null;
   ipv4: string | null;
+  privateIp: string | null;
+  networkName: string | null;
+  subnetId: string | null;
+  macAddress: string | null;
   ipv4Reserved: boolean | null;    // true = reserved, false = ephemeral
   additionalIps: string[];         // secondary VNIC public IPs
   location: string | null;
@@ -57,6 +61,10 @@ async function getVnicDetails(args: {
   instanceOcid: string;
 }): Promise<{
   ip: string | null;
+  privateIp: string | null;
+  networkName: string | null;
+  subnetId: string | null;
+  macAddress: string | null;
   ipv4Reserved: boolean | null;
   hasPrivateNetwork: boolean | null;
   firewallExists: boolean | null;
@@ -69,55 +77,55 @@ async function getVnicDetails(args: {
 
   const attachments = vnicAtt.items ?? [];
   if (attachments.length === 0) {
-    return { ip: null, ipv4Reserved: null, hasPrivateNetwork: null, firewallExists: null, additionalIps: [] };
+    return { ip: null, privateIp: null, networkName: null, subnetId: null, macAddress: null, ipv4Reserved: null, hasPrivateNetwork: null, firewallExists: null, additionalIps: [] };
   }
 
   const primaryVnicId    = attachments[0]?.vnicId ?? null;
   const secondaryVnicIds = attachments.slice(1).map(a => a.vnicId).filter((v): v is string => !!v);
 
   if (!primaryVnicId) {
-    return { ip: null, ipv4Reserved: null, hasPrivateNetwork: null, firewallExists: null, additionalIps: [] };
+    return { ip: null, privateIp: null, networkName: null, subnetId: null, macAddress: null, ipv4Reserved: null, hasPrivateNetwork: null, firewallExists: null, additionalIps: [] };
   }
 
   const primaryVnicResp = await args.vcn.getVnic({ vnicId: primaryVnicId });
   const vnic            = primaryVnicResp.vnic;
 
-  const publicIp  = vnic.publicIp  ?? null;
-  const privateIp = vnic.privateIp ?? null;
-  const ip        = publicIp ?? privateIp;
+  const publicIp   = vnic.publicIp   ?? null;
+  const privateIp  = vnic.privateIp  ?? null;
+  const ip         = publicIp ?? privateIp;
+  const networkName = vnic.displayName ?? null;
+  const subnetId   = vnic.subnetId   ?? null;
+  const macAddress = vnic.macAddress ?? null;
 
   const nsgIds         = vnic.nsgIds;
   const firewallExists = Array.isArray(nsgIds) ? nsgIds.length > 0 : null;
 
   // Determine if the public IP is reserved.
-  // Oracle separates public IPs into two scopes:
-  //   Region           → Reserved IPs (persist after instance termination)
-  //   AvailabilityDomain → Ephemeral IPs (lost when instance is terminated)
+  // Get the Public IP object attached to the primary private IP — it has a lifetime field:
+  //   RESERVED  → IP persists after instance termination
+  //   EPHEMERAL → IP is lost when instance is terminated
   let ipv4Reserved: boolean | null = null;
-  if (publicIp) {
+  if (publicIp && privateIp) {
     try {
-      // Check Region scope first — reserved IPs live here
-      const regionalIps  = await args.vcn.listPublicIps({
-        compartmentId: args.compartmentOcid,
-        scope:         core.models.ListPublicIpsRequest.Scope.Region,
+      // First get the private IP object ID from the private IP address
+      const privateIpList = await args.vcn.listPrivateIps({
+        vnicId: primaryVnicId,
       });
-      const regionalMatch = regionalIps.items?.find(p => p.ipAddress === publicIp);
-
-      if (regionalMatch) {
-        // Found in Region scope → reserved
-        ipv4Reserved = true;
-      } else {
-        // Not reserved — check AvailabilityDomain scope (ephemeral)
-        const adIps  = await args.vcn.listPublicIps({
-          compartmentId:      args.compartmentOcid,
-          scope:              core.models.ListPublicIpsRequest.Scope.AvailabilityDomain,
-          availabilityDomain: vnic.availabilityDomain ?? "",
+      const privateIpObj = privateIpList.items?.find(p => p.ipAddress === privateIp);
+      if (privateIpObj?.id) {
+        // Get the public IP assigned to this private IP
+        const pubIpResp = await args.vcn.getPublicIpByPrivateIpId({
+          getPublicIpByPrivateIpIdDetails: { privateIpId: privateIpObj.id },
         });
-        const adMatch = adIps.items?.find(p => p.ipAddress === publicIp);
-        // false = confirmed ephemeral, null = can't determine
-        ipv4Reserved = adMatch ? false : null;
+        const lifetime = pubIpResp.publicIp?.lifetime;
+        if (lifetime === core.models.PublicIp.Lifetime.Reserved) {
+          ipv4Reserved = true;
+        } else if (lifetime === core.models.PublicIp.Lifetime.Ephemeral) {
+          ipv4Reserved = false;
+        }
       }
     } catch {
+      // If call fails (e.g. no public IP assigned), default to null
       ipv4Reserved = null;
     }
   }
@@ -134,6 +142,10 @@ async function getVnicDetails(args: {
 
   return {
     ip,
+    privateIp,
+    networkName,
+    subnetId,
+    macAddress,
     ipv4Reserved,
     hasPrivateNetwork: privateIp ? true : null,
     firewallExists,
@@ -248,6 +260,10 @@ export async function getOracleInstanceSummary(args: {
     name:                 inst.displayName ?? null,
     status:               inst.lifecycleState ? String(inst.lifecycleState) : null,
     ipv4:                 null,
+    privateIp:            null,
+    networkName:          null,
+    subnetId:             null,
+    macAddress:           null,
     ipv4Reserved:         null,
     additionalIps:        [],
     location:             args.regionCode,
@@ -284,6 +300,10 @@ export async function getOracleInstanceSummary(args: {
   return {
     ...base,
     ipv4:                 netData.ip,
+    privateIp:            netData.privateIp,
+    networkName:          netData.networkName,
+    subnetId:             netData.subnetId,
+    macAddress:           netData.macAddress,
     ipv4Reserved:         netData.ipv4Reserved,
     additionalIps:        netData.additionalIps,
     firewallExists:       netData.firewallExists,
@@ -310,6 +330,58 @@ export async function rebootOracleInstance(args: {
     ? resp.opcRequestId.trim()
     : null;
   return { requestId };
+}
+
+
+// ─── Oracle Custom Images (equivalent of snapshots) ──────────────────────────
+export type OracleImageItem = {
+  id: string;
+  description: string | null;
+  created: string;
+  status: string | null;
+  sizeGb: number | null;
+};
+
+export async function listOracleCustomImages(args: {
+  instanceOcid: string;
+  regionCode: string;
+  compartmentOcid: string;
+}): Promise<OracleImageItem[]> {
+  const compute = buildComputeClient(args.regionCode);
+
+  // Filter by operatingSystem="Custom" — Oracle sets this for all user-created custom images
+  const resp = await compute.listImages({
+    compartmentId:   args.compartmentOcid,
+    lifecycleState:  core.models.Image.LifecycleState.Available,
+    operatingSystem: "Custom",
+  });
+
+  const images = resp.items ?? [];
+  const results: OracleImageItem[] = [];
+
+  for (const img of images) {
+
+    const sizeGb = typeof img.sizeInMBs === "number"
+      ? Math.round((img.sizeInMBs / 1024) * 100) / 100
+      : null;
+
+    // Build description: "image-name (OS Version)" if OS info available
+    const osInfo = [img.operatingSystem, img.operatingSystemVersion].filter(Boolean).join(" ");
+    const description = osInfo
+      ? `${img.displayName ?? "Custom Image"} (${osInfo})`
+      : (img.displayName ?? "Custom Image");
+
+    results.push({
+      id:          String(img.id ?? ""),
+      description,
+      created:     img.timeCreated ? img.timeCreated.toISOString() : new Date().toISOString(),
+      status:      img.lifecycleState ? String(img.lifecycleState).toLowerCase() : null,
+      sizeGb,
+    });
+  }
+
+  results.sort((a, b) => b.created.localeCompare(a.created));
+  return results.slice(0, 5);
 }
 
 // ─── Oracle Security List rules mapped to FwRule shape ────────────────────────
