@@ -213,10 +213,11 @@ export function CreateSubscriptionModal({ open, onClose, onCreated }: {
   const [startDate, setStartDate] = useState("");
   const [overridePrice, setOverridePrice] = useState(false);
   const [manualTotal, setManualTotal] = useState("");
-  // ── NEW: server/subscription name ─────────────────────────────────────────
   const [subName, setSubName] = useState("");
   const [productDetails, setProductDetails] = useState("");
   const [productNote, setProductNote] = useState("");
+  // ── NEW: auto-invoice toggle ───────────────────────────────────────────────
+  const [autoInvoice, setAutoInvoice] = useState(true);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -288,7 +289,7 @@ export function CreateSubscriptionModal({ open, onClose, onCreated }: {
     setFilterLocId(""); setLocationCode(""); setTemplateSlug("");
     setAddonStates({}); setStartDate(""); setOverridePrice(false);
     setManualTotal(""); setSubName(""); setProductDetails(""); setProductNote("");
-    setEligible(null); setMsg(null);
+    setAutoInvoice(true); setEligible(null); setMsg(null);
     void (async () => {
       try {
         const [custResp, locResp, tmplResp] = await Promise.all([
@@ -356,7 +357,6 @@ export function CreateSubscriptionModal({ open, onClose, onCreated }: {
         .filter(a => a.addonBehavior === "required" || addonStates[a.id]?.selected)
         .map(a => ({ productId: a.id, quantity: addonStates[a.id]?.quantity ?? 1 }));
 
-      // Combine subName + productDetails into productDetails field
       const combinedDetails = [subName.trim(), productDetails.trim()].filter(Boolean).join('\n') || null;
 
       const payload: Record<string, unknown> = {
@@ -370,6 +370,7 @@ export function CreateSubscriptionModal({ open, onClose, onCreated }: {
         startDate:      startDate || null,
         productDetails: combinedDetails,
         productNote:    productNote.trim() || null,
+        autoInvoice,
       };
       if (overridePrice && manualTotal.trim()) payload.manualPriceCents = Math.round(parseFloat(manualTotal) * 100);
 
@@ -571,15 +572,12 @@ export function CreateSubscriptionModal({ open, onClose, onCreated }: {
               {/* 8. Notes & Details */}
               <Section title="Notes & Details" icon="note" dim={!selectedPlan}>
 
-                {/* ── Server/Subscription Name — plan only ── */}
                 {selectedPlan?.type === "plan" && (
                   <div style={{ marginBottom: 14 }}>
                     <div style={LABEL}>Server / Subscription Name</div>
                     <input value={subName} onChange={e => setSubName(e.target.value)}
                       placeholder="e.g. Production Server, Dev Server…" style={INP} />
-                    <div style={{ fontSize: 11, color: C.faint, marginTop: 4 }}>
-                      Shown in customer portal as the server name
-                    </div>
+                    <div style={{ fontSize: 11, color: C.faint, marginTop: 4 }}>Shown in customer portal as the server name</div>
                   </div>
                 )}
 
@@ -588,11 +586,24 @@ export function CreateSubscriptionModal({ open, onClose, onCreated }: {
                   <textarea value={productDetails} onChange={e => setProductDetails(e.target.value)} rows={2}
                     placeholder="e.g. domain, username…" style={{ ...INP, resize: "vertical" }} />
                 </div>
-                <div>
+                <div style={{ marginBottom: 14 }}>
                   <div style={LABEL}>Note</div>
                   <textarea value={productNote} onChange={e => setProductNote(e.target.value)} rows={2}
                     placeholder="Extra instructions…" style={{ ...INP, resize: "vertical" }} />
                 </div>
+
+                {/* ── Auto-invoice toggle ── */}
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "10px 12px", background: autoInvoice ? "#eaf4f2" : "#f8fafc", border: `1px solid ${autoInvoice ? "#a7d9d1" : "#e2e8f0"}` }}>
+                  <div onClick={() => setAutoInvoice(v => !v)} style={{ width: 36, height: 20, borderRadius: 10, background: autoInvoice ? C.primary : "#cbd5e1", position: "relative", cursor: "pointer", transition: "background 0.2s", flexShrink: 0 }}>
+                    <div style={{ position: "absolute", top: 2, left: autoInvoice ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Auto-generate invoice</div>
+                    <div style={{ fontSize: 10, color: C.faint, marginTop: 1 }}>
+                      {autoInvoice ? "Invoice will be created automatically" : "No invoice — create manually from Sales module"}
+                    </div>
+                  </div>
+                </label>
               </Section>
 
               {msg && (

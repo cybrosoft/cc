@@ -5,6 +5,10 @@ import { NextResponse }   from "next/server";
 import { prisma }         from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { BillingPeriod, PaymentStatus, Role, SubscriptionStatus } from "@prisma/client";
+import {
+  createSubscriptionInvoice,
+  buildSubscriptionLine,
+} from "@/lib/sales/create-subscription-invoice";
 
 function s(v: unknown): string { return typeof v === "string" ? v : ""; }
 
@@ -16,7 +20,6 @@ async function getEffectiveGroupId(userGroupId: string | null): Promise<string |
   return def?.id ?? null;
 }
 
-// Pro-rate price based on remaining days in parent subscription period
 function proRateCents(fullPriceCents: number, periodStart: Date, periodEnd: Date, addonStart: Date): number {
   const totalDays     = Math.max(1, Math.round((periodEnd.getTime() - periodStart.getTime()) / 86400000));
   const remainingDays = Math.max(0, Math.round((periodEnd.getTime() - addonStart.getTime()) / 86400000));
@@ -37,8 +40,9 @@ export async function POST(req: Request) {
     templateSlug?:    unknown;
     productDetails?:  unknown;
     productNote?:     unknown;
-    parentSubscriptionId?: unknown;  // if adding addon to existing active plan
+    parentSubscriptionId?: unknown;
     addonIds?: { productId: string; quantity?: number }[];
+    autoInvoice?: boolean; // NEW — default true
   } | null;
 
   const customerId           = s(body?.customerId).trim();
@@ -51,6 +55,7 @@ export async function POST(req: Request) {
   const quantity             = typeof body?.quantity === "number" ? body.quantity : 1;
   const addonIds             = Array.isArray(body?.addonIds) ? body.addonIds : [];
   const parentSubscriptionId = s(body?.parentSubscriptionId).trim() || null;
+  const autoInvoice          = body?.autoInvoice !== false; // default true
 
   if (!customerId) return NextResponse.json({ ok: false, error: "CUSTOMER_ID_REQUIRED" },  { status: 400 });
   if (!productId)  return NextResponse.json({ ok: false, error: "PRODUCT_ID_REQUIRED" },   { status: 400 });
@@ -72,7 +77,7 @@ export async function POST(req: Request) {
   // ── Validate product ───────────────────────────────────────────────────────
   const product = await prisma.product.findUnique({
     where:  { id: productId },
-    select: { id: true, isActive: true, type: true },
+    select: { id: true, isActive: true, type: true, name: true },
   });
   if (!product || !product.isActive)
     return NextResponse.json({ ok: false, error: "PRODUCT_NOT_FOUND" }, { status: 404 });
@@ -140,7 +145,6 @@ export async function POST(req: Request) {
       templateSlug,
       productDetails,
       productNote:         proRatedNote ?? productNote,
-      // If mid-subscription, inherit parent's period dates
       parentSubscriptionId: parentSubscriptionId || null,
       ...(isMidSubscription ? {
         currentPeriodStart: now,
@@ -151,43 +155,65 @@ export async function POST(req: Request) {
   });
 
   // ── Create addon subscription rows ─────────────────────────────────────────
+  // Track per-addon pricing for invoice line items
+  type AddonInvoiceData = {
+    subId:       string;
+    productId:   string;
+    productName: string;
+    quantity:    number;
+    priceCents:  number;
+    isProRated:  boolean;
+    proRatedCents: number | null;
+    remainingDays: number | null;
+    totalDays:     number | null;
+  };
   const addonSubIds: string[] = [];
+  const addonInvoiceData: AddonInvoiceData[] = [];
 
   if (addonIds.length > 0) {
     const addonProducts = await prisma.product.findMany({
       where:  { id: { in: addonIds.map(a => a.productId) }, isActive: true },
-      select: { id: true, type: true },
+      select: { id: true, type: true, name: true },
     });
-    const validAddonIds = new Set(addonProducts.map(p => p.id));
+    const validAddonMap = new Map(addonProducts.map(p => [p.id, p]));
 
     for (const addon of addonIds) {
-      if (!validAddonIds.has(addon.productId)) continue;
+      const addonProduct = validAddonMap.get(addon.productId);
+      if (!addonProduct) continue;
 
-      // Pro-rate addon if mid-subscription
       let addonNote: string | null = null;
-      if (isMidSubscription && parentSub!.currentPeriodStart && parentSub!.currentPeriodEnd) {
-        const addonPricing = await prisma.pricing.findFirst({
-          where: {
-            productId:       addon.productId,
-            marketId:        user.marketId,
-            customerGroupId: effectiveGroupId,
-            billingPeriod:   billingPeriod as BillingPeriod,
-            isActive:        true,
-          },
-          select: { priceCents: true },
-        });
-        if (addonPricing) {
-          const addonQty    = addon.quantity ?? 1;
-          const addonProRated = proRateCents(
-            addonPricing.priceCents * addonQty,
-            parentSub!.currentPeriodStart,
-            parentSub!.currentPeriodEnd,
-            now
-          );
-          const remainingDays = Math.round((parentSub!.currentPeriodEnd.getTime() - now.getTime()) / 86400000);
-          const totalDays     = Math.round((parentSub!.currentPeriodEnd.getTime() - parentSub!.currentPeriodStart.getTime()) / 86400000);
-          addonNote = `Pro-rated: ${remainingDays}/${totalDays} days. Suggested: ${(addonProRated / 100).toFixed(2)}`;
-        }
+      let addonProRatedCents: number | null = null;
+      let addonRemainingDays: number | null = null;
+      let addonTotalDays: number | null = null;
+      let addonCatalogCents = 0;
+
+      // Resolve addon pricing
+      const addonPricing = await prisma.pricing.findFirst({
+        where: {
+          productId:       addon.productId,
+          marketId:        user.marketId,
+          customerGroupId: effectiveGroupId,
+          billingPeriod:   billingPeriod as BillingPeriod,
+          isActive:        true,
+        },
+        select: { priceCents: true },
+      });
+
+      if (addonPricing) {
+        addonCatalogCents = addonPricing.priceCents * (addon.quantity ?? 1);
+      }
+
+      if (isMidSubscription && parentSub!.currentPeriodStart && parentSub!.currentPeriodEnd && addonPricing) {
+        const addonQty    = addon.quantity ?? 1;
+        addonProRatedCents = proRateCents(
+          addonPricing.priceCents * addonQty,
+          parentSub!.currentPeriodStart,
+          parentSub!.currentPeriodEnd,
+          now
+        );
+        addonRemainingDays = Math.round((parentSub!.currentPeriodEnd.getTime() - now.getTime()) / 86400000);
+        addonTotalDays     = Math.round((parentSub!.currentPeriodEnd.getTime() - parentSub!.currentPeriodStart.getTime()) / 86400000);
+        addonNote = `Pro-rated: ${addonRemainingDays}/${addonTotalDays} days. Suggested: ${(addonProRatedCents / 100).toFixed(2)}`;
       }
 
       const addonSub = await prisma.subscription.create({
@@ -208,10 +234,89 @@ export async function POST(req: Request) {
         },
         select: { id: true },
       });
+
       addonSubIds.push(addonSub.id);
+      addonInvoiceData.push({
+        subId:         addonSub.id,
+        productId:     addon.productId,
+        productName:   addonProduct.name,
+        quantity:      addon.quantity ?? 1,
+        priceCents:    addonCatalogCents,
+        isProRated:    isMidSubscription,
+        proRatedCents: addonProRatedCents,
+        remainingDays: addonRemainingDays,
+        totalDays:     addonTotalDays,
+      });
     }
   }
 
+  // ── Auto-generate invoice ──────────────────────────────────────────────────
+  let invoiceResult: { ok: boolean; docId?: string; docNum?: string; reason?: string } = { ok: false, reason: "skipped" };
+
+  if (autoInvoice) {
+    // Resolve plan pricing for invoice
+    const planPricing = await prisma.pricing.findFirst({
+      where: {
+        productId:       product.id,
+        marketId:        user.marketId,
+        customerGroupId: effectiveGroupId,
+        billingPeriod:   billingPeriod as BillingPeriod,
+        isActive:        true,
+      },
+      select: { priceCents: true },
+    });
+
+    const invoiceLines = [];
+
+    // Plan line — use pro-rated cents if mid-subscription
+    if (planPricing || proRatedCents) {
+      const unitPrice = isMidSubscription && proRatedCents
+        ? proRatedCents
+        : (planPricing?.priceCents ?? 0) * quantity;
+
+      invoiceLines.push(
+        buildSubscriptionLine({
+          productId:      product.id,
+          productName:    product.name,
+          billingPeriod,
+          quantity:       isMidSubscription ? 1 : quantity, // pro-rated = already includes qty
+          unitPriceCents: unitPrice,
+        })
+      );
+    }
+
+    // Addon lines
+    for (const a of addonInvoiceData) {
+      const unitPrice = a.isProRated && a.proRatedCents
+        ? a.proRatedCents
+        : a.priceCents;
+
+      if (unitPrice > 0) {
+        invoiceLines.push(
+          buildSubscriptionLine({
+            productId:      a.productId,
+            productName:    a.productName,
+            billingPeriod,
+            quantity:       a.isProRated ? 1 : a.quantity,
+            unitPriceCents: unitPrice,
+          })
+        );
+      }
+    }
+
+    if (invoiceLines.length > 0) {
+      invoiceResult = await createSubscriptionInvoice({
+        actorId:         admin.id,
+        customerId:      user.id,
+        marketId:        user.marketId,
+        referenceNumber: planSub.id,
+        subject:         `Subscription — ${product.name}`,
+        lines:           invoiceLines,
+      });
+    }
+  }
+
+  // ── Audit log ──────────────────────────────────────────────────────────────
   await prisma.auditLog.create({
     data: {
       actorUserId:  admin.id,
@@ -222,8 +327,10 @@ export async function POST(req: Request) {
         customerId, productId, billingPeriod,
         isMidSubscription,
         proRatedCents,
-        addonCount:  addonSubIds.length,
+        addonCount:   addonSubIds.length,
         addonSubIds,
+        autoInvoice,
+        invoiceDocNum: invoiceResult.ok ? (invoiceResult as any).docNum : null,
       }),
     },
   });
@@ -234,5 +341,8 @@ export async function POST(req: Request) {
     addonSubscriptionIds: addonSubIds,
     isMidSubscription,
     proRatedCents,
+    invoice: invoiceResult.ok
+      ? { docId: (invoiceResult as any).docId, docNum: (invoiceResult as any).docNum }
+      : null,
   });
 }

@@ -5,15 +5,18 @@ import { NextResponse }   from "next/server";
 import { prisma }         from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { BillingPeriod, PaymentStatus, SubscriptionStatus } from "@prisma/client";
+import {
+  createSubscriptionInvoice,
+  buildRenewalLine,
+} from "@/lib/sales/create-subscription-invoice";
 
 function s(v: unknown): string { return typeof v === "string" ? v : ""; }
 
-// Calculate next period end based on billing period
 function calcPeriodEnd(start: Date, billingPeriod: string): Date {
   const d = new Date(start);
   switch (billingPeriod) {
-    case "MONTHLY":    d.setMonth(d.getMonth() + 1);    break;
-    case "SIX_MONTHS": d.setMonth(d.getMonth() + 6);    break;
+    case "MONTHLY":    d.setMonth(d.getMonth() + 1);       break;
+    case "SIX_MONTHS": d.setMonth(d.getMonth() + 6);       break;
     case "YEARLY":     d.setFullYear(d.getFullYear() + 1); break;
     case "ONE_TIME":   d.setFullYear(d.getFullYear() + 99); break;
     default:           d.setFullYear(d.getFullYear() + 1);
@@ -21,7 +24,7 @@ function calcPeriodEnd(start: Date, billingPeriod: string): Date {
   return d;
 }
 
-// GET — fetch renewal info: current period, history, resolved prices, addons
+// GET — fetch renewal info
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const admin = await getSessionUser();
   if (!admin || admin.role !== "ADMIN")
@@ -67,19 +70,16 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const currency = sub.market.defaultCurrency ?? "SAR";
   const renewBp  = sub.renewalBillingPeriod ?? sub.billingPeriod;
 
-  // Resolve plan price for renewal billing period
   const planPricing = cgId ? await prisma.pricing.findFirst({
     where: { productId: sub.productId, marketId: sub.marketId, customerGroupId: cgId, billingPeriod: renewBp, isActive: true },
     select: { priceCents: true },
   }) : null;
 
-  // Resolve all available billing periods with prices
   const allPricing = cgId ? await prisma.pricing.findMany({
     where: { productId: sub.productId, marketId: sub.marketId, customerGroupId: cgId, isActive: true },
     select: { billingPeriod: true, priceCents: true },
   }) : [];
 
-  // Resolve addon prices
   const addonPrices: { id: string; name: string; key: string; priceCents: number | null; qty: number }[] = [];
   for (const addon of sub.childSubscriptions) {
     let price: number | null = null;
@@ -100,29 +100,28 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const addonTotal  = addonPrices.reduce((a, b) => a + (b.priceCents ?? 0), 0);
   const grandTotal  = planCents != null ? planCents + addonTotal : null;
 
-  // Next period
   const nextStart = sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd) : new Date();
   const nextEnd   = calcPeriodEnd(nextStart, renewBp);
 
   return NextResponse.json({
     ok: true,
     data: {
-      currentPeriodStart: sub.currentPeriodStart,
-      currentPeriodEnd:   sub.currentPeriodEnd,
-      autoRenew:          sub.autoRenew,
-      billingPeriod:      sub.billingPeriod,
+      currentPeriodStart:   sub.currentPeriodStart,
+      currentPeriodEnd:     sub.currentPeriodEnd,
+      autoRenew:            sub.autoRenew,
+      billingPeriod:        sub.billingPeriod,
       renewalBillingPeriod: renewBp,
-      renewalPriceCents:  sub.renewalPriceCents,
-      nextPeriodStart:    nextStart,
-      nextPeriodEnd:      nextEnd,
-      planPriceCents:     planCents,
+      renewalPriceCents:    sub.renewalPriceCents,
+      nextPeriodStart:      nextStart,
+      nextPeriodEnd:        nextEnd,
+      planPriceCents:       planCents,
       addonPrices,
-      addonTotalCents:    addonTotal,
-      grandTotalCents:    grandTotal,
+      addonTotalCents:      addonTotal,
+      grandTotalCents:      grandTotal,
       currency,
-      availablePeriods:   allPricing.map(p => ({ billingPeriod: p.billingPeriod, priceCents: p.priceCents })),
-      addons:             sub.childSubscriptions,
-      renewals:           sub.renewals,
+      availablePeriods:     allPricing.map(p => ({ billingPeriod: p.billingPeriod, priceCents: p.priceCents })),
+      addons:               sub.childSubscriptions,
+      renewals:             sub.renewals,
     },
   });
 }
@@ -136,18 +135,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
 
   const body = (await req.json().catch(() => null)) as {
-    action?:              unknown; // "renew" | "update-settings"
-    // For "update-settings"
-    autoRenew?:           unknown;
+    action?:               unknown;
+    autoRenew?:            unknown;
     renewalBillingPeriod?: unknown;
-    renewalPriceCents?:   unknown;
-    // For "renew"
-    billingPeriod?:       unknown;
-    overridePriceCents?:  unknown;
-    overrideNote?:        unknown;
-    renewAddonIds?:       unknown; // string[] — which addons to renew
-    notes?:               unknown;
-    isAutomatic?:         unknown;
+    renewalPriceCents?:    unknown;
+    billingPeriod?:        unknown;
+    overridePriceCents?:   unknown;
+    overrideNote?:         unknown;
+    renewAddonIds?:        unknown;
+    notes?:                unknown;
+    isAutomatic?:          unknown;
+    autoInvoice?:          unknown; // default true
   } | null;
 
   const action = s(body?.action).trim();
@@ -160,10 +158,18 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       userId: true, autoRenew: true,
       user: { select: { customerGroupId: true } },
       market: { select: { defaultCurrency: true } },
+      product: { select: { id: true, name: true } },
       childSubscriptions: {
         where:  { status: { not: SubscriptionStatus.CANCELED } },
-        select: { id: true, productId: true, status: true, quantity: true,
-                  product: { select: { addonPricingType: true, addonPercentage: true } } },
+        select: {
+          id: true, productId: true, status: true, quantity: true,
+          product: {
+            select: {
+              id: true, name: true,
+              addonPricingType: true, addonPercentage: true,
+            },
+          },
+        },
       },
     },
   });
@@ -198,10 +204,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       ? bpRaw as BillingPeriod
       : sub.billingPeriod;
 
-    const cgId     = sub.user.customerGroupId;
-    const currency = sub.market.defaultCurrency ?? "SAR";
+    const cgId        = sub.user.customerGroupId;
+    const currency    = sub.market.defaultCurrency ?? "SAR";
+    const isAutomatic = body?.isAutomatic === true;
+    const autoInvoice = body?.autoInvoice !== false; // default true
 
-    // Resolve plan price
     const planPricing = cgId ? await prisma.pricing.findFirst({
       where: { productId: sub.productId, marketId: sub.marketId, customerGroupId: cgId, billingPeriod: bp, isActive: true },
       select: { priceCents: true },
@@ -211,12 +218,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       ? body.overridePriceCents : null;
     const planCents = overrideCents ?? planPricing?.priceCents ?? 0;
 
-    // Which addons to renew
     const renewAddonIds = Array.isArray(body?.renewAddonIds)
       ? body.renewAddonIds as string[]
-      : sub.childSubscriptions.map(a => a.id); // default: all
+      : sub.childSubscriptions.map(a => a.id);
 
-    // Resolve addon prices
     let addonsTotalCents = 0;
     for (const addon of sub.childSubscriptions.filter(a => renewAddonIds.includes(a.id))) {
       if (addon.product.addonPricingType === "percentage") {
@@ -231,30 +236,23 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     }
 
     const totalCents = planCents + addonsTotalCents;
+    const newStart   = sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd) : new Date();
+    const newEnd     = calcPeriodEnd(newStart, bp);
 
-    // Calculate new period
-    const newStart = sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd) : new Date();
-    const newEnd   = calcPeriodEnd(newStart, bp);
-
-    const isAutomatic = body?.isAutomatic === true;
-
-    // Run in transaction
     await prisma.$transaction(async tx => {
-      // 1. Update subscription period + status
       await tx.subscription.update({
         where: { id },
         data:  {
-          billingPeriod:      bp,
-          currentPeriodStart: newStart,
-          currentPeriodEnd:   newEnd,
-          status:             SubscriptionStatus.PENDING_PAYMENT,
-          paymentStatus:      PaymentStatus.UNPAID,
-          invoiceNumber:      null,
+          billingPeriod:          bp,
+          currentPeriodStart:     newStart,
+          currentPeriodEnd:       newEnd,
+          status:                 SubscriptionStatus.PENDING_PAYMENT,
+          paymentStatus:          PaymentStatus.UNPAID,
+          invoiceNumber:          null,
           manualPaymentReference: null,
         },
       });
 
-      // 2. Update selected addon subscriptions
       for (const addonId of renewAddonIds) {
         await tx.subscription.update({
           where: { id: addonId },
@@ -268,7 +266,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         });
       }
 
-      // 3. Write renewal log
       await tx.subscriptionRenewal.create({
         data: {
           subscriptionId:  id,
@@ -288,7 +285,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         },
       });
 
-      // 4. Write status log
       await tx.subscriptionStatusLog.create({
         data: {
           subscriptionId:  id,
@@ -300,7 +296,71 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       });
     });
 
-    return NextResponse.json({ ok: true, action: "renewed", newStart, newEnd, totalCents, currency });
+    // ── Auto-generate invoice ─────────────────────────────────────────────────
+    let invoiceResult: { ok: boolean; docNum?: string } = { ok: false };
+
+    if (autoInvoice && planCents > 0) {
+      const periodStartStr = newStart.toISOString().split("T")[0];
+      const periodEndStr   = newEnd.toISOString().split("T")[0];
+      const invoiceLines   = [];
+
+      // Plan line
+      if (sub.product) {
+        invoiceLines.push(buildRenewalLine({
+          productId:      sub.product.id,
+          productName:    sub.product.name,
+          billingPeriod:  bp,
+          quantity:       1,
+          unitPriceCents: planPricing?.priceCents ?? planCents,
+          overrideCents:  overrideCents,
+          periodStart:    periodStartStr,
+          periodEnd:      periodEndStr,
+        }));
+      }
+
+      // Addon lines
+      for (const addon of sub.childSubscriptions.filter(a => renewAddonIds.includes(a.id))) {
+        let addonPrice = 0;
+        if (addon.product.addonPricingType === "percentage") {
+          addonPrice = Math.round(planCents * (Number(addon.product.addonPercentage ?? 0) / 100));
+        } else {
+          const ap = cgId ? await prisma.pricing.findFirst({
+            where: { productId: addon.productId, marketId: sub.marketId, customerGroupId: cgId, billingPeriod: bp, isActive: true },
+            select: { priceCents: true },
+          }) : null;
+          addonPrice = (ap?.priceCents ?? 0) * (addon.quantity ?? 1);
+        }
+
+        if (addonPrice > 0) {
+          invoiceLines.push(buildRenewalLine({
+            productId:      addon.product.id,
+            productName:    addon.product.name,
+            billingPeriod:  bp,
+            quantity:       addon.quantity ?? 1,
+            unitPriceCents: addonPrice,
+            periodStart:    periodStartStr,
+            periodEnd:      periodEndStr,
+          }));
+        }
+      }
+
+      if (invoiceLines.length > 0) {
+        invoiceResult = await createSubscriptionInvoice({
+          actorId:         isAutomatic ? sub.userId : admin.id,
+          customerId:      sub.userId,
+          marketId:        sub.marketId,
+          referenceNumber: id,
+          subject:         `Renewal — ${isAutomatic ? "Auto" : "Manual"} (${sub.product?.name ?? ""})`,
+          internalNote:    isAutomatic ? "Auto-generated on auto-renewal" : undefined,
+          lines:           invoiceLines,
+        });
+      }
+    }
+
+    return NextResponse.json({
+      ok: true, action: "renewed", newStart, newEnd, totalCents, currency,
+      invoice: invoiceResult.ok ? { docNum: (invoiceResult as any).docNum } : null,
+    });
   }
 
   return NextResponse.json({ ok: false, error: "INVALID_ACTION" }, { status: 400 });

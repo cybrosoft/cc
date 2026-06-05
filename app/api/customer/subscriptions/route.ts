@@ -10,19 +10,25 @@ export async function GET() {
 
   const data = await getCachedCustomerData(user.id);
 
+  // Strip paymentStatus — not shown to customers (invoices section handles billing)
+  function stripPayment<T extends { paymentStatus?: unknown }>(s: T) {
+    const { paymentStatus: _p, ...rest } = s;
+    return rest;
+  }
+
   // Nest addons under their parent plan
   const plans  = data.subscriptions.filter(s => !s.parentSubId);
   const addons = data.subscriptions.filter(s =>  s.parentSubId);
 
-  const addonsByParent = new Map<string, typeof addons>();
+  const addonsByParent = new Map<string, ReturnType<typeof stripPayment>[]>();
   for (const addon of addons) {
     const list = addonsByParent.get(addon.parentSubId!) ?? [];
-    list.push(addon);
+    list.push(stripPayment(addon));
     addonsByParent.set(addon.parentSubId!, list);
   }
 
   const nested = plans.map(plan => ({
-    ...plan,
+    ...stripPayment(plan),
     addons: addonsByParent.get(plan.id) ?? [],
   }));
 

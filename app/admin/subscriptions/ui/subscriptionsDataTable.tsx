@@ -920,9 +920,11 @@ function detectVpsProvider(sub: SubRow): "ORACLE" | "HETZNER" | null {
   if (!tagKeys.some(k => k === "server" || k === "vps")) return null;
   if (tagKeys.includes("or")) return "ORACLE";
   if (tagKeys.includes("hz")) return "HETZNER";
-  // fallback to category key
-  if (sub.product.category?.key === "servers-o") return "ORACLE";
-  if (sub.product.category?.key === "servers-g") return "HETZNER";
+// fallback: check existing server record
+  if (sub.servers.some(s => s.oracleInstanceId)) return "ORACLE";
+  if (sub.servers.some(s => s.hetznerServerId))  return "HETZNER";
+  // fallback: unified servers category
+  if (sub.product.category?.key === "servers") return "ORACLE";
   return null;
 }
 
@@ -1806,7 +1808,7 @@ type TabKey = "billing" | "details" | "addons" | "vps" | "status" | "renewal";
 
 function ExpandedPanel({ sub, addons, onChanged }: { sub: SubRow; addons: SubRow[]; onChanged: () => void }) {
   const [tab, setTab] = useState<TabKey>("billing");
-  const isServer = sub.product.category?.key === "servers-o" || sub.product.category?.key === "servers-g";
+  const isServer = detectVpsProvider(sub) !== null;
   const currency  = sub.currency ?? (sub.market.name.includes("SAR") ? "SAR" : "USD");
 
   // ── Fetch all tab data once on expand ──────────────────────────────────────

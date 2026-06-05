@@ -14,7 +14,7 @@ interface PageUser {
 interface AddonRow {
   id: string; productName: string; productKey: string | null;
   productType: string; unitLabel: string | null;
-  billingPeriod: string; status: string; paymentStatus: string;
+  billingPeriod: string; status: string;
   quantity: number;
   currentPeriodStart: string | null; currentPeriodEnd: string | null;
 }
@@ -62,21 +62,6 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-// ── Payment badge ─────────────────────────────────────────────────────────────
-function PaymentBadge({ status }: { status: string }) {
-  if (status === "PAID") return null;
-  const map: Record<string, { bg: string; color: string }> = {
-    UNPAID: { bg: "#fdf0ef", color: "#991b1b" },
-    FAILED: { bg: "#fdf0ef", color: "#991b1b" },
-  };
-  const s = map[status] ?? { bg: "#f3f4f6", color: "#6b7280" };
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", height: 20, padding: "0 8px", borderRadius: 10, fontSize: 11, fontWeight: 600, letterSpacing: "0.03em", background: s.bg, color: s.color, textTransform: "uppercase", whiteSpace: "nowrap" }}>
-      {status}
-    </span>
-  );
-}
-
 // ── Skeleton shimmer ──────────────────────────────────────────────────────────
 function Sk({ w = "100%", h = 13 }: { w?: string | number; h?: number }) {
   return <span className="cy-shimmer" style={{ width: w, height: h, display: "inline-block" }} />;
@@ -88,7 +73,6 @@ function AddonRow({ addon }: { addon: AddonRow }) {
     <Link href={`/dashboard/subscriptions/${addon.id}`}
       style={{ display: "flex", alignItems: "center", padding: "8px 14px 8px 36px", borderBottom: "1px solid #f9fafb", textDecoration: "none", background: "#fafafa", transition: "background 0.1s" }}
       className="cy-sub-row">
-      {/* Indent line */}
       <div style={{ width: 2, height: "100%", background: "#e5e7eb", marginRight: 10, borderRadius: 1, alignSelf: "stretch" }} />
       <div style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
         <div style={{ fontSize: 12.5, color: "#374151", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -115,7 +99,6 @@ function SubCard({ sub }: { sub: SubRow }) {
 
   return (
     <div style={{ border: "1px solid #e5e7eb", background: "#fff", marginBottom: 10, overflow: "hidden" }}>
-      {/* Main row */}
       <Link href={`/dashboard/subscriptions/${sub.id}`}
         style={{ display: "flex", alignItems: "center", padding: "12px 14px", textDecoration: "none", transition: "background 0.1s" }}
         className="cy-sub-row">
@@ -149,12 +132,9 @@ function SubCard({ sub }: { sub: SubRow }) {
           </div>
         </div>
 
-        {/* Right: dates + status */}
+        {/* Right: dates + status only (no payment badge) */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, flexShrink: 0 }}>
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <StatusBadge status={sub.status} />
-            <PaymentBadge status={sub.paymentStatus} />
-          </div>
+          <StatusBadge status={sub.status} />
           <div style={{ fontSize: 11.5, color: "#9ca3af" }}>
             {fmtDate(sub.currentPeriodStart)} → {fmtDate(sub.currentPeriodEnd)}
           </div>
@@ -188,7 +168,6 @@ export function SubscriptionsClient({ user }: { user: PageUser }) {
       .finally(() => setLoading(false));
   }, []);
 
-  // Count per tab
   const counts: Record<FilterTab, number> = {
     ALL:             subs.length,
     ACTIVE:          subs.filter(s => s.status === "ACTIVE").length,
@@ -233,13 +212,11 @@ export function SubscriptionsClient({ user }: { user: PageUser }) {
               <button key={t} className="cy-tab"
                 onClick={() => setTab(t)}
                 style={{
-                  padding: "8px 14px",
-                  fontSize: 13,
+                  padding: "8px 14px", fontSize: 13,
                   fontWeight: tab === t ? 600 : 400,
                   color: tab === t ? colors.primary : "#6b7280",
                   borderBottom: tab === t ? `2px solid ${colors.primary}` : "2px solid transparent",
-                  marginBottom: -1,
-                  transition: "color 0.12s",
+                  marginBottom: -1, transition: "color 0.12s",
                 }}>
                 {TAB_LABELS[t]}
                 {counts[t] > 0 && (
@@ -253,7 +230,6 @@ export function SubscriptionsClient({ user }: { user: PageUser }) {
 
           {/* List */}
           {loading ? (
-            // Skeleton cards
             [1, 2, 3, 4].map(i => (
               <div key={i} style={{ border: "1px solid #e5e7eb", background: "#fff", padding: "14px", marginBottom: 10 }}>
                 <Sk w="45%" h={14} />

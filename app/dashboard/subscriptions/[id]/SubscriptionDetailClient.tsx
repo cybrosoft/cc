@@ -11,7 +11,7 @@ interface PageUser { id: string; email: string; market: string | null; currency:
 interface AddonRow {
   id: string; productName: string; productKey: string | null;
   productType: string; unitLabel: string | null; billingPeriod: string;
-  status: string; paymentStatus: string; quantity: number;
+  status: string; quantity: number;
   currentPeriodStart: string | null; currentPeriodEnd: string | null;
 }
 
@@ -26,7 +26,7 @@ interface ServerDetail {
 interface SubDetail {
   id: string; productName: string; productKey: string | null;
   productType: string; unitLabel: string | null; billingPeriod: string;
-  status: string; paymentStatus: string; quantity: number;
+  status: string; quantity: number;
   locationCode: string | null; templateSlug: string | null;
   productNote: string | null; productDetails: string | null;
   receiptUrl: string | null; parentSubId: string | null;
@@ -93,7 +93,6 @@ export function SubscriptionDetailClient({
 }) {
   const [liveServer, setLiveServer] = useState<ServerDetail | null>(sub.server);
 
-  // Refresh live server details in background (separate from cached page data)
   useEffect(() => {
     if (!sub.server) return;
     fetch(`/api/customer/subscriptions/${sub.id}`)
@@ -138,9 +137,6 @@ export function SubscriptionDetailClient({
                 <h1 className="cy-page-title" style={{ margin:"0 0 6px" }}>{sub.productName}</h1>
                 <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
                   <StatusBadge status={sub.status} />
-                  {sub.paymentStatus !== "PAID" && (
-                    <span style={{ fontSize:11.5, fontWeight:600, color:"#dc2626", textTransform:"uppercase", letterSpacing:"0.03em" }}>{sub.paymentStatus}</span>
-                  )}
                   {sub.expiringSoon && !expired && days !== null && (
                     <span style={{ fontSize:11.5, fontWeight:600, color:"#b45309" }}>Expires in {days} day{days!==1?"s":""}</span>
                   )}
@@ -230,7 +226,7 @@ export function SubscriptionDetailClient({
             </Section>
           )}
 
-          {/* Invoices placeholder — will be filled when Sales module is built */}
+          {/* Invoices placeholder */}
           <Section title="Invoices">
             <div style={{ padding:"20px 0", textAlign:"center", fontSize:13, color:"#9ca3af" }}>
               Invoice history will appear here once the billing module is set up.

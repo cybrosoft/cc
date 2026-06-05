@@ -4,10 +4,13 @@ export const runtime = "nodejs";
 import { NextResponse }   from "next/server";
 import { prisma }         from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth/get-session-user";
+import {
+  createSubscriptionInvoice,
+  buildProRatedLine,
+} from "@/lib/sales/create-subscription-invoice";
 
 function s(v: unknown): string { return typeof v === "string" ? v : ""; }
 
-// Pro-rate: price per unit × extra units × remaining days / total days
 function calcProRateCents(
   pricePerUnitCents: number,
   extraUnits:        number,
@@ -50,7 +53,6 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   if (!sub)
     return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
 
-  // Check it's a metered product
   const isMetered = sub.product.tags.some(t => t.key === "metered");
   if (!isMetered)
     return NextResponse.json({ ok: false, error: "NOT_A_METERED_SUBSCRIPTION" }, { status: 400 });
@@ -58,7 +60,6 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const cgId     = sub.user.customerGroupId;
   const currency = sub.market.defaultCurrency ?? "SAR";
 
-  // Resolve price per unit from Pricing table
   const pricing = cgId ? await prisma.pricing.findFirst({
     where: {
       productId:       sub.productId,
@@ -74,7 +75,6 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const currentQty        = sub.quantity ?? 1;
   const now               = new Date();
 
-  // Pro-rate preview if qty provided
   let proRateCents: number | null = null;
   let proRateDetails: string | null = null;
 
@@ -116,8 +116,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
 
   const body = (await req.json().catch(() => null)) as {
-    newQuantity?: unknown;
-    note?:        unknown;
+    newQuantity?:  unknown;
+    note?:         unknown;
+    autoInvoice?:  unknown; // default true — only applies to upgrades
   } | null;
 
   const newQty = typeof body?.newQuantity === "number" ? Math.max(1, body.newQuantity) : null;
@@ -129,10 +130,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     select: {
       id: true, quantity: true, billingPeriod: true, productNote: true,
       currentPeriodStart: true, currentPeriodEnd: true,
-      marketId: true, productId: true,
+      marketId: true, productId: true, userId: true,
       user: { select: { customerGroupId: true } },
       market: { select: { defaultCurrency: true } },
-      product: { select: { unitLabel: true, tags: { select: { key: true } } } },
+      product: {
+        select: {
+          id: true, name: true, unitLabel: true,
+          tags: { select: { key: true } },
+        },
+      },
     },
   });
 
@@ -143,19 +149,21 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!isMetered)
     return NextResponse.json({ ok: false, error: "NOT_A_METERED_SUBSCRIPTION" }, { status: 400 });
 
-  const currentQty    = sub.quantity ?? 1;
-  const cgId          = sub.user.customerGroupId;
-  const currency      = sub.market.defaultCurrency ?? "SAR";
-  const unitLabel     = sub.product.unitLabel ?? "unit";
-  const isUpgrade     = newQty > currentQty;
-  const isDowngrade   = newQty < currentQty;
-  const now           = new Date();
+  const currentQty  = sub.quantity ?? 1;
+  const cgId        = sub.user.customerGroupId;
+  const currency    = sub.market.defaultCurrency ?? "SAR";
+  const unitLabel   = sub.product.unitLabel ?? "unit";
+  const isUpgrade   = newQty > currentQty;
+  const isDowngrade = newQty < currentQty;
+  const now         = new Date();
+  const autoInvoice = body?.autoInvoice !== false; // default true
 
-  let proRateCents    = 0;
-  let proRateNote     = "";
+  let proRateCents = 0;
+  let proRateNote  = "";
+  let pricingRow: { priceCents: number } | null = null;
 
   if (isUpgrade && sub.currentPeriodStart && sub.currentPeriodEnd) {
-    const pricing = cgId ? await prisma.pricing.findFirst({
+    pricingRow = cgId ? await prisma.pricing.findFirst({
       where: {
         productId:       sub.productId,
         marketId:        sub.marketId,
@@ -166,12 +174,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       select: { priceCents: true },
     }) : null;
 
-    if (pricing) {
+    if (pricingRow) {
       const extraUnits    = newQty - currentQty;
       const totalDays     = Math.max(1, Math.round((sub.currentPeriodEnd.getTime() - sub.currentPeriodStart.getTime()) / 86400000));
       const remainingDays = Math.max(0, Math.round((sub.currentPeriodEnd.getTime() - now.getTime()) / 86400000));
-      proRateCents = calcProRateCents(pricing.priceCents, extraUnits, sub.currentPeriodStart, sub.currentPeriodEnd, now);
-      proRateNote = `Upgrade: +${extraUnits} ${unitLabel}${extraUnits > 1 ? "s" : ""} (${currentQty}→${newQty}). Pro-rated ${remainingDays}/${totalDays} days = ${(proRateCents / 100).toFixed(2)} ${currency}.`;
+      proRateCents = calcProRateCents(pricingRow.priceCents, extraUnits, sub.currentPeriodStart, sub.currentPeriodEnd, now);
+      proRateNote  = `Upgrade: +${extraUnits} ${unitLabel}${extraUnits > 1 ? "s" : ""} (${currentQty}→${newQty}). Pro-rated ${remainingDays}/${totalDays} days = ${(proRateCents / 100).toFixed(2)} ${currency}.`;
     }
   } else if (isDowngrade) {
     proRateNote = `Downgrade: ${currentQty}→${newQty} ${unitLabel}${newQty > 1 ? "s" : ""}. No charge. Renewal will use new quantity.`;
@@ -180,16 +188,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const customNote   = s(body?.note).trim();
   const combinedNote = [proRateNote, customNote].filter(Boolean).join(" ");
 
-  // Update subscription quantity + append note
-  const existingNote   = sub.productNote ?? "";
-  const updatedNote    = [existingNote, combinedNote].filter(Boolean).join("\n");
+  const existingNote = sub.productNote ?? "";
+  const updatedNote  = [existingNote, combinedNote].filter(Boolean).join("\n");
 
   await prisma.subscription.update({
     where: { id },
-    data:  {
-      quantity:    newQty,
-      productNote: updatedNote || null,
-    },
+    data:  { quantity: newQty, productNote: updatedNote || null },
   });
 
   await prisma.auditLog.create({
@@ -202,6 +206,35 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     },
   });
 
+  // ── Auto-generate pro-rated invoice for upgrades only ─────────────────────
+  let invoiceResult: { ok: boolean; docNum?: string } = { ok: false };
+
+  if (autoInvoice && isUpgrade && proRateCents > 0 && sub.currentPeriodStart && sub.currentPeriodEnd) {
+    const extraUnits    = newQty - currentQty;
+    const totalDays     = Math.max(1, Math.round((sub.currentPeriodEnd.getTime() - sub.currentPeriodStart.getTime()) / 86400000));
+    const remainingDays = Math.max(0, Math.round((sub.currentPeriodEnd.getTime() - now.getTime()) / 86400000));
+
+    const invoiceLine = buildProRatedLine({
+      productId:     sub.product.id,
+      productName:   sub.product.name,
+      billingPeriod: sub.billingPeriod,
+      remainingDays,
+      totalDays,
+      proRatedCents: proRateCents,
+      addedQty:      extraUnits,
+    });
+
+    invoiceResult = await createSubscriptionInvoice({
+      actorId:         admin.id,
+      customerId:      sub.userId,
+      marketId:        sub.marketId,
+      referenceNumber: id,
+      subject:         `Quantity upgrade — ${sub.product.name}`,
+      internalNote:    `Upgraded from ${currentQty} to ${newQty} ${unitLabel}s. Pro-rated charge.`,
+      lines:           [invoiceLine],
+    });
+  }
+
   return NextResponse.json({
     ok:           true,
     newQuantity:  newQty,
@@ -210,5 +243,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     proRateCents,
     currency,
     note:         combinedNote,
+    invoice:      invoiceResult.ok ? { docNum: (invoiceResult as any).docNum } : null,
   });
 }
