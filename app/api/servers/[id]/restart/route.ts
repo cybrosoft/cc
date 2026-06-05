@@ -3,7 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth/get-session-user";
-import { rebootHetznerServer, getHetznerServer } from "@/lib/hetzner/hetzner-client";
+import { rebootServer as rebootHetznerServer, getServerCore as getHetznerServer } from "@/lib/hetzner/servers";
 import { SubscriptionStatus } from "@prisma/client";
 
 type Params = { id: string };

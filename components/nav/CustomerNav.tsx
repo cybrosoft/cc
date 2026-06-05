@@ -222,9 +222,9 @@ function SidebarContent({
   needsOnboarding?: boolean;
   userStatus?: string;
 }) {
-  const searchParams    = useSearchParams();
-  const fromParam       = searchParams?.get("from") ?? "";
-  const fromHref        = FROM_MAP[fromParam] ?? undefined;
+  const searchParams = useSearchParams();
+  const fromParam    = searchParams?.get("from") ?? "";
+  const fromHref     = FROM_MAP[fromParam] ?? undefined;
 
   const bv = billingVisibility ?? { hasIssuedPO: false, hasDeliveryNotes: false, hasProformaInvoices: false };
 
@@ -238,19 +238,19 @@ function SidebarContent({
   ];
 
   const NAV: NavItem[] = [
-    { id: "dashboard",  label: "Dashboard",          icon: "dashboard", href: "/dashboard" },
-    { id: "servers", label: "Compute Instances", icon: "server", href: "/dashboard/servers" },
-    { id: "servers",    label: "GPU Instances",       icon: "ai",    href: "/dashboard/gpu" },
-    { id: "storage",    label: "Storage",             icon: "documents", href: "/dashboard/storage" },
-    { id: "backup",     label: "Backup",              icon: "backup",    href: "/dashboard/backup" },
-    { id: "network", label: "Network & Public IP", icon: "network", href: "/dashboard/network" },
-    { id: "servers", label: "Database", icon: "database", href: "/dashboard/database" },
-    { id: "servers", label: "Hybrid & Multi Cloud", icon: "cloud", href: "/dashboard/multicloud" },
-    { id: "servers",    label: "Analytics & AI",       icon: "database",    href: "/dashboard/aai" },
-    { id: "email",      label: "Email & Productivity",icon: "mail",      href: "/dashboard/email" },
-    { id: "security",   label: "Security",            icon: "lock",      href: "/dashboard/security" },
-    { id: "domains",    label: "Domain & DNS",        icon: "domain",    href: "/dashboard/domains" },
-    { id: "services",   label: "Other Services",      icon: "catalogue", href: "/dashboard/services" },
+    { id: "dashboard",   label: "Dashboard",            icon: "dashboard",  href: "/dashboard" },
+    { id: "compute",     label: "Compute Instances",    icon: "server",     href: "/dashboard/servers" },
+    { id: "gpu",         label: "GPU Instances",        icon: "cpu",        href: "/dashboard/gpu" },
+    { id: "storage",     label: "Storage",              icon: "hardDrive",  href: "/dashboard/storage" },
+    { id: "backup",      label: "Backup",               icon: "backup",     href: "/dashboard/backup" },
+    { id: "network",     label: "Network & Public IP",  icon: "link",       href: "/dashboard/network" },
+    { id: "database",    label: "Database",             icon: "database",   href: "/dashboard/database" },
+    { id: "multicloud",  label: "Hybrid & Multi Cloud", icon: "cloud",      href: "/dashboard/multicloud" },
+    { id: "aai",         label: "Analytics & AI",       icon: "sales",      href: "/dashboard/aai" },
+    { id: "email",       label: "Email & Productivity", icon: "mail",       href: "/dashboard/email" },
+    { id: "security",    label: "Security",             icon: "lock",       href: "/dashboard/security" },
+    { id: "domains",     label: "Domain & DNS",         icon: "globe",      href: "/dashboard/domains" },
+    { id: "services",    label: "Other Services",       icon: "catalogue",  href: "/dashboard/services" },
     {
       id: "billing", label: "Billing", icon: "billing",
       children: billingChildren,
@@ -262,7 +262,7 @@ function SidebarContent({
       children: [
         { id: "profile",       label: "Profile & Settings",    icon: "settings",      href: "/dashboard/profile" },
         { id: "notifications", label: "Notification Settings", icon: "notifications", href: "/dashboard/notifications" },
-        { id: "logout", label: "Sign Out", icon: "logout", href: "#", mobileOnly: true, isLogout: true },
+        { id: "logout",        label: "Sign Out",              icon: "logout",        href: "#", mobileOnly: true, isLogout: true },
       ],
     },
   ];
@@ -368,7 +368,7 @@ export function CustomerNav({
       `}</style>
 
       {/* Desktop sidebar */}
-      <aside className="cy-sidebar-desktop" style={{
+      <aside key="desktop" className="cy-sidebar-desktop" style={{
         width: 240, minWidth: 240, flexDirection: "column",
         background: "#ffffff", overflow: "hidden", height: "100vh", position: "sticky", top: 0,
       }}>
@@ -381,7 +381,7 @@ export function CustomerNav({
       )}
 
       {/* Mobile drawer */}
-      <aside style={{
+      <aside key="mobile" style={{
         position: "fixed", top: 0, left: 0, zIndex: 260,
         width: 260, height: "100vh", display: "flex", flexDirection: "column",
         background: "#ffffff",

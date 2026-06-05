@@ -3,7 +3,7 @@ export const runtime = "nodejs";
 
 import { NextResponse }          from "next/server";
 import { getSessionUser }        from "@/lib/auth/get-session-user";
-import { runAutoStatusCheck }    from "@/lib/subscriptions/auto-status-check";
+import { runAutoStatusCheck } from "@/lib/subscription/auto-status-check";
 
 export async function POST() {
   const admin = await getSessionUser();
