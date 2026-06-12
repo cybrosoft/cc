@@ -150,10 +150,10 @@ function AddonRow({ addon, currency, billingPeriod, state, onChange }: {
   addon: RichProduct; currency: string; billingPeriod: string;
   state: AddonState; onChange: (s: AddonState) => void;
 }) {
-  const isPerUnit  = addon.addonPricingType === "per_unit";
-  const isPercent  = addon.addonPricingType === "percentage";
+  const isPerUnit = addon.addonPricingType === "per_unit";
+  const isPercent = addon.addonPricingType === "percentage";
   const isRequired = addon.addonBehavior === "required";
-  const price      = addon.prices.find(p => p.billingPeriod === billingPeriod) ?? addon.prices[0];
+  const price = addon.prices.find(p => p.billingPeriod === billingPeriod) ?? addon.prices[0];
   return (
     <div style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "10px 14px", background: state.selected ? "#eaf4f2" : "#fafafa", border: `1px solid ${state.selected ? "#a7d9d1" : "#e2e8f0"}`, marginBottom: 6, transition: "all 0.15s" }}>
       <div style={{ paddingTop: 2 }}>
@@ -165,8 +165,8 @@ function AddonRow({ addon, currency, billingPeriod, state, onChange }: {
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{addon.name}</span>
           {isRequired && <span style={{ fontSize: 10, padding: "1px 6px", background: "#fef3c7", color: "#92400e", border: "1px solid #fcd34d", fontWeight: 700 }}>REQUIRED</span>}
-          {isPerUnit  && <span style={{ fontSize: 10, padding: "1px 6px", background: "#f5f3ff", color: "#7c3aed", border: "1px solid #ddd6fe", fontWeight: 700 }}>PER {(addon.addonUnitLabel ?? "UNIT").toUpperCase()}</span>}
-          {isPercent  && <span style={{ fontSize: 10, padding: "1px 6px", background: "#fffbeb", color: "#b45309", border: "1px solid #fde68a", fontWeight: 700 }}>{addon.addonPercentage ?? "?"}% OF PLAN</span>}
+          {isPerUnit && <span style={{ fontSize: 10, padding: "1px 6px", background: "#f5f3ff", color: "#7c3aed", border: "1px solid #ddd6fe", fontWeight: 700 }}>PER {(addon.addonUnitLabel ?? "UNIT").toUpperCase()}</span>}
+          {isPercent && <span style={{ fontSize: 10, padding: "1px 6px", background: "#fffbeb", color: "#b45309", border: "1px solid #fde68a", fontWeight: 700 }}>{addon.addonPercentage ?? "?"}% OF PLAN</span>}
         </div>
         <div style={{ fontFamily: "monospace", fontSize: 10, color: C.faint, marginTop: 1 }}>{addon.key}</div>
       </div>
@@ -196,34 +196,30 @@ function AddonRow({ addon, currency, billingPeriod, state, onChange }: {
 export function CreateSubscriptionModal({ open, onClose, onCreated }: {
   open: boolean; onClose: () => void; onCreated: () => void;
 }) {
-  const [loadingForm,      setLoadingForm]      = useState(false);
-  const [customers,        setCustomers]        = useState<CustomerOption[]>([]);
-  const [custId,           setCustId]           = useState("");
-  const [loadingProducts,  setLoadingProducts]  = useState(false);
-  const [eligible,         setEligible]         = useState<RichEligibleResp | null>(null);
-  const [locations,        setLocations]        = useState<LocationRow[]>([]);
-  const [templates,        setTemplates]        = useState<OsTemplateRow[]>([]);
-  const [filterLocId,      setFilterLocId]      = useState("");
-  const [planId,           setPlanId]           = useState("");
-  const [billingPeriod,    setBillingPeriod]    = useState("");
-  const [planQty,          setPlanQty]          = useState(1);
-  const [locationCode,     setLocationCode]     = useState("");
-  const [templateSlug,     setTemplateSlug]     = useState("");
-  const [addonStates,      setAddonStates]      = useState<Record<string, AddonState>>({});
-  const [startDate,        setStartDate]        = useState("");
-  const [overridePrice,    setOverridePrice]    = useState(false);
-  const [manualTotal,      setManualTotal]      = useState("");
-  const [subName,          setSubName]          = useState("");
-  const [productDetails,   setProductDetails]   = useState("");
-  const [productNote,      setProductNote]      = useState("");
-  // ── Invoicing mode ────────────────────────────────────────────────────────
-  // AUTO = system generates invoice immediately
-  // MANUAL = admin will link invoice manually from Sales module
-  const [invoicingMode,    setInvoicingMode]    = useState<"AUTO" | "MANUAL">("AUTO");
-  const [busy,             setBusy]             = useState(false);
-  const [msg,              setMsg]              = useState<string | null>(null);
-
-  const isAuto = invoicingMode === "AUTO";
+  const [loadingForm, setLoadingForm] = useState(false);
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [custId, setCustId] = useState("");
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [eligible, setEligible] = useState<RichEligibleResp | null>(null);
+  const [locations, setLocations] = useState<LocationRow[]>([]);
+  const [templates, setTemplates] = useState<OsTemplateRow[]>([]);
+  const [filterLocId, setFilterLocId] = useState("");
+  const [planId, setPlanId] = useState("");
+  const [billingPeriod, setBillingPeriod] = useState("");
+  const [planQty, setPlanQty] = useState(1);
+  const [locationCode, setLocationCode] = useState("");
+  const [templateSlug, setTemplateSlug] = useState("");
+  const [addonStates, setAddonStates] = useState<Record<string, AddonState>>({});
+  const [startDate, setStartDate] = useState("");
+  const [overridePrice, setOverridePrice] = useState(false);
+  const [manualTotal, setManualTotal] = useState("");
+  const [subName, setSubName] = useState("");
+  const [productDetails, setProductDetails] = useState("");
+  const [productNote, setProductNote] = useState("");
+  // ── NEW: auto-invoice toggle ───────────────────────────────────────────────
+  const [autoInvoice, setAutoInvoice] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
 
   const selectedCustomer = useMemo(() => customers.find(c => c.id === custId) ?? null, [customers, custId]);
   const plansAndServices = useMemo(() => {
@@ -239,9 +235,9 @@ export function CreateSubscriptionModal({ open, onClose, onCreated }: {
     });
   }, [eligible, filterLocId, locations]);
 
-  const selectedPlan  = useMemo(() => plansAndServices.find(p => p.id === planId) ?? null, [plansAndServices, planId]);
-  const planTagKeys   = useMemo(() => selectedPlan?.tags.map(t => t.key) ?? [], [selectedPlan]);
-  const planPrice     = useMemo(() => {
+  const selectedPlan = useMemo(() => plansAndServices.find(p => p.id === planId) ?? null, [plansAndServices, planId]);
+  const planTagKeys  = useMemo(() => selectedPlan?.tags.map(t => t.key) ?? [], [selectedPlan]);
+  const planPrice    = useMemo(() => {
     if (!selectedPlan || !billingPeriod) return null;
     return selectedPlan.prices.find(p => p.billingPeriod === billingPeriod) ?? null;
   }, [selectedPlan, billingPeriod]);
@@ -260,10 +256,11 @@ export function CreateSubscriptionModal({ open, onClose, onCreated }: {
       });
   }, [eligible, selectedPlan, planTagKeys]);
 
-  const filteredLocations  = useMemo(() => locations.filter(l => locationMatchesProduct(l, planTagKeys)), [locations, planTagKeys]);
-  const filteredTemplates  = useMemo(() => templates.filter(t => templateMatchesProduct(t, planTagKeys)), [templates, planTagKeys]);
+  const filteredLocations = useMemo(() => locations.filter(l => locationMatchesProduct(l, planTagKeys)), [locations, planTagKeys]);
+  const filteredTemplates = useMemo(() => templates.filter(t => templateMatchesProduct(t, planTagKeys)), [templates, planTagKeys]);
   const showLocationTemplate = filteredLocations.length > 0 || filteredTemplates.length > 0;
-  const locationGroups     = useMemo(() => { const families = [...new Set(locations.map(l => l.family).filter(Boolean))] as string[]; return families.map(f => ({ family: f, locs: locations.filter(l => l.family === f) })); }, [locations]);
+
+  const locationGroups      = useMemo(() => { const families = [...new Set(locations.map(l => l.family).filter(Boolean))] as string[]; return families.map(f => ({ family: f, locs: locations.filter(l => l.family === f) })); }, [locations]);
   const standaloneLocations = useMemo(() => locations.filter(l => !l.family), [locations]);
 
   const computedTotal = useMemo(() => {
@@ -292,7 +289,7 @@ export function CreateSubscriptionModal({ open, onClose, onCreated }: {
     setFilterLocId(""); setLocationCode(""); setTemplateSlug("");
     setAddonStates({}); setStartDate(""); setOverridePrice(false);
     setManualTotal(""); setSubName(""); setProductDetails(""); setProductNote("");
-    setInvoicingMode("AUTO"); setEligible(null); setMsg(null);
+    setAutoInvoice(true); setEligible(null); setMsg(null);
     void (async () => {
       try {
         const [custResp, locResp, tmplResp] = await Promise.all([
@@ -373,8 +370,7 @@ export function CreateSubscriptionModal({ open, onClose, onCreated }: {
         startDate:      startDate || null,
         productDetails: combinedDetails,
         productNote:    productNote.trim() || null,
-        invoicingMode,
-        autoInvoice:    isAuto,
+        autoInvoice,
       };
       if (overridePrice && manualTotal.trim()) payload.manualPriceCents = Math.round(parseFloat(manualTotal) * 100);
 
@@ -573,7 +569,7 @@ export function CreateSubscriptionModal({ open, onClose, onCreated }: {
                 )}
               </Section>
 
-              {/* 8. Notes, Details & Invoicing Mode */}
+              {/* 8. Notes & Details */}
               <Section title="Notes & Details" icon="note" dim={!selectedPlan}>
 
                 {selectedPlan?.type === "plan" && (
@@ -590,54 +586,24 @@ export function CreateSubscriptionModal({ open, onClose, onCreated }: {
                   <textarea value={productDetails} onChange={e => setProductDetails(e.target.value)} rows={2}
                     placeholder="e.g. domain, username…" style={{ ...INP, resize: "vertical" }} />
                 </div>
-                <div style={{ marginBottom: 18 }}>
+                <div style={{ marginBottom: 14 }}>
                   <div style={LABEL}>Note</div>
                   <textarea value={productNote} onChange={e => setProductNote(e.target.value)} rows={2}
                     placeholder="Extra instructions…" style={{ ...INP, resize: "vertical" }} />
                 </div>
 
-                {/* ── Invoicing Mode selector ── */}
-                <div style={LABEL}>Invoicing Mode</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  {/* AUTO */}
-                  <div
-                    onClick={() => setInvoicingMode("AUTO")}
-                    style={{ padding: "12px 14px", cursor: "pointer", border: `2px solid ${isAuto ? C.primary : C.border}`, background: isAuto ? C.primaryBg : "#fff", transition: "all 0.15s" }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <div style={{ width: 14, height: 14, borderRadius: "50%", border: `2px solid ${isAuto ? C.primary : C.faint}`, background: isAuto ? C.primary : "transparent", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        {isAuto && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }} />}
-                      </div>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: isAuto ? C.primary : C.text }}>Auto Invoice</span>
-                    </div>
-                    <div style={{ fontSize: 10, color: C.faint, lineHeight: 1.4, paddingLeft: 22 }}>
-                      Invoice generated immediately. Auto-renew allowed.
+                {/* ── Auto-invoice toggle ── */}
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "10px 12px", background: autoInvoice ? "#eaf4f2" : "#f8fafc", border: `1px solid ${autoInvoice ? "#a7d9d1" : "#e2e8f0"}` }}>
+                  <div onClick={() => setAutoInvoice(v => !v)} style={{ width: 36, height: 20, borderRadius: 10, background: autoInvoice ? C.primary : "#cbd5e1", position: "relative", cursor: "pointer", transition: "background 0.2s", flexShrink: 0 }}>
+                    <div style={{ position: "absolute", top: 2, left: autoInvoice ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Auto-generate invoice</div>
+                    <div style={{ fontSize: 10, color: C.faint, marginTop: 1 }}>
+                      {autoInvoice ? "Invoice will be created automatically" : "No invoice — create manually from Sales module"}
                     </div>
                   </div>
-
-                  {/* MANUAL */}
-                  <div
-                    onClick={() => setInvoicingMode("MANUAL")}
-                    style={{ padding: "12px 14px", cursor: "pointer", border: `2px solid ${!isAuto ? "#f59e0b" : C.border}`, background: !isAuto ? "#fffbeb" : "#fff", transition: "all 0.15s" }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <div style={{ width: 14, height: 14, borderRadius: "50%", border: `2px solid ${!isAuto ? "#f59e0b" : C.faint}`, background: !isAuto ? "#f59e0b" : "transparent", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        {!isAuto && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }} />}
-                      </div>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: !isAuto ? "#92400e" : C.text }}>Manual Invoice</span>
-                    </div>
-                    <div style={{ fontSize: 10, color: C.faint, lineHeight: 1.4, paddingLeft: 22 }}>
-                      Link invoice from Sales module. Auto-renew disabled.
-                    </div>
-                  </div>
-                </div>
-
-                {!isAuto && (
-                  <div style={{ marginTop: 8, padding: "8px 12px", background: "#fffbeb", border: "1px solid #fde68a", fontSize: 11, color: "#92400e", display: "flex", alignItems: "center", gap: 6 }}>
-                    <Icon name="info" size={12} color="#d97706" />
-                    No invoice will be created now. Link one later from the Billing tab after creating the invoice in the Sales module.
-                  </div>
-                )}
+                </label>
               </Section>
 
               {msg && (
@@ -664,10 +630,10 @@ export function CreateSubscriptionModal({ open, onClose, onCreated }: {
                 </div>
               </div>
               {visibleAddons.filter(a => a.addonBehavior === "required" || addonStates[a.id]?.selected).map(a => {
-                const state      = addonStates[a.id];
-                const price      = a.prices.find(p => p.billingPeriod === billingPeriod) ?? a.prices[0];
-                const qty        = a.addonPricingType === "per_unit" ? (state?.quantity ?? 1) : 1;
-                const isPercent  = a.addonPricingType === "percentage";
+                const state = addonStates[a.id];
+                const price = a.prices.find(p => p.billingPeriod === billingPeriod) ?? a.prices[0];
+                const qty = a.addonPricingType === "per_unit" ? (state?.quantity ?? 1) : 1;
+                const isPercent = a.addonPricingType === "percentage";
                 const percentAmt = isPercent ? Math.round((planPrice?.priceCents ?? 0) * ((a.addonPercentage ?? 0) / 100)) : 0;
                 return (
                   <div key={a.id} style={{ padding: "6px 0", borderBottom: `1px solid ${C.borderL}` }}>
@@ -700,12 +666,6 @@ export function CreateSubscriptionModal({ open, onClose, onCreated }: {
                   </div>
                 )}
                 <div style={{ fontSize: 10, color: C.faint, marginTop: 4 }}>{billingPeriod ? `Per ${(PERIOD_LABELS[billingPeriod] ?? billingPeriod).toLowerCase()}` : ""}</div>
-              </div>
-
-              {/* Invoicing mode badge in summary */}
-              <div style={{ padding: "8px 10px", background: isAuto ? C.primaryBg : "#fffbeb", border: `1px solid ${isAuto ? C.primaryMid : "#fde68a"}`, fontSize: 11, color: isAuto ? C.primary : "#92400e", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-                <Icon name={isAuto ? "receipt" : "fileText"} size={12} color={isAuto ? C.primary : "#d97706"} />
-                {isAuto ? "Auto invoice on create" : "Manual invoice — link later"}
               </div>
             </>)}
             <div style={{ marginTop: "auto" }}>
