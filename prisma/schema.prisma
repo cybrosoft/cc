@@ -25,7 +25,10 @@ enum Role {
   STAFF
   CUSTOMER
 }
-
+enum InvoicingMode {
+  AUTO
+  MANUAL
+}
 enum ProductType {
   plan
   addon
@@ -530,6 +533,8 @@ model Subscription {
   receiptFileName        String?
   receiptUploadedAt      DateTime?
   manualPaymentReference String?
+  invoicingMode   InvoicingMode @default(AUTO)
+  invoiceMetaJson String?       @db.Text
 
   productDetails String?
   productNote    String?

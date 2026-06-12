@@ -19,19 +19,22 @@ export async function POST(req: Request) {
     productDetails?: unknown;
     productNote?: unknown;
     locationCode?: unknown;
+    templateSlug?: unknown;
     parentSubscriptionId?: unknown;
   } | null;
 
-  const subscriptionId = s(body?.subscriptionId).trim();
+  const subscriptionId          = s(body?.subscriptionId).trim();
   if (!subscriptionId)
     return NextResponse.json({ ok: false, error: "SUBSCRIPTION_ID_REQUIRED" }, { status: 400 });
 
-  const productDetails         = n(body?.productDetails);
-  const productNote            = n(body?.productNote);
-  const locationCodeRaw        = s(body?.locationCode).trim().toUpperCase();
-  const locationCode           = locationCodeRaw.length ? locationCodeRaw : null;
+  const productDetails          = n(body?.productDetails);
+  const productNote             = n(body?.productNote);
+  const locationCodeRaw         = s(body?.locationCode).trim().toUpperCase();
+  const locationCode            = locationCodeRaw.length ? locationCodeRaw : null;
+  const templateSlugRaw         = s(body?.templateSlug).trim();
+  const templateSlug            = templateSlugRaw.length ? templateSlugRaw : null;
   const parentSubscriptionIdRaw = s(body?.parentSubscriptionId).trim();
-  const parentSubscriptionId   = parentSubscriptionIdRaw.length ? parentSubscriptionIdRaw : null;
+  const parentSubscriptionId    = parentSubscriptionIdRaw.length ? parentSubscriptionIdRaw : null;
 
   const sub = await prisma.subscription.findUnique({
     where:  { id: subscriptionId },
@@ -73,6 +76,7 @@ export async function POST(req: Request) {
   };
 
   if (locationCode !== undefined) updateData.locationCode = locationCode;
+  if (templateSlug !== undefined) updateData.templateSlug = templateSlug;
   if (sub.product.type === ProductType.addon) {
     updateData.parentSubscriptionId = parentSubscriptionId;
   }
@@ -80,7 +84,7 @@ export async function POST(req: Request) {
   const updated = await prisma.subscription.update({
     where:  { id: subscriptionId },
     data:   updateData,
-    select: { id: true, locationCode: true, parentSubscriptionId: true },
+    select: { id: true, locationCode: true, templateSlug: true, parentSubscriptionId: true },
   });
 
   return NextResponse.json({ ok: true, updated });
