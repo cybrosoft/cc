@@ -59,7 +59,7 @@ export async function GET(req: Request) {
   const [subscriptions, total] = await Promise.all([
     prisma.subscription.findMany({
       where:   where as never,
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       skip:    (Math.max(1, page) - 1) * pageSize,
       take:    pageSize,
       select: {
@@ -81,7 +81,10 @@ export async function GET(req: Request) {
         productNote:           true,
         parentSubscriptionId:  true,
         locationCode:          true,
+        templateSlug:          true,
         quantity:              true,
+        invoicingMode:         true,
+        invoiceMetaJson:       true,
         parentSubscription: {
           select: {
             id: true, status: true,

@@ -19,6 +19,8 @@ export type Product = {
 export type UserMini = { id: string; email: string; customerGroupId: string | null };
 export type ServerMini = { id: string; hetznerServerId: string | null; oracleInstanceId?: string | null };
 
+export type InvoicingMode = "AUTO" | "MANUAL";
+
 export type SubRow = {
   id: string;
   status: string;
@@ -29,6 +31,7 @@ export type SubRow = {
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
   locationCode: string | null;
+  templateSlug: string | null;
 
   quantity:           number | null;
   resolvedPriceCents: number | null;  // from Pricing table
@@ -39,6 +42,9 @@ export type SubRow = {
   receiptUploadedAt: string | null;
   invoiceNumber: string | null;
   manualPaymentReference: string | null;
+
+  invoicingMode: InvoicingMode;
+  invoiceMetaJson: string | null;
 
   provisionLocation?: string | null;
   productDetails: string | null;

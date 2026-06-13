@@ -22,7 +22,7 @@ export async function GET() {
           category: { key: "server" },
         },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       select: {
         id:                 true,
         status:             true,
