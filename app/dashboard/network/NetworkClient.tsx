@@ -77,7 +77,7 @@ export function NetworkClient() {
             ) : (
               rows.map((row, idx) => (
                 <tr key={`${row.ip}-${idx}`} style={{ borderBottom: idx < rows.length - 1 ? "1px solid #f3f4f6" : "none" }}>
-                  <td style={{ padding: "14px 16px", fontWeight: 700, color: "#111827", whiteSpace: "nowrap" }}>{row.ip}</td>
+                  <td style={{ padding: "14px 16px", fontWeight: 600, color: "#111827", whiteSpace: "nowrap" }}>{row.ip}</td>
                   <td style={{ padding: "14px 16px", color: "#374151", whiteSpace: "nowrap" }}>IPv{row.type}</td>
                   <td style={{ padding: "14px 16px", color: "#374151", whiteSpace: "nowrap" }}>{row.location ?? "—"}</td>
                   <td style={{ padding: "14px 16px", color: "#374151", whiteSpace: "nowrap" }}>{row.role}</td>

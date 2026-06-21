@@ -1,6 +1,5 @@
-// app/api/customer/storage/route.ts
-// Lists boot disks and additional storage volumes for the customer's
-// active server subscriptions.
+// app/api/customer/backups/route.ts
+// Lists backups and snapshots across the customer's active server subscriptions.
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
@@ -9,11 +8,12 @@ import { getSessionUser } from "@/lib/auth/get-session-user";
 import { getServerFull } from "@/lib/hetzner";
 import { getOracleInstanceSummary } from "@/lib/oracle/compute";
 
-type StorageRow = {
-  serverName: string;
-  sizeGb:     number | null;
-  location:   string | null;
-  status:     string | null;
+type BackupRow = {
+  serverName:  string;
+  description: string;
+  created:     string;
+  sizeGb:      number | null;
+  status:      string | null;
 };
 
 export async function GET() {
@@ -31,7 +31,6 @@ export async function GET() {
       },
       select: {
         id:             true,
-        locationCode:   true,
         productDetails: true,
         product: { select: { name: true } },
         servers: {
@@ -48,20 +47,8 @@ export async function GET() {
       },
     });
 
-    const allLocations = await prisma.location.findMany({
-      select: { code: true, name: true, countryCode: true },
-    });
-    const locationMap = new Map(allLocations.map(l => [l.code, l]));
-
-    function locationDisplay(code: string | null): string | null {
-      if (!code) return null;
-      const loc = locationMap.get(code);
-      if (!loc) return code;
-      return loc.countryCode ? `${loc.countryCode} - ${loc.name}` : loc.name;
-    }
-
-    const bootRows: StorageRow[]   = [];
-    const volumeRows: StorageRow[] = [];
+    const backupRows: BackupRow[]   = [];
+    const snapshotRows: BackupRow[] = [];
 
     for (const sub of subscriptions) {
       const server = sub.servers[0] ?? null;
@@ -73,26 +60,27 @@ export async function GET() {
         return firstLine;
       })();
 
-      const subLocation = locationDisplay(sub.locationCode);
-
       // ── Hetzner ──────────────────────────────────────────────────────────
       if (server.hetznerServerId && server.hetznerApiToken) {
         try {
           const full = await getServerFull(server.hetznerApiToken, String(server.hetznerServerId));
 
-          bootRows.push({
-            serverName,
-            sizeGb:   full.core.diskGb,
-            location: subLocation,
-            status:   full.core.status,
-          });
-
-          for (const v of full.volumes) {
-            volumeRows.push({
+          for (const b of full.backups) {
+            backupRows.push({
               serverName,
-              sizeGb:   v.sizeGb,
-              location: subLocation,
-              status:   v.status,
+              description: b.description ?? "—",
+              created:     b.created,
+              sizeGb:      b.sizeGb,
+              status:      b.status,
+            });
+          }
+          for (const s of full.snapshots) {
+            snapshotRows.push({
+              serverName,
+              description: s.description ?? "—",
+              created:     s.created,
+              sizeGb:      s.sizeGb,
+              status:      s.status,
             });
           }
         } catch {
@@ -109,30 +97,37 @@ export async function GET() {
             compartmentOcid: server.oracleCompartmentOcid ?? undefined,
           });
 
-          bootRows.push({
-            serverName,
-            sizeGb:   o.diskGb,
-            location: subLocation,
-            status:   o.status,
-          });
-
-          // Oracle only exposes the summed size of all attached block volumes
-          // (no per-volume breakdown without an extra API call per volume ID).
-          if (o.volumesExists) {
-            volumeRows.push({
+          // Oracle exposes backup existence only as boolean flags (no per-item detail)
+          if (o.backupBootExists) {
+            backupRows.push({
               serverName,
-              sizeGb:   o.additionalDiskGb,
-              location: subLocation,
-              status:   "running",
+              description: "Boot Volume Backup",
+              created:     new Date().toISOString(),
+              sizeGb:      null,
+              status:      "available",
             });
           }
+          if (o.backupBlockExists) {
+            backupRows.push({
+              serverName,
+              description: "Block Volume Backup",
+              created:     new Date().toISOString(),
+              sizeGb:      null,
+              status:      "available",
+            });
+          }
+          // Snapshots (custom images) — not yet implemented for Oracle
         } catch {
           // provider unreachable — skip this server
         }
       }
     }
 
-    return NextResponse.json({ ok: true, boot: bootRows, volumes: volumeRows });
+    // Sort by server name
+    backupRows.sort((a, b) => a.serverName.localeCompare(b.serverName));
+    snapshotRows.sort((a, b) => a.serverName.localeCompare(b.serverName));
+
+    return NextResponse.json({ ok: true, backups: backupRows, snapshots: snapshotRows });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message ?? "Request failed" }, { status: 500 });
   }

@@ -1,13 +1,14 @@
 "use client";
-// app/dashboard/storage/StorageClient.tsx
+// app/dashboard/backup/BackupClient.tsx
 
 import { useEffect, useState } from "react";
 
-type StorageRow = {
-  serverName: string;
-  sizeGb:     number | null;
-  location:   string | null;
-  status:     string | null;
+type BackupRow = {
+  serverName:  string;
+  description: string;
+  created:     string;
+  sizeGb:      number | null;
+  status:      string | null;
 };
 
 // ─── Design tokens (matching ServerDetailsClient.tsx) ──────────────────────
@@ -21,6 +22,11 @@ const C = {
   faint:   "#9ca3af",
 };
 
+function fmtDate(iso: string | null) {
+  if (!iso) return "N/A";
+  return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
 function formatStatus(status: string | null): string {
   if (!status) return "N/A";
   const s = status.toLowerCase();
@@ -28,12 +34,11 @@ function formatStatus(status: string | null): string {
 }
 
 // ─── Card ────────────────────────────────────────────────────────────────────
-function Card({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ border: C.border, background: C.bg, marginBottom: 16 }}>
-      <div style={{ padding: "10px 16px", borderBottom: C.border, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ padding: "10px 16px", borderBottom: C.border }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.faint, textTransform: "uppercase", letterSpacing: "0.08em" }}>{title}</span>
-        {action && <div style={{ display: "flex", alignItems: "center", gap: 8 }}>{action}</div>}
       </div>
       <div>{children}</div>
     </div>
@@ -92,20 +97,20 @@ function Btn({ onClick, children, disabled }: { onClick: () => void; children: R
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
-export function StorageClient() {
-  const [boot,    setBoot]    = useState<StorageRow[]>([]);
-  const [volumes, setVolumes] = useState<StorageRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err,     setErr]     = useState<string | null>(null);
+export function BackupClient() {
+  const [backups,   setBackups]   = useState<BackupRow[]>([]);
+  const [snapshots, setSnapshots] = useState<BackupRow[]>([]);
+  const [loading,   setLoading]   = useState(true);
+  const [err,       setErr]       = useState<string | null>(null);
 
   async function load() {
     setLoading(true); setErr(null);
     try {
-      const r = await fetch("/api/customer/storage", { cache: "no-store" });
-      const j = await r.json().catch(() => null) as { ok?: boolean; boot?: StorageRow[]; volumes?: StorageRow[]; error?: string } | null;
-      if (!j?.ok) { setErr(j?.error ?? "Failed to load"); setBoot([]); setVolumes([]); return; }
-      setBoot(j.boot ?? []);
-      setVolumes(j.volumes ?? []);
+      const r = await fetch("/api/customer/backups", { cache: "no-store" });
+      const j = await r.json().catch(() => null) as { ok?: boolean; backups?: BackupRow[]; snapshots?: BackupRow[]; error?: string } | null;
+      if (!j?.ok) { setErr(j?.error ?? "Failed to load"); setBackups([]); setSnapshots([]); return; }
+      setBackups(j.backups ?? []);
+      setSnapshots(j.snapshots ?? []);
     } catch {
       setErr("Network error");
     } finally {
@@ -115,7 +120,7 @@ export function StorageClient() {
 
   useEffect(() => { void load(); }, []);
 
-  const colWidths = ["34%", "18%", "30%", "18%"];
+  const colWidths = ["18%", "32%", "20%", "15%", "15%"];
 
   return (
     <div className="cy-page-content">
@@ -124,8 +129,8 @@ export function StorageClient() {
         {/* Header */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 20 }}>
           <div>
-            <p style={{ fontSize: 11, color: C.faint, letterSpacing: ".05em", margin: "0 0 4px" }}>DASHBOARD / STORAGE</p>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0 }}>Storage</h1>
+            <p style={{ fontSize: 11, color: C.faint, letterSpacing: ".05em", margin: "0 0 4px" }}>DASHBOARD / BACKUP</p>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0 }}>Backup</h1>
           </div>
           <Btn onClick={() => void load()} disabled={loading}>
             <span style={{ fontSize: 16, lineHeight: 1 }}>↻</span> Refresh
@@ -138,34 +143,36 @@ export function StorageClient() {
           </div>
         )}
 
-        <Card title={`Boot Disks${!loading ? ` (${boot.length} item${boot.length !== 1 ? "s" : ""})` : ""}`}>
+        <Card title="Backups">
           {loading ? <div style={{ padding: 16 }}><Sk /></div> : (
             <T
               colWidths={colWidths}
-              cols={["Server Name", "Size", "Location", "Status"]}
-              rows={boot.map(b => [
+              cols={["Server Name", "Description", "Created", "Size", "Status"]}
+              rows={backups.map(b => [
                 <span key="n" style={{ fontWeight: 600 }}>{b.serverName}</span>,
+                b.description,
+                fmtDate(b.created),
                 b.sizeGb != null ? `${b.sizeGb} GB` : "N/A",
-                b.location ?? "N/A",
                 formatStatus(b.status),
               ])}
-              empty="No boot disks found for your active servers."
+              empty="No backups available."
             />
           )}
         </Card>
 
-        <Card title={`Additional Storage${!loading ? ` (${volumes.length} item${volumes.length !== 1 ? "s" : ""})` : ""}`}>
+        <Card title="Snapshots">
           {loading ? <div style={{ padding: 16 }}><Sk /></div> : (
             <T
               colWidths={colWidths}
-              cols={["Server Name", "Size", "Location", "Status"]}
-              rows={volumes.map(v => [
-                <span key="n" style={{ fontWeight: 600 }}>{v.serverName}</span>,
-                v.sizeGb != null ? `${v.sizeGb} GB` : "N/A",
-                v.location ?? "N/A",
-                formatStatus(v.status),
+              cols={["Server Name", "Description", "Created", "Size", "Status"]}
+              rows={snapshots.map(s => [
+                <span key="n" style={{ fontWeight: 600 }}>{s.serverName}</span>,
+                s.description,
+                fmtDate(s.created),
+                s.sizeGb != null ? `${s.sizeGb} GB` : "N/A",
+                formatStatus(s.status),
               ])}
-              empty="No additional storage volumes found."
+              empty="No snapshots available."
             />
           )}
         </Card>
