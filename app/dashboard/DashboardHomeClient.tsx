@@ -8,8 +8,7 @@ import { useActionGuard } from "@/lib/auth/action-guard";
 
 const LIMIT = {
   servers:  { lg: 6, sm: 4 },
-  subs:     { lg: 6, sm: 4 },
-  activity: { lg: 4, sm: 3 },
+  activity: { lg: 3, sm: 3 },
   notifs:   { lg: 4, sm: 3 },
 };
 
@@ -27,11 +26,6 @@ interface ServerRow {
   subscriptionId: string | null; ipv4: string | null; status: string | null;
   location: string | null; vcpus: number | null; ramGb: number | null; diskGb: number | null;
   hetznerServerId?: string | null; oracleInstanceId?: string | null; createdAt: string;
-}
-interface SubRow {
-  id: string; productName: string; productType: string; billingPeriod: string;
-  status: string; paymentStatus: string;
-  currentPeriodStart: string | null; currentPeriodEnd: string | null; createdAt: string;
 }
 interface ActivityRow {
   id: string; docNumber: string; type: string; status: string;
@@ -86,14 +80,6 @@ function timeAgo(dateStr: string) {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.floor(hrs / 24)}d ago`;
-}
-function fmtDate(dateStr: string | null) {
-  if (!dateStr) return "—";
-  return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-function fmtDateShort(dateStr: string | null) {
-  if (!dateStr) return "—";
-  return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 function StatusText({ status, size = 12 }: { status: string; size?: number }) {
@@ -187,7 +173,6 @@ function ServerMap({ servers }: { servers: ServerRow[] }) {
 export function DashboardHomeClient({ user }: { user: DashboardUser }) {
   const [stats,            setStats]           = useState<Stats | null>(null);
   const [servers,          setServers]         = useState<ServerRow[]>([]);
-  const [subs,             setSubs]            = useState<SubRow[]>([]);
   const [activity,         setActivity]        = useState<ActivityRow[]>([]);
   const [notifs,           setNotifs]          = useState<NotifRow[]>([]);
   const [loading,          setLoading]         = useState(true);
@@ -211,7 +196,6 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
       .then(d => {
         setStats(d.stats);
         setServers(d.servers ?? []);
-        setSubs(d.subscriptions ?? []);
         setActivity(d.recentActivity ?? []);
         setNotifs(d.notifications ?? []);
         setLastLogin(d.lastLogin ?? null);
@@ -227,7 +211,6 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
   const lim       = isMobile ? "sm" : "lg";
 
   const visibleServers  = servers.slice(0,  LIMIT.servers[lim]);
-  const visibleSubs     = subs.slice(0,     LIMIT.subs[lim]);
   const visibleActivity = activity.slice(0, LIMIT.activity[lim]);
   const visibleNotifs   = notifs.slice(0,   LIMIT.notifs[lim]);
 
@@ -300,10 +283,10 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
         {/* Stats */}
         <div className="cy-stats-grid" style={{ marginBottom: 20 }}>
           {[
-            { label: "Active Services",    href: "/dashboard/subscriptions", value: stats?.activeSubscriptions ?? 0, accent: "success" as const, icon: <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="1.5" y="1.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="10.5" y="1.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="1.5" y="10.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="10.5" y="10.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/></svg> },
-            { label: "Active Servers",     href: "/dashboard/servers",       value: stats?.servers ?? 0,                accent: "default" as const, icon: <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="1.5" y="2.5" width="15" height="5" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="1.5" y="10.5" width="15" height="5" rx="1" stroke="currentColor" strokeWidth="1.5"/><circle cx="4.5" cy="5" r="0.8" fill="currentColor"/><circle cx="4.5" cy="13" r="0.8" fill="currentColor"/></svg> },
-            { label: "Pending Invoices",   href: "/dashboard/invoices",      value: stats?.pendingInvoices ?? 0,        accent: (stats?.overdueInvoices ? "danger" : stats?.pendingInvoices ? "warning" : "default") as "danger"|"warning"|"default", icon: <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2.5" y="1.5" width="13" height="15" rx="1" stroke="currentColor" strokeWidth="1.5"/><path d="M6 6h6M6 9h5M6 12h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
-            { label: "Expiring (30 days)", href: "/dashboard/subscriptions", value: stats?.expiringSubscriptions ?? 0, accent: (stats?.expiringSubscriptions ? "warning" : "default") as "warning"|"default", icon: <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="7" stroke="currentColor" strokeWidth="1.5"/><path d="M9 5.5v4l2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg> },
+            { label: "Active Services",    href: "/dashboard/subscriptions", clickable: false, value: stats?.activeSubscriptions ?? 0,   accent: "success" as const, icon: <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="1.5" y="1.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="10.5" y="1.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="1.5" y="10.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="10.5" y="10.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5"/></svg> },
+            { label: "Active Servers",     href: "/dashboard/servers",       clickable: true,  value: stats?.servers ?? 0,                accent: "default" as const, icon: <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="1.5" y="2.5" width="15" height="5" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="1.5" y="10.5" width="15" height="5" rx="1" stroke="currentColor" strokeWidth="1.5"/><circle cx="4.5" cy="5" r="0.8" fill="currentColor"/><circle cx="4.5" cy="13" r="0.8" fill="currentColor"/></svg> },
+            { label: "Pending Invoices",   href: "/dashboard/invoices",      clickable: true,  value: stats?.pendingInvoices ?? 0,        accent: (stats?.overdueInvoices ? "danger" : stats?.pendingInvoices ? "warning" : "default") as "danger"|"warning"|"default", icon: <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2.5" y="1.5" width="13" height="15" rx="1" stroke="currentColor" strokeWidth="1.5"/><path d="M6 6h6M6 9h5M6 12h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
+            { label: "Expiring (30 days)", href: "/dashboard/subscriptions", clickable: false, value: stats?.expiringSubscriptions ?? 0,  accent: (stats?.expiringSubscriptions ? "warning" : "default") as "warning"|"default", icon: <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="7" stroke="currentColor" strokeWidth="1.5"/><path d="M9 5.5v4l2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg> },
           ].map(card => {
             const accentMap = {
               success: { iconBg: "#e8f5f0", iconColor: colors.primary, valColor: colors.primary },
@@ -311,15 +294,25 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
               danger:  { iconBg: "#fdf0ef", iconColor: "#dc2626", valColor: "#dc2626" },
               default: { iconBg: "#f3f4f6", iconColor: "#6b7280", valColor: "#111827" },
             }[card.accent];
-            return (
-              <Link key={card.label} href={card.href} onClick={e => guardHref(e, card.href)}
-                className="cy-stat-card" style={{ display: "flex", alignItems: "center", background: "#fff", border: "1px solid #e5e7eb", textDecoration: "none" }}>
+            const inner = (
+              <>
                 <div className="cy-stat-icon" style={{ flexShrink: 0, background: accentMap.iconBg, color: accentMap.iconColor, display: "flex", alignItems: "center", justifyContent: "center" }}>{card.icon}</div>
                 <div>
                   <div className="cy-stat-val" style={{ fontWeight: 700, lineHeight: 1, color: accentMap.valColor, letterSpacing: "-0.02em" }}>{loading ? <Skeleton w={36} h={22} /> : card.value}</div>
                   <div className="cy-stat-lbl" style={{ color: "#6b7280", marginTop: 3 }}>{card.label}</div>
                 </div>
+              </>
+            );
+            return card.clickable ? (
+              <Link key={card.label} href={card.href} onClick={e => guardHref(e, card.href)}
+                className="cy-stat-card" style={{ display: "flex", alignItems: "center", background: "#fff", border: "1px solid #e5e7eb", textDecoration: "none" }}>
+                {inner}
               </Link>
+            ) : (
+              <div key={card.label}
+                className="cy-stat-card" style={{ display: "flex", alignItems: "center", background: "#fff", border: "1px solid #e5e7eb" }}>
+                {inner}
+              </div>
             );
           })}
         </div>
@@ -418,159 +411,104 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
           </div>
         </div>
 
-        {/* Row 3: Subscriptions + Map */}
-        <div className="cy-row-half" style={{ marginBottom: 20 }}>
-          <div className="cy-col-full">
-            <SectionHeader title="My Subscriptions" href="/dashboard/subscriptions" />
-            <Card>
-              {!isMobile && <THead cols={["Service", "Start", "Expires", "Status"]} flex={[2, 1, 1, 1]} />}
-              {loading
-                ? Array.from({ length: isMobile ? LIMIT.subs.sm : LIMIT.subs.lg }).map((_, i) => (
-                    <div key={i} style={{ padding: "10px 14px", borderBottom: "1px solid #f9fafb" }}>
-                      <Skeleton w="55%" h={12} /><div style={{ marginTop: 5 }}><Skeleton w="35%" h={10} /></div>
-                    </div>
-                  ))
-                : visibleSubs.length === 0
-                  ? (
-                    <div style={{ padding: "28px 16px", textAlign: "center" }}>
-                      <div style={{ width: 40, height: 40, borderRadius: 10, background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 10px" }}>
-                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="1.5" y="1.5" width="7" height="7" rx="1.5" stroke="#9ca3af" strokeWidth="1.5"/><rect x="11.5" y="1.5" width="7" height="7" rx="1.5" stroke="#9ca3af" strokeWidth="1.5"/><rect x="1.5" y="11.5" width="7" height="7" rx="1.5" stroke="#9ca3af" strokeWidth="1.5"/><rect x="11.5" y="11.5" width="7" height="7" rx="1.5" stroke="#9ca3af" strokeWidth="1.5"/></svg>
+        {/* Row 3: Notifications + Recent activity (stacked) + Map */}
+        <div className="cy-row-half">
+          <div className="cy-col-full" style={{ gap: 50 }}>
+            {/* Notifications */}
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <h2 style={{ margin: 0, fontSize: 14.5, fontWeight: 600, color: "#111827" }}>Notifications</h2>
+                  {unreadNotifCount > 0 && (
+                    <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: "#dc2626", color: "#fff", fontSize: 10.5, fontWeight: 700, lineHeight: 1 }}>
+                      {unreadNotifCount > 99 ? "99+" : unreadNotifCount}
+                    </span>
+                  )}
+                </div>
+                <Link href="/dashboard/notifications" style={{ fontSize: 12.5, color: colors.primary, textDecoration: "none", fontWeight: 500 }}>View all</Link>
+              </div>
+              <Card>
+                {loading
+                  ? Array.from({ length: isMobile ? LIMIT.notifs.sm : LIMIT.notifs.lg }).map((_, i) => (
+                      <div key={i} style={{ display: "flex", gap: 10, padding: "12px 14px", borderBottom: "1px solid #f3f4f6" }}>
+                        <Skeleton w={8} h={8} />
+                        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}><Skeleton w="70%"/><Skeleton w="45%"/></div>
                       </div>
-                      <div style={{ fontSize: 13, fontWeight: 500, color: "#374151", marginBottom: 4 }}>No active services</div>
-                      <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 12 }}>Subscribe to your first cloud service</div>
-                      <Link href="/dashboard/catalogue" onClick={e => guardHref(e, "/dashboard/catalogue")}
-                        style={{ display: "inline-flex", alignItems: "center", height: 30, padding: "0 14px", background: colors.primary, color: "#fff", fontSize: 12, fontWeight: 500, textDecoration: "none", borderRadius: 6 }}>Browse catalogue</Link>
-                    </div>
-                  )
-                  : visibleSubs.map((s, idx) => {
-                      const last   = idx === visibleSubs.length - 1;
-                      const border = last ? "none" : "1px solid #f3f4f6";
-                      if (isMobile) {
+                    ))
+                  : visibleNotifs.length === 0
+                    ? <div style={{ padding: "28px 16px", textAlign: "center", fontSize: 13, color: "#9ca3af" }}>You're all caught up.</div>
+                    : visibleNotifs.map((n, idx) => {
+                        const dotColor = {INFO:"#2563eb",SUCCESS:colors.primary,WARNING:"#b45309",ERROR:"#dc2626"}[n.type] ?? "#6b7280";
+                        const last     = idx === visibleNotifs.length - 1;
+                        const inner = (
+                          <div className="cy-notif-row" style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "11px 14px", borderBottom: last ? "none" : "1px solid #f3f4f6", background: n.isRead ? "transparent" : "#f9fffe", transition: "background 0.12s", color: "inherit" }}>
+                            <div style={{ width: 8, height: 8, borderRadius: "50%", background: dotColor, flexShrink: 0, marginTop: 5 }} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: n.isRead ? 400 : 600, color: "#111827", marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.title}</div>
+                              <div style={{ fontSize: 12, color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.body}</div>
+                            </div>
+                            <span style={{ fontSize: 11, color: "#9ca3af", flexShrink: 0, whiteSpace: "nowrap" }}>{timeAgo(n.createdAt)}</span>
+                          </div>
+                        );
+                        return n.link
+                          ? <Link key={n.id} href={n.link} className="cy-notif-lnk">{inner}</Link>
+                          : <div key={n.id} style={{ overflow: "hidden", width: "100%" }}>{inner}</div>;
+                      })
+                }
+              </Card>
+            </div>
+
+            {/* Recent activity */}
+            <div>
+              <SectionHeader title="Recent activity" href="/dashboard/invoices" />
+              <Card>
+                {loading
+                  ? Array.from({ length: isMobile ? LIMIT.activity.sm : LIMIT.activity.lg }).map((_, i) => (
+                      <div key={i} style={{ display: "flex", gap: 12, padding: "12px 14px", borderBottom: "1px solid #f3f4f6" }}>
+                        <Skeleton w={34} h={34} />
+                        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}><Skeleton w="55%"/><Skeleton w="30%"/></div>
+                      </div>
+                    ))
+                  : visibleActivity.length === 0
+                    ? <div style={{ padding: "28px 16px", textAlign: "center", fontSize: 13, color: "#9ca3af" }}>No recent activity yet.</div>
+                    : visibleActivity.map((a, idx) => {
+                        const tc: Record<string, {bg:string;color:string}> = {
+                          INVOICE:{bg:"#eef5ff",color:"#2563eb"}, QUOTATION:{bg:"#fff8e6",color:"#b45309"},
+                          RFQ:{bg:"#f0faf5",color:colors.primary}, CREDIT_NOTE:{bg:"#fdf0ef",color:"#dc2626"},
+                          PROFORMA:{bg:"#f5f0ff",color:"#7c3aed"}, DELIVERY_NOTE:{bg:"#f0f5ff",color:"#1d4ed8"},
+                          PO:{bg:"#f0fff4",color:"#166534"},
+                        };
+                        const c    = tc[a.type] ?? {bg:"#f3f4f6",color:"#6b7280"};
+                        const last = idx === visibleActivity.length - 1;
                         return (
-                          <Link key={s.id} href={`/dashboard/subscriptions/${s.id}`} onClick={e => guardHref(e, `/dashboard/subscriptions/${s.id}`)} className="cy-table-row"
-                            style={{ display: "flex", flexDirection: "column", padding: "10px 14px", borderBottom: border, textDecoration: "none", gap: 4 }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                              <span style={{ fontSize: 12.5, fontWeight: 500, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "50%" }} title={s.productName}>{s.productName}</span>
-                              <StatusText status={s.status} size={11} />
+                          <Link key={a.id} href={a.href} onClick={e => guardHref(e, a.href)} className="cy-activity-row cy-act-link"
+                            style={{ borderBottom: last ? "none" : "1px solid #f3f4f6", transition: "background 0.12s" }}>
+                            <div style={{ width: 34, height: 34, borderRadius: 6, flexShrink: 0, background: c.bg, color: c.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9.5, fontWeight: 700, letterSpacing: "0.04em" }}>
+                              {(DOC_LABELS[a.type] ?? a.type).slice(0,3).toUpperCase()}
                             </div>
-                            <div style={{ display: "flex", gap: 6, fontSize: 11, color: "#9ca3af" }}>
-                              <span>{s.billingPeriod}</span><span>·</span><span>Exp: {fmtDateShort(s.currentPeriodEnd)}</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 500, color: "#111827", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {DOC_LABELS[a.type] ?? a.type}{" "}
+                                <span style={{ fontFamily: "monospace", fontSize: 11.5, color: "#9ca3af", fontWeight: 400 }}>{a.docNumber}</span>
+                              </div>
+                              <div style={{ display: "flex", gap: 8, marginTop: 3, alignItems: "center" }}>
+                                {a.totalAmount != null && <span style={{ fontSize: 12, color: "#374151", fontWeight: 500 }}>{fmt(a.totalAmount, a.currency ?? currency)}</span>}
+                                <StatusText status={a.status} size={11} />
+                              </div>
                             </div>
+                            <span style={{ fontSize: 11.5, color: "#9ca3af", flexShrink: 0 }}>{timeAgo(a.createdAt)}</span>
                           </Link>
                         );
-                      }
-                      return (
-                        <Link key={s.id} href={`/dashboard/subscriptions/${s.id}`} onClick={e => guardHref(e, `/dashboard/subscriptions/${s.id}`)} className="cy-table-row"
-                          style={{ display: "flex", alignItems: "center", padding: "9px 14px", borderBottom: border, textDecoration: "none" }}>
-                          <div style={{ flex: 2, minWidth: 0, paddingRight: 12 }}>
-                            <div style={{ fontSize: 12.5, fontWeight: 500, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.productName}>{s.productName}</div>
-                            <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 1 }}>{s.billingPeriod}</div>
-                          </div>
-                          <span style={{ flex: 1, fontSize: 12, color: "#6b7280", paddingRight: 8, whiteSpace: "nowrap" }}>{fmtDate(s.currentPeriodStart)}</span>
-                          <span style={{ flex: 1, fontSize: 12, color: "#6b7280", paddingRight: 8, whiteSpace: "nowrap" }}>{fmtDateShort(s.currentPeriodEnd)}</span>
-                          <span style={{ flex: 1 }}><StatusText status={s.status} /></span>
-                        </Link>
-                      );
-                    })
-              }
-            </Card>
+                      })
+                }
+              </Card>
+            </div>
           </div>
 
           <div className="cy-col-full">
             <SectionHeader title="Server locations" />
             <Card style={{ padding: 0, minHeight: 240 }}>
               <ServerMap servers={servers} />
-            </Card>
-          </div>
-        </div>
-
-        {/* Row 4: Activity + Notifications */}
-        <div className="cy-row-half">
-          <div className="cy-col-full">
-            <SectionHeader title="Recent activity" href="/dashboard/invoices" />
-            <Card>
-              {loading
-                ? Array.from({ length: isMobile ? LIMIT.activity.sm : LIMIT.activity.lg }).map((_, i) => (
-                    <div key={i} style={{ display: "flex", gap: 12, padding: "12px 14px", borderBottom: "1px solid #f3f4f6" }}>
-                      <Skeleton w={34} h={34} />
-                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}><Skeleton w="55%"/><Skeleton w="30%"/></div>
-                    </div>
-                  ))
-                : visibleActivity.length === 0
-                  ? <div style={{ padding: "28px 16px", textAlign: "center", fontSize: 13, color: "#9ca3af" }}>No recent activity yet.</div>
-                  : visibleActivity.map((a, idx) => {
-                      const tc: Record<string, {bg:string;color:string}> = {
-                        INVOICE:{bg:"#eef5ff",color:"#2563eb"}, QUOTATION:{bg:"#fff8e6",color:"#b45309"},
-                        RFQ:{bg:"#f0faf5",color:colors.primary}, CREDIT_NOTE:{bg:"#fdf0ef",color:"#dc2626"},
-                        PROFORMA:{bg:"#f5f0ff",color:"#7c3aed"}, DELIVERY_NOTE:{bg:"#f0f5ff",color:"#1d4ed8"},
-                        PO:{bg:"#f0fff4",color:"#166534"},
-                      };
-                      const c    = tc[a.type] ?? {bg:"#f3f4f6",color:"#6b7280"};
-                      const last = idx === visibleActivity.length - 1;
-                      return (
-                        <Link key={a.id} href={a.href} onClick={e => guardHref(e, a.href)} className="cy-activity-row cy-act-link"
-                          style={{ borderBottom: last ? "none" : "1px solid #f3f4f6", transition: "background 0.12s" }}>
-                          <div style={{ width: 34, height: 34, borderRadius: 6, flexShrink: 0, background: c.bg, color: c.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9.5, fontWeight: 700, letterSpacing: "0.04em" }}>
-                            {(DOC_LABELS[a.type] ?? a.type).slice(0,3).toUpperCase()}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 13, fontWeight: 500, color: "#111827", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                              {DOC_LABELS[a.type] ?? a.type}{" "}
-                              <span style={{ fontFamily: "monospace", fontSize: 11.5, color: "#9ca3af", fontWeight: 400 }}>{a.docNumber}</span>
-                            </div>
-                            <div style={{ display: "flex", gap: 8, marginTop: 3, alignItems: "center" }}>
-                              {a.totalAmount != null && <span style={{ fontSize: 12, color: "#374151", fontWeight: 500 }}>{fmt(a.totalAmount, a.currency ?? currency)}</span>}
-                              <StatusText status={a.status} size={11} />
-                            </div>
-                          </div>
-                          <span style={{ fontSize: 11.5, color: "#9ca3af", flexShrink: 0 }}>{timeAgo(a.createdAt)}</span>
-                        </Link>
-                      );
-                    })
-              }
-            </Card>
-          </div>
-
-          <div className="cy-col-full">
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <h2 style={{ margin: 0, fontSize: 14.5, fontWeight: 600, color: "#111827" }}>Notifications</h2>
-                {unreadNotifCount > 0 && (
-                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: "#dc2626", color: "#fff", fontSize: 10.5, fontWeight: 700, lineHeight: 1 }}>
-                    {unreadNotifCount > 99 ? "99+" : unreadNotifCount}
-                  </span>
-                )}
-              </div>
-              <Link href="/dashboard/notifications" style={{ fontSize: 12.5, color: colors.primary, textDecoration: "none", fontWeight: 500 }}>View all</Link>
-            </div>
-            <Card>
-              {loading
-                ? Array.from({ length: isMobile ? LIMIT.notifs.sm : LIMIT.notifs.lg }).map((_, i) => (
-                    <div key={i} style={{ display: "flex", gap: 10, padding: "12px 14px", borderBottom: "1px solid #f3f4f6" }}>
-                      <Skeleton w={8} h={8} />
-                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}><Skeleton w="70%"/><Skeleton w="45%"/></div>
-                    </div>
-                  ))
-                : visibleNotifs.length === 0
-                  ? <div style={{ padding: "28px 16px", textAlign: "center", fontSize: 13, color: "#9ca3af" }}>You're all caught up.</div>
-                  : visibleNotifs.map((n, idx) => {
-                      const dotColor = {INFO:"#2563eb",SUCCESS:colors.primary,WARNING:"#b45309",ERROR:"#dc2626"}[n.type] ?? "#6b7280";
-                      const last     = idx === visibleNotifs.length - 1;
-                      const inner = (
-                        <div className="cy-notif-row" style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "11px 14px", borderBottom: last ? "none" : "1px solid #f3f4f6", background: n.isRead ? "transparent" : "#f9fffe", transition: "background 0.12s", color: "inherit" }}>
-                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: dotColor, flexShrink: 0, marginTop: 5 }} />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 13, fontWeight: n.isRead ? 400 : 600, color: "#111827", marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.title}</div>
-                            <div style={{ fontSize: 12, color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.body}</div>
-                          </div>
-                          <span style={{ fontSize: 11, color: "#9ca3af", flexShrink: 0, whiteSpace: "nowrap" }}>{timeAgo(n.createdAt)}</span>
-                        </div>
-                      );
-                      return n.link
-                        ? <Link key={n.id} href={n.link} className="cy-notif-lnk">{inner}</Link>
-                        : <div key={n.id} style={{ overflow: "hidden", width: "100%" }}>{inner}</div>;
-                    })
-              }
             </Card>
           </div>
         </div>
