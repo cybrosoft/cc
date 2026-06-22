@@ -13,12 +13,12 @@ function s(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
 
-async function getEffectiveGroupId(userGroupId: string | null, marketId: string): Promise<string | null> {
+async function getEffectiveGroupId(userGroupId: string | null): Promise<string | null> {
   if (userGroupId) return userGroupId;
   const def = await prisma.customerGroup.findFirst({
-    where: { isDefault: true, isActive: true },
+    where: { isActive: true },
+    orderBy: { createdAt: "asc" },
     select: { id: true },
-    orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
   });
   return def?.id ?? null;
 }
@@ -49,7 +49,7 @@ export async function GET(req: Request) {
   if (user.role !== Role.CUSTOMER) return NextResponse.json({ ok: false, error: "NOT_A_CUSTOMER" }, { status: 400 });
   if (!user.market) return NextResponse.json({ ok: false, error: "CUSTOMER_HAS_NO_MARKET" }, { status: 400 });
 
-  const effectiveGroupId = await getEffectiveGroupId(user.customerGroupId, user.marketId);
+  const effectiveGroupId = await getEffectiveGroupId(user.customerGroupId);
   if (!effectiveGroupId) {
     return NextResponse.json({ ok: false, error: "DEFAULT_CUSTOMER_GROUP_NOT_FOUND" }, { status: 500 });
   }

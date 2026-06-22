@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
 
     const label = from && to ? `Statement_${from}_${to}` : from ? `Statement_from_${from}` : "Statement";
 
-    return new NextResponse(pdf, {
+    return new NextResponse(new Uint8Array(pdf), {
       status: 200,
       headers: {
         "Content-Type":        "application/pdf",

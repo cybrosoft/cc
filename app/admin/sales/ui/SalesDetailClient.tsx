@@ -868,7 +868,7 @@ export default function SalesDetailClient({ docId, docType, backHref }: Props) {
                   if (log.field === "payment_notification") {
                     // Parse structured fields from the note text
                     const lines  = (log.note ?? "").split("\n");
-                    const get    = (prefix: string) => lines.find(l => l.startsWith(prefix))?.slice(prefix.length).trim() ?? null;
+                    const get    = (prefix: string) => lines.find((l: string) => l.startsWith(prefix))?.slice(prefix.length).trim() ?? null;
                     const amount    = get("Amount: ");
                     const date      = get("Date: ");
                     const reference = get("Reference: ");

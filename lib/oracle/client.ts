@@ -22,10 +22,14 @@ export function getOracleProvider(): common.SimpleAuthenticationDetailsProvider 
 
   const privateKeyPem = fs.readFileSync(keyPath, "utf8");
 
+  // Optional passphrase for an encrypted private key — null if the key is unencrypted.
+  const passphrase = process.env.OCI_PRIVATE_KEY_PASSPHRASE?.trim() || null;
+
   return new common.SimpleAuthenticationDetailsProvider(
     tenancyId,
     userId,
     fingerprint,
-    privateKeyPem
+    privateKeyPem,
+    passphrase
   );
 }

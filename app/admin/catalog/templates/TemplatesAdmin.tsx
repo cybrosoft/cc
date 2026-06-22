@@ -256,7 +256,6 @@ export default function TemplatesAdmin() {
                         <TemplateForm
                           draft={editDraft} setDraft={setEditDraft as any}
                           allTags={allTags} allProducts={allProducts} families={families}
-                          onToggleTag={k => setEditDraft(d => d ? toggleTagKey(k, d) : d)}
                           isEdit
                         />
                         <div style={{ marginTop: 14 }}>

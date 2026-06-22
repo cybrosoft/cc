@@ -5,6 +5,12 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 
 type Params = { params: Promise<{ id: string }> };
 
+function toDateOrUndefined(v: unknown): Date | undefined {
+  if (v === undefined || v === null || v === "") return undefined;
+  const d = new Date(v as string);
+  return isNaN(d.getTime()) ? undefined : d;
+}
+
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
     await requireAdmin();
@@ -35,23 +41,23 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const doc = await prisma.salesDocument.update({
       where: { id },
       data: {
-        ...(body.status               !== undefined ? { status:               body.status }                                                         : {}),
-        ...(body.notes                !== undefined ? { notes:                body.notes }                                                           : {}),
-        ...(body.internalNote         !== undefined ? { internalNote:         body.internalNote }                                                    : {}),
-        ...(body.rfqTitle             !== undefined ? { rfqTitle:             body.rfqTitle }                                                        : {}),
-        ...(body.rfqFileUrl           !== undefined ? { rfqFileUrl:           body.rfqFileUrl }                                                      : {}),
-        ...(body.subject              !== undefined ? { subject:              body.subject }                                                         : {}),
-        ...(body.referenceNumber      !== undefined ? { referenceNumber:      body.referenceNumber }                                                 : {}),
-        ...(body.termsAndConditions   !== undefined ? { termsAndConditions:   body.termsAndConditions }                                              : {}),
-        ...(body.dueDate              !== undefined ? { dueDate:              body.dueDate    ? new Date(body.dueDate)    : null }                  : {}),
-        ...(body.issueDate            !== undefined ? { issueDate:            body.issueDate  ? new Date(body.issueDate)  : null }                  : {}),
-        ...(body.leadSource           !== undefined ? { leadSource:           body.leadSource }                                                      : {}),
-        ...(body.leadPriority         !== undefined ? { leadPriority:         body.leadPriority }                                                    : {}),
-        ...(body.assignedToId         !== undefined ? { assignedToId:         body.assignedToId }                                                    : {}),
-        ...(body.expectedCloseDate    !== undefined ? { expectedCloseDate:    body.expectedCloseDate ? new Date(body.expectedCloseDate) : null }     : {}),
-        ...(body.followUpDate         !== undefined ? { followUpDate:         body.followUpDate      ? new Date(body.followUpDate)      : null }     : {}),
-        ...(body.lostReason           !== undefined ? { lostReason:           body.lostReason }                                                      : {}),
-        ...(body.visibleToCustomer    !== undefined ? { visibleToCustomer:    Boolean(body.visibleToCustomer) }                                      : {}),
+        ...(body.status               !== undefined ? { status:               body.status }                                  : {}),
+        ...(body.notes                !== undefined ? { notes:                body.notes }                                    : {}),
+        ...(body.internalNote         !== undefined ? { internalNote:         body.internalNote }                             : {}),
+        ...(body.rfqTitle             !== undefined ? { rfqTitle:             body.rfqTitle }                                 : {}),
+        ...(body.rfqFileUrl           !== undefined ? { rfqFileUrl:           body.rfqFileUrl }                               : {}),
+        ...(body.subject              !== undefined ? { subject:              body.subject }                                  : {}),
+        ...(body.referenceNumber      !== undefined ? { referenceNumber:      body.referenceNumber }                          : {}),
+        ...(body.termsAndConditions   !== undefined ? { termsAndConditions:   body.termsAndConditions }                       : {}),
+        ...(body.dueDate              !== undefined ? { dueDate:              toDateOrUndefined(body.dueDate) }               : {}),
+        ...(body.issueDate            !== undefined ? { issueDate:            toDateOrUndefined(body.issueDate) }             : {}),
+        ...(body.leadSource           !== undefined ? { leadSource:           body.leadSource }                               : {}),
+        ...(body.leadPriority         !== undefined ? { leadPriority:         body.leadPriority }                             : {}),
+        ...(body.assignedToId         !== undefined ? { assignedToId:         body.assignedToId }                             : {}),
+        ...(body.expectedCloseDate    !== undefined ? { expectedCloseDate:    toDateOrUndefined(body.expectedCloseDate) }     : {}),
+        ...(body.followUpDate         !== undefined ? { followUpDate:         toDateOrUndefined(body.followUpDate) }          : {}),
+        ...(body.lostReason           !== undefined ? { lostReason:           body.lostReason }                               : {}),
+        ...(body.visibleToCustomer    !== undefined ? { visibleToCustomer:    Boolean(body.visibleToCustomer) }               : {}),
         ...(body.lines !== undefined ? {
           lines: {
             deleteMany: {},

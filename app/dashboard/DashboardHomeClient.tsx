@@ -16,7 +16,7 @@ const LIMIT = {
 interface DashboardUser {
   id: string; email: string; name?: string | null; companyName?: string | null;
   customerNumber?: string | null; market?: string | null; currency?: string | null;
-  customerGroup?: string | null; userStatus?: string;
+  customerGroup?: string | null; userStatus?: string; totpEnabled?: boolean;
 }
 interface Stats {
   activeSubscriptions: number; pendingInvoices: number; overdueInvoices: number;

@@ -11,22 +11,34 @@ interface PageUser { id: string; email: string; market: string | null; currency:
 interface AddonRow {
   id: string; productName: string; productKey: string | null;
   productType: string; unitLabel: string | null; billingPeriod: string;
-  status: string; quantity: number;
+  status: string; quantity: number | null;
   currentPeriodStart: string | null; currentPeriodEnd: string | null;
 }
 
+// Matches what getCachedSubscription() returns for `server` at rest (DB fields
+// only: id, hetznerServerId, oracleInstanceId, oracleInstanceRegion). The
+// richer live fields (provider, ipv4, status, location, vcpus, ramGb, diskGb)
+// are optional because they only arrive after the client-side enrichment
+// fetch to /api/customer/subscriptions/[id] completes.
 interface ServerDetail {
-  id: string; provider: string; productKey: string | null;
-  hetznerServerId: string | null; oracleInstanceId: string | null;
+  id: string;
+  hetznerServerId: string | null;
+  oracleInstanceId: string | null;
   oracleInstanceRegion: string | null;
-  ipv4: string | null; status: string | null; location: string | null;
-  vcpus: number | null; ramGb: number | null; diskGb: number | null;
+  provider?: string;
+  productKey?: string | null;
+  ipv4?: string | null;
+  status?: string | null;
+  location?: string | null;
+  vcpus?: number | null;
+  ramGb?: number | null;
+  diskGb?: number | null;
 }
 
 interface SubDetail {
   id: string; productName: string; productKey: string | null;
   productType: string; unitLabel: string | null; billingPeriod: string;
-  status: string; quantity: number;
+  status: string; quantity: number | null;
   locationCode: string | null; templateSlug: string | null;
   productNote: string | null; productDetails: string | null;
   receiptUrl: string | null; parentSubId: string | null;
@@ -161,7 +173,7 @@ export function SubscriptionDetailClient({
             {sub.productKey && <InfoRow label="Product code"  value={sub.productKey.toUpperCase()} mono />}
             <InfoRow label="Type"           value={sub.productType} />
             <InfoRow label="Billing period" value={sub.billingPeriod} />
-            {sub.quantity > 1 && (
+            {(sub.quantity ?? 1) > 1 && (
               <InfoRow label="Quantity" value={`${sub.quantity}${sub.unitLabel ? ` ${sub.unitLabel}` : ""}`} />
             )}
             <InfoRow label="Start date"     value={fmtDate(sub.currentPeriodStart)} />
@@ -186,7 +198,7 @@ export function SubscriptionDetailClient({
           {liveServer && (
             <Section title="Linked Server">
               {serverCode && <InfoRow label="Server ID" value={serverCode.toUpperCase()} mono />}
-              <InfoRow label="Provider" value={liveServer.provider} />
+              {liveServer.provider && <InfoRow label="Provider" value={liveServer.provider} />}
               {liveServer.ipv4     && <InfoRow label="IPv4 address" value={liveServer.ipv4} mono />}
               {specs               && <InfoRow label="Specs"        value={specs} />}
               {liveServer.location && <InfoRow label="Location"     value={liveServer.location} />}
@@ -216,7 +228,7 @@ export function SubscriptionDetailClient({
                   <div style={{ flex:1, minWidth:0, paddingRight:12 }}>
                     <div style={{ fontSize:13, color:"#111827", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                       {a.productName}
-                      {a.quantity > 1 && <span style={{ marginLeft:6, fontSize:11.5, color:"#9ca3af" }}>×{a.quantity}{a.unitLabel ? ` ${a.unitLabel}` : ""}</span>}
+                      {(a.quantity ?? 1) > 1 && <span style={{ marginLeft:6, fontSize:11.5, color:"#9ca3af" }}>×{a.quantity}{a.unitLabel ? ` ${a.unitLabel}` : ""}</span>}
                     </div>
                     <div style={{ fontSize:11.5, color:"#9ca3af", marginTop:2 }}>{a.billingPeriod} · {fmtDate(a.currentPeriodEnd)}</div>
                   </div>

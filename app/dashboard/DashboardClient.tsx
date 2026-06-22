@@ -42,7 +42,7 @@ interface Props {
 }
 
 function StatusTag({ status }: { status: string }) {
-  const map: Record<string, { c: string; bg: string; b: string }> = {
+  const map: Record<string, { text: string; bg: string; border: string }> = {
     ACTIVE:           colors.statusActive,
     PENDING_PAYMENT:  colors.statusPending,
     PENDING_EXTERNAL: colors.statusPending,
@@ -51,12 +51,12 @@ function StatusTag({ status }: { status: string }) {
     UNPAID:           colors.statusUnpaid,
     FAILED:           colors.statusUnpaid,
   };
-  const s = map[status] ?? { c: "#374151", bg: "#f3f4f6", b: "#e5e7eb" };
+  const s = map[status] ?? { text: "#374151", bg: "#f3f4f6", border: "#e5e7eb" };
   const label = status.replace(/_/g, " ");
   return (
     <span style={{
       fontSize: 11, fontWeight: 500, padding: "1px 8px",
-      color: s.c, background: s.bg, border: `1px solid ${s.b}`,
+      color: s.text, background: s.bg, border: `1px solid ${s.border}`,
       whiteSpace: "nowrap",
     }}>{label}</span>
   );

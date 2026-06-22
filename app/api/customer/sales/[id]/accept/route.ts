@@ -33,15 +33,17 @@ const ALLOWED_TYPES: Record<string, string> = {
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const { id } = await params;
+
   // Fetch the doc — must be a QUOTATION in ISSUED or SENT or REVISED state
   const doc = await prisma.salesDocument.findFirst({
     where: {
-      id:         params.id,
+      id,
       customerId: user.id,
       type:       "QUOTATION",
       status:     { in: ["ISSUED", "SENT", "REVISED"] },

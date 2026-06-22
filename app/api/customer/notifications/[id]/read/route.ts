@@ -8,16 +8,17 @@ import { invalidateCustomerNotifs } from "@/lib/cache/customer-cache";
 
 export async function POST(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const { id } = await params;
   const now = new Date();
 
   // Only update if it belongs to this user and is currently unread
   const result = await prisma.notification.updateMany({
-    where: { id: params.id, userId: user.id, isRead: false },
+    where: { id, userId: user.id, isRead: false },
     data:  { isRead: true, readAt: now },
   });
 

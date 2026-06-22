@@ -158,6 +158,7 @@ async function getBootDiskAndVolumes(args: {
   block: core.BlockstorageClient;
   compartmentOcid: string;
   instanceOcid: string;
+  availabilityDomain: string;
 }): Promise<{
   diskGb: number | null;
   additionalDiskGb: number | null;
@@ -166,6 +167,7 @@ async function getBootDiskAndVolumes(args: {
   volumeIds: string[];
 }> {
   const bootAtt = await args.compute.listBootVolumeAttachments({
+    availabilityDomain: args.availabilityDomain,
     compartmentId: args.compartmentOcid,
     instanceId:    args.instanceOcid,
   });
@@ -287,7 +289,13 @@ export async function getOracleInstanceSummary(args: {
 
   const [netData, volumeData] = await Promise.all([
     getVnicDetails({ compute, vcn, compartmentOcid: compartmentId, instanceOcid: instanceId }),
-    getBootDiskAndVolumes({ compute, block, compartmentOcid: compartmentId, instanceOcid: instanceId }),
+    getBootDiskAndVolumes({
+      compute,
+      block,
+      compartmentOcid: compartmentId,
+      instanceOcid: instanceId,
+      availabilityDomain: inst.availabilityDomain,
+    }),
   ]);
 
   const backupData = await getBackupFlags({

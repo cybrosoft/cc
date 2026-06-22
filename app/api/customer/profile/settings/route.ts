@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 
 export async function GET(_req: NextRequest) {
   const user = await getSessionUser();
@@ -75,7 +76,11 @@ export async function PUT(req: NextRequest) {
   await prisma.user.update({
     where: { id: user.id },
     data: {
-      notifPrefs: updatedPrefs,
+      // Prisma's JSON input type doesn't accept a plain Record directly —
+      // double-cast through unknown, the documented escape hatch for this
+      // exact situation (TS won't allow Record<string,unknown> -> InputJsonValue
+      // directly because InputJsonValue is a union that includes JSON arrays).
+      notifPrefs: updatedPrefs as unknown as Prisma.InputJsonValue,
       timezone,
       dndStart,
       dndEnd,

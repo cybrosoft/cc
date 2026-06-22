@@ -71,7 +71,7 @@ export function BillingModal({
 
     setStart(fmtDateInput(sub.currentPeriodStart));
     setEnd(fmtDateInput(sub.currentPeriodEnd));
-    setPaymentDate(fmtDateInput(sub.activatedAt));
+    setPaymentDate(fmtDateInput(sub.paymentStatus === "PAID" ? sub.currentPeriodStart : null));
 
     setDetails((sub as unknown as { productDetails?: string | null }).productDetails ?? "");
     setNote((sub as unknown as { productNote?: string | null }).productNote ?? "");

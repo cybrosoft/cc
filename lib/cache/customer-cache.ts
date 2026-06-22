@@ -20,14 +20,16 @@ export function customerTag(userId: string)        { return `customer-${userId}`
 export function customerServersTag(userId: string) { return `customer-${userId}-servers`; }
 export function customerNotifsTag(userId: string)  { return `customer-${userId}-notifs`; }
 
+// Next.js 16 requires a second "profile" argument for revalidateTag.
+// "max" busts the tag immediately, matching the previous (Next 14/15) default behavior.
 export async function invalidateCustomer(userId: string) {
-  revalidateTag(customerTag(userId));
+  revalidateTag(customerTag(userId), "max");
 }
 export async function invalidateCustomerServers(userId: string) {
-  revalidateTag(customerServersTag(userId));
+  revalidateTag(customerServersTag(userId), "max");
 }
 export async function invalidateCustomerNotifs(userId: string) {
-  revalidateTag(customerNotifsTag(userId));
+  revalidateTag(customerNotifsTag(userId), "max");
 }
 
 // ── Cached: core customer data ────────────────────────────────────────────────
@@ -318,28 +320,25 @@ export function getCachedServerDetails(userId: string) {
           }
 
           // ── Oracle live details ─────────────────────────────────────────
+          // NOTE: getOracleComputeClient does not exist in lib/oracle/client.ts —
+          // this codepath used the OCI SDK directly elsewhere (lib/oracle/compute.ts).
+          // Disabled here pending a real implementation; falls through silently.
           if (provider === "Oracle" && s.oracleInstanceId) {
             try {
-              const { getOracleComputeClient } = await import("@/lib/oracle/client");
-              const client   = getOracleComputeClient(s.oracleInstanceRegion ?? "me-jeddah-1");
-              const instance = await client.getInstance({ instanceId: s.oracleInstanceId });
-              const i        = instance.instance;
-              status   = i.lifecycleState ?? null;
-              location = s.oracleInstanceRegion ?? null;
-              vcpus    = i.shapeConfig?.ocpus ?? null;
-              ramGb    = i.shapeConfig?.memoryInGBs ?? null;
-
-              // Get public IP via VNIC
-              try {
-                const vnics = await client.listVnicAttachments({
-                  compartmentId: s.oracleCompartmentOcid ?? i.compartmentId,
-                  instanceId: s.oracleInstanceId,
+              const { getOracleInstanceSummary } = await import("@/lib/oracle/compute");
+              if (s.oracleInstanceRegion) {
+                const o = await getOracleInstanceSummary({
+                  instanceOcid:    s.oracleInstanceId,
+                  regionCode:      s.oracleInstanceRegion,
+                  compartmentOcid: s.oracleCompartmentOcid ?? undefined,
                 });
-                if (vnics.items?.length) {
-                  const vnic = await client.getVnic({ vnicId: vnics.items[0].vnicId });
-                  ipv4 = vnic.vnic?.publicIp ?? vnic.vnic?.privateIp ?? null;
-                }
-              } catch { /* no IP */ }
+                ipv4     = o.ipv4;
+                status   = o.status;
+                location = o.location;
+                vcpus    = o.vcpu;
+                ramGb    = o.ramGb;
+                diskGb   = o.diskGb;
+              }
             } catch { /* provider unavailable */ }
           }
 
@@ -377,18 +376,22 @@ export function getCachedSubscription(userId: string, subscriptionId: string) {
               unitLabel: true, billingPeriods: true,
             },
           },
-          // Addons linked to this plan
-          addons: {
-            include: {
-              product: { select: { name: true, key: true, type: true, unitLabel: true } },
-            },
-          },
           // Server linked to this subscription
-          server: true,
+          servers: { take: 1 },
         },
       });
 
       if (!sub) return null;
+
+      // Addons are subscriptions whose parentSubscriptionId points to this one
+      const addonSubs = await prisma.subscription.findMany({
+        where: { parentSubscriptionId: sub.id },
+        include: {
+          product: { select: { name: true, key: true, type: true, unitLabel: true } },
+        },
+      });
+
+      const server = sub.servers[0] ?? null;
 
       return {
         id:                 sub.id,
@@ -409,13 +412,13 @@ export function getCachedSubscription(userId: string, subscriptionId: string) {
         currentPeriodStart: sub.currentPeriodStart?.toISOString() ?? null,
         currentPeriodEnd:   sub.currentPeriodEnd?.toISOString()   ?? null,
         createdAt:          sub.createdAt.toISOString(),
-        server: sub.server ? {
-          id:                   sub.server.id,
-          hetznerServerId:      sub.server.hetznerServerId    ?? null,
-          oracleInstanceId:     sub.server.oracleInstanceId   ?? null,
-          oracleInstanceRegion: sub.server.oracleInstanceRegion ?? null,
+        server: server ? {
+          id:                   server.id,
+          hetznerServerId:      server.hetznerServerId    ?? null,
+          oracleInstanceId:     server.oracleInstanceId   ?? null,
+          oracleInstanceRegion: server.oracleInstanceRegion ?? null,
         } : null,
-        addons: sub.addons.map(a => ({
+        addons: addonSubs.map(a => ({
           id:            a.id,
           productName:   a.product?.name ?? "—",
           productKey:    a.product?.key  ?? null,

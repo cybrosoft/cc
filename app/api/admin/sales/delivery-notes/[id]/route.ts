@@ -33,6 +33,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     await requireAdmin();
     const { id } = await params;
     const body = await req.json();
+
+    // Prisma's generated update types for DateTime? fields don't accept a
+    // literal `null` directly in some client versions — only Date | string | undefined.
+    // To "clear" a date, callers should send an empty string; we just omit the
+    // key entirely in that case (field stays unchanged) rather than nulling it,
+    // since these dates aren't meant to be cleared once set.
+    function toDateOrUndefined(v: unknown): Date | undefined {
+      if (v === undefined || v === null || v === "") return undefined;
+      const d = new Date(v as string);
+      return isNaN(d.getTime()) ? undefined : d;
+    }
+
     const doc = await prisma.salesDocument.update({
       where: { id },
       data: {
@@ -43,9 +55,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         ...(body.subject            !== undefined ? { subject:            body.subject }                                         : {}),
         ...(body.referenceNumber    !== undefined ? { referenceNumber:    body.referenceNumber }                                 : {}),
         ...(body.termsAndConditions !== undefined ? { termsAndConditions: body.termsAndConditions }                              : {}),
-        ...(body.dueDate            !== undefined ? { dueDate:            body.dueDate   ? new Date(body.dueDate)   : null }    : {}),
-        ...(body.issueDate          !== undefined ? { issueDate:          body.issueDate ? new Date(body.issueDate) : null }    : {}),
-        ...(body.validUntil         !== undefined ? { validUntil:         body.validUntil ? new Date(body.validUntil) : null }  : {}),
+        ...(body.dueDate            !== undefined ? { dueDate:            toDateOrUndefined(body.dueDate) }                      : {}),
+        ...(body.issueDate          !== undefined ? { issueDate:          toDateOrUndefined(body.issueDate) }                    : {}),
+        ...(body.validUntil         !== undefined ? { validUntil:         toDateOrUndefined(body.validUntil) }                   : {}),
         ...(body.lines !== undefined ? {
           lines: {
             deleteMany: {},

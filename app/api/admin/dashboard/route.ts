@@ -89,7 +89,7 @@ export async function GET() {
       users: usersCountMap.get(m.id) ?? 0,
       activeSubs: s.get(SubscriptionStatus.ACTIVE) ?? 0,
       pendingPaymentSubs: s.get(SubscriptionStatus.PENDING_PAYMENT) ?? 0,
-      pendingExternalSubs: s.get(SubscriptionStatus.PENDING_EXTERNAL) ?? 0,
+      pendingExternalSubs: s.get(SubscriptionStatus.PROCESSING) ?? 0,
       canceledSubs: s.get(SubscriptionStatus.CANCELED) ?? 0,
       serversAssigned: serversAssignedMap.get(m.id) ?? 0,
     };

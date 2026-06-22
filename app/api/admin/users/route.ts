@@ -7,7 +7,7 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 // ─── GET — list users ─────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
-  const auth = await requireAdmin(req);
+  const auth = await requireAdmin();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
 // ─── POST — create customer ───────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  const auth = await requireAdmin(req);
+  const auth = await requireAdmin();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
 
   const body = await req.json();

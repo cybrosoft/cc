@@ -6,10 +6,11 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import type { SalesDocumentType } from "@prisma/client";
 
-const DOC_TYPES = [
+const DOC_TYPES: SalesDocumentType[] = [
   "RFQ", "QUOTATION", "PO", "DELIVERY_NOTE", "PROFORMA", "INVOICE", "CREDIT_NOTE"
-] as const;
+];
 
 export async function GET() {
   try {
@@ -28,7 +29,7 @@ export async function GET() {
     const existingSet = new Set(existing.map(e => `${e.marketId}__${e.docType}`));
 
     // Auto-create missing rows with blank prefix — admin must configure before use
-    const toCreate: { marketId: string; docType: string; prefix: string; nextNum: number }[] = [];
+    const toCreate: { marketId: string; docType: SalesDocumentType; prefix: string; nextNum: number }[] = [];
     for (const market of markets) {
       for (const docType of DOC_TYPES) {
         if (!existingSet.has(`${market.id}__${docType}`)) {

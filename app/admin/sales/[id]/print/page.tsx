@@ -11,6 +11,36 @@ interface DocLine {
   product?: { key: string } | null;
 }
 interface Payment { amountCents: number; paidAt: string; }
+
+interface BankDetails {
+  bankName?: string | null;
+  accountName?: string | null;
+  iban?: string | null;
+  swift?: string | null;
+  currency?: string | null;
+}
+interface LegalInfo {
+  companyName?: string | null;
+  companyNameAr?: string | null;
+  tagline?: string | null;
+  taglineAr?: string | null;
+  crNumber?: string | null;
+  vatNumber?: string | null;
+  address?: string | null;
+  addressAr?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  website?: string | null;
+  footerText?: string | null;
+  defaultPaymentTerms?: string | null;
+  quotationValidityDays?: number | null;
+  bankDetails?: BankDetails | null;
+}
+interface CompanyProfile {
+  logoUrl?: string | null;
+  primaryColor?: string | null;
+}
+
 interface FullDoc {
   id: string; docNum: string; type: string; status: string;
   currency: string; subtotal: number; vatPercent: number;
@@ -26,8 +56,8 @@ interface FullDoc {
   };
   market: {
     key: string; name: string;
-    legalInfo: Record<string, unknown> | null;
-    companyProfile: Record<string, unknown> | null;
+    legalInfo: LegalInfo | null;
+    companyProfile: CompanyProfile | null;
     showPayOnline: boolean; stripePublicKey?: string | null;
   };
   lines: DocLine[];
@@ -83,13 +113,13 @@ export default function PrintPage() {
     </div>
   );
 
-  const li           = (doc.market.legalInfo  ?? {}) as Record<string, unknown>;
-  const cp           = (doc.market.companyProfile ?? {}) as Record<string, unknown>;
-  const bd           = li.bankDetails as Record<string, unknown> | undefined;
-  const primaryColor = String(cp.primaryColor ?? "#318774");
+  const li: LegalInfo           = doc.market.legalInfo ?? {};
+  const cp: CompanyProfile      = doc.market.companyProfile ?? {};
+  const bd: BankDetails | null  = li.bankDetails ?? null;
+  const primaryColor = cp.primaryColor ?? "#318774";
   const typeLabel    = TYPE_LABEL[doc.type] ?? doc.type;
   const isSaudi      = doc.market.key === "SAUDI";
-  const showBank     = (doc.type === "PROFORMA" || doc.type === "INVOICE") && bd?.iban;
+  const showBank     = (doc.type === "PROFORMA" || doc.type === "INVOICE") && !!bd?.iban;
   const totalPaid    = doc.payments.reduce((s, p) => s + p.amountCents, 0);
   const balanceDue   = doc.total - totalPaid;
 
@@ -109,7 +139,7 @@ export default function PrintPage() {
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
           <div>
-            {cp.logoUrl && <img src={String(cp.logoUrl)} alt="" style={{ maxHeight: 40, maxWidth: 140, objectFit: "contain", marginBottom: 6, display: "block" }} />}
+            {cp.logoUrl && <img src={cp.logoUrl} alt="" style={{ maxHeight: 40, maxWidth: 140, objectFit: "contain", marginBottom: 6, display: "block" }} />}
           </div>
           <div style={{ textAlign: "right" }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: "#6b7280", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>{typeLabel}</div>
@@ -120,14 +150,14 @@ export default function PrintPage() {
 
         {/* Company */}
         <div style={{ marginBottom: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: primaryColor }}>{String(li.companyName ?? doc.market.name)}</div>
-          {li.tagline && <div style={{ fontSize: 11, color: "#6b7280" }}>{String(li.tagline)}</div>}
+          <div style={{ fontSize: 14, fontWeight: 700, color: primaryColor }}>{li.companyName ?? doc.market.name}</div>
+          {li.tagline && <div style={{ fontSize: 11, color: "#6b7280" }}>{li.tagline}</div>}
           <div style={{ fontSize: 11, color: "#6b7280", lineHeight: 1.7, marginTop: 2 }}>
-            {li.address && <span>{String(li.address)}<br /></span>}
-            {li.crNumber && <span>CR: {String(li.crNumber)} · </span>}
-            {li.vatNumber && <span>VAT: {String(li.vatNumber)}<br /></span>}
-            {li.email && <span>{String(li.email)} · </span>}
-            {li.phone && <span>{String(li.phone)}</span>}
+            {li.address && <span>{li.address}<br /></span>}
+            {li.crNumber && <span>CR: {li.crNumber} · </span>}
+            {li.vatNumber && <span>VAT: {li.vatNumber}<br /></span>}
+            {li.email && <span>{li.email} · </span>}
+            {li.phone && <span>{li.phone}</span>}
           </div>
         </div>
 
@@ -260,10 +290,10 @@ export default function PrintPage() {
             <div>
               <div style={{ fontSize: 9, fontWeight: 700, color: "#6b7280", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>Bank Details</div>
               <div style={{ display: "grid", gridTemplateColumns: "80px 1fr", gap: "2px 0" }}>
-                {bd?.bankName    && <><span style={{ fontSize: 9, color: "#9ca3af" }}>Bank</span><span style={{ fontSize: 10, fontFamily: "monospace" }}>{String(bd.bankName)}</span></>}
-                {bd?.accountName && <><span style={{ fontSize: 9, color: "#9ca3af" }}>Account</span><span style={{ fontSize: 10, fontFamily: "monospace" }}>{String(bd.accountName)}</span></>}
-                {bd?.iban        && <><span style={{ fontSize: 9, color: "#9ca3af" }}>IBAN</span><span style={{ fontSize: 10, fontFamily: "monospace" }}>{String(bd.iban)}</span></>}
-                {bd?.swift       && <><span style={{ fontSize: 9, color: "#9ca3af" }}>SWIFT</span><span style={{ fontSize: 10, fontFamily: "monospace" }}>{String(bd.swift)}</span></>}
+                {bd?.bankName    && <><span style={{ fontSize: 9, color: "#9ca3af" }}>Bank</span><span style={{ fontSize: 10, fontFamily: "monospace" }}>{bd.bankName}</span></>}
+                {bd?.accountName && <><span style={{ fontSize: 9, color: "#9ca3af" }}>Account</span><span style={{ fontSize: 10, fontFamily: "monospace" }}>{bd.accountName}</span></>}
+                {bd?.iban        && <><span style={{ fontSize: 9, color: "#9ca3af" }}>IBAN</span><span style={{ fontSize: 10, fontFamily: "monospace" }}>{bd.iban}</span></>}
+                {bd?.swift       && <><span style={{ fontSize: 9, color: "#9ca3af" }}>SWIFT</span><span style={{ fontSize: 10, fontFamily: "monospace" }}>{bd.swift}</span></>}
               </div>
               {isSaudi && doc.type === "INVOICE" && (
                 <div style={{ marginTop: 12 }}>
@@ -285,7 +315,7 @@ export default function PrintPage() {
 
         {/* Doc footer line */}
         <div style={{ textAlign: "center", fontSize: 9, color: "#9ca3af", borderTop: "0.5px solid #e5e7eb", paddingTop: 10 }}>
-          {String(li.footerText ?? `${li.companyName ?? doc.market.name} · ${li.email ?? ""} · ${li.phone ?? ""}`)}
+          {li.footerText ?? `${li.companyName ?? doc.market.name} · ${li.email ?? ""} · ${li.phone ?? ""}`}
         </div>
       </div>
     </>

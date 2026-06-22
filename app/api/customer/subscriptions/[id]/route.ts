@@ -6,12 +6,14 @@ import { getCachedSubscription, getCachedServerDetails } from "@/lib/cache/custo
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const sub = await getCachedSubscription(user.id, params.id);
+  const { id } = await params;
+
+  const sub = await getCachedSubscription(user.id, id);
   if (!sub) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   // Merge live server details if this subscription has a linked server

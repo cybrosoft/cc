@@ -65,7 +65,7 @@ export async function GET(
       : from ? `Statement_of_Accounts_from_${from}`
       : "Statement_of_Accounts";
 
-    return new NextResponse(pdf, {
+    return new NextResponse(new Uint8Array(pdf), {
       status: 200,
       headers: {
         "Content-Type":        "application/pdf",

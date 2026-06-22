@@ -874,7 +874,7 @@ function BillingTab({ sub, addons, currency, renewalData, invoicesData, manualIn
       {/* ── Pro-rate notice ── */}
       {sub.productNote && sub.productNote.startsWith("Pro-rated") && (
         <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 14px", background: "#eff6ff", border: "1px solid #93c5fd" }}>
-          <Icon name="info" size={13} color="#2563eb" style={{ marginTop: 1, flexShrink: 0 }} />
+          <span style={{ marginTop: 1, flexShrink: 0 }}><Icon name="info" size={13} color="#2563eb" /></span>
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#1d4ed8", marginBottom: 2 }}>Mid-subscription — Pro-rated Pricing</div>
             <div style={{ fontSize: 11, color: "#1e40af" }}>{sub.productNote}</div>
@@ -1766,7 +1766,7 @@ function ExpandedPanel({ sub, addons, onChanged }: { sub: SubRow; addons: SubRow
         {tabs.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             style={{ display: "flex", alignItems: "flex-start", gap: 10, width: "100%", padding: "10px 14px", fontFamily: "inherit", cursor: "pointer", border: "none", background: tab === t.key ? "#fff" : "none", borderLeft: `3px solid ${tab === t.key ? C.primary : "transparent"}`, textAlign: "left" as const, transition: "all 0.1s" }}>
-            <Icon name={t.icon} size={14} color={tab === t.key ? C.primary : C.faint} style={{ marginTop: 1, flexShrink: 0 }} />
+            <span style={{ marginTop: 1, flexShrink: 0 }}><Icon name={t.icon} size={14} color={tab === t.key ? C.primary : C.faint} /></span>
             <div>
               <div style={{ fontSize: 12, fontWeight: 700, color: tab === t.key ? C.primary : C.text, lineHeight: 1.3 }}>{t.label}</div>
               <div style={{ fontSize: 10, color: C.faint, marginTop: 2, lineHeight: 1.3 }}>{t.desc}</div>

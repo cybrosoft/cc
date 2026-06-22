@@ -41,6 +41,7 @@ const ENDPOINT_MAP: Record<string, string> = {
 export interface Customer {
   id: string;
   fullName: string | null;
+  companyName?: string | null;
   email: string;
   customerNumber: string | null;
   market: {
@@ -187,7 +188,7 @@ export interface SalesDocRow {
   id: string; docNum: string; type: string; status: string;
   currency: string; total: number; issueDate: string; dueDate?: string | null;
   emailSentCount?: number | null;
-  customer: { fullName?: string | null; email: string; customerNumber?: string | null };
+  customer: { fullName?: string | null; companyName?: string | null; email: string; customerNumber?: string | null };
   market: { key: string; name: string };
   originDoc?: { docNum: string; type: string } | null;
 }
@@ -240,7 +241,7 @@ export function SalesDocTable({ docs, loading, onOpen, onConvert, showType }: {
   );
 }
 
-function Th({ children }: { children: React.ReactNode }) {
+function Th({ children }: { children?: React.ReactNode }) {
   return <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 600, color: CLR.muted, letterSpacing: "0.04em", textTransform: "uppercase" as const, whiteSpace: "nowrap" }}>{children}</th>;
 }
 function Td({ children, style }: { children?: React.ReactNode; style?: React.CSSProperties }) {

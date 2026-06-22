@@ -4,7 +4,7 @@ export const runtime = "nodejs";
 import { NextResponse }   from "next/server";
 import { prisma }          from "@/lib/prisma";
 import { getSessionUser }  from "@/lib/auth/get-session-user";
-import { ProductType, AddonPricingType, AddonBehavior } from "@prisma/client";
+import { ProductType, AddonPricingType, AddonBehavior, BillingPeriod } from "@prisma/client";
 
 const VALID_TYPES:         ProductType[]      = ["plan", "addon", "service", "product"];
 const VALID_PRICING_TYPES: AddonPricingType[] = ["fixed", "percentage", "per_unit"];
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     type?:            ProductType;
     categoryId?:      string | null;
     zohoPlanId?:      string | null;
-    billingPeriods?:  string[];
+    billingPeriods?:  BillingPeriod[];
     unitLabel?:       string | null;
     productDetails?:  string | null;
     detailsAr?:       string | null;

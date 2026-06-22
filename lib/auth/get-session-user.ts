@@ -7,6 +7,8 @@ export type SessionUser = Prisma.UserGetPayload<{
   select: {
     id: true;
     email: true;
+    fullName: true;
+    companyName: true;
     role: true;
     status: true;
     marketId: true;
@@ -40,6 +42,8 @@ export async function getSessionUser(): Promise<SessionUser | null> {
         select: {
           id: true,
           email: true,
+          fullName: true,
+          companyName: true,
           role: true,
           status: true,
           marketId: true,

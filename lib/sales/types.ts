@@ -69,21 +69,49 @@ export function calcDocTotals(
 }
 
 // ── Status colour map (used in both admin list + detail pages) ──────────────
+// Covers every member of the SalesDocumentStatus enum (shared across all doc
+// types — RFQ, Quotation, PO, Delivery Note, Proforma, Invoice, Credit Note).
 
 export const STATUS_STYLE: Record<
   SalesDocumentStatus,
   { bg: string; color: string; border: string }
 > = {
-  DRAFT:     { bg: "#f9fafb", color: "#374151", border: "#e5e7eb" },
-  ISSUED:    { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
-  SENT:      { bg: "#f5f3ff", color: "#7c3aed", border: "#ddd6fe" },
-  ACCEPTED:  { bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0" },
-  REJECTED:  { bg: "#fef2f2", color: "#dc2626", border: "#fecaca" },
-  CONVERTED: { bg: "#fffbeb", color: "#b45309", border: "#fde68a" },
-  PAID:      { bg: "#dcfce7", color: "#15803d", border: "#86efac" },
-  PARTIAL:   { bg: "#fef3c7", color: "#92400e", border: "#fcd34d" },
-  OVERDUE:   { bg: "#fef2f2", color: "#991b1b", border: "#fca5a5" },
-  VOID:      { bg: "#f3f4f6", color: "#6b7280", border: "#d1d5db" },
+  // Shared
+  DRAFT:          { bg: "#f9fafb", color: "#374151", border: "#e5e7eb" },
+  ISSUED:         { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
+  SENT:           { bg: "#f5f3ff", color: "#7c3aed", border: "#ddd6fe" },
+  CONVERTED:      { bg: "#fffbeb", color: "#b45309", border: "#fde68a" },
+  VOID:           { bg: "#f3f4f6", color: "#6b7280", border: "#d1d5db" },
+
+  // RFQ
+  PENDING:        { bg: "#fef9c3", color: "#854d0e", border: "#fde047" },
+  IN_REVIEW:      { bg: "#f0f9ff", color: "#0369a1", border: "#bae6fd" },
+  QUOTED:         { bg: "#f0fdf4", color: "#166534", border: "#bbf7d0" },
+  CLOSED:         { bg: "#f3f4f6", color: "#374151", border: "#d1d5db" },
+  REPLIED:        { bg: "#e0f2fe", color: "#0369a1", border: "#7dd3fc" },
+  FOLLOW_UP:      { bg: "#fff7ed", color: "#c2410c", border: "#fed7aa" },
+
+  // Quotation
+  REVISED:        { bg: "#fdf4ff", color: "#7e22ce", border: "#e9d5ff" },
+  ACCEPTED:       { bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0" },
+  REJECTED:       { bg: "#fef2f2", color: "#dc2626", border: "#fecaca" },
+  EXPIRED:        { bg: "#fff7ed", color: "#c2410c", border: "#fed7aa" },
+
+  // PO
+  PROCESSING:     { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
+
+  // Delivery Note
+  DELIVERED:      { bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0" },
+  CANCELLED:      { bg: "#fef2f2", color: "#dc2626", border: "#fecaca" },
+
+  // Invoice
+  PAID:           { bg: "#dcfce7", color: "#15803d", border: "#86efac" },
+  PARTIALLY_PAID: { bg: "#fef3c7", color: "#92400e", border: "#fcd34d" },
+  OVERDUE:        { bg: "#fef2f2", color: "#991b1b", border: "#fca5a5" },
+  WRITTEN_OFF:    { bg: "#fdf4ff", color: "#7e22ce", border: "#e9d5ff" },
+
+  // Credit Note
+  APPLIED:        { bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0" },
 };
 
 export const DOC_TYPE_LABEL: Record<SalesDocumentType, string> = {

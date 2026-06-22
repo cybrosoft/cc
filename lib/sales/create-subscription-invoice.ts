@@ -50,6 +50,12 @@ export type InvoiceResult =
 // ─── Status logic ─────────────────────────────────────────────────────────────
 // KSA  → DRAFT  (stays draft until admin attaches official ZATCA invoice)
 // Global → ISSUED (immediately actionable)
+//
+// NOTE: createDocument() (from ./create-document) determines status internally
+// based on doc type and market — it does not accept a status override in its
+// current input type. The resolveInitialStatus() helper below is retained for
+// any future caller that needs to know the expected status ahead of creation,
+// but is not passed into createDocument().
 
 async function resolveInitialStatus(marketId: string): Promise<"DRAFT" | "ISSUED"> {
   const market = await prisma.market.findUnique({
@@ -71,7 +77,9 @@ export async function createSubscriptionInvoice(
   }
 
   try {
-    const status = await resolveInitialStatus(input.marketId);
+    // Resolved for potential future use / logging — createDocument applies
+    // its own market-based status logic internally.
+    await resolveInitialStatus(input.marketId);
 
     const doc = await createDocument({
       type:            "INVOICE",
@@ -81,7 +89,6 @@ export async function createSubscriptionInvoice(
       subject:         input.subject         ?? null,
       internalNote:    input.internalNote    ?? null,
       referenceNumber: input.referenceNumber ?? null,
-      status,
       lines: input.lines.map(l => ({
         productId:    l.productId    ?? null,
         description:  l.description,

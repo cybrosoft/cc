@@ -47,7 +47,7 @@ const TYPE_STYLES: Record<string, { bg: string; color: string; border: string }>
   PERSONAL:    { bg: "#f9fafb", color: "#374151", border: "#d1d5db" },
 };
 export function TypeBadge({ value }: { value: string | null | undefined }) {
-  const s = TYPE_STYLES[value] ?? { bg: "#f9fafb", color: "#374151", border: "#d1d5db" };
+  const s = (value ? TYPE_STYLES[value] : undefined) ?? { bg: "#f9fafb", color: "#374151", border: "#d1d5db" };
   return (
     <span style={{
       display: "inline-flex", alignItems: "center",
@@ -59,16 +59,22 @@ export function TypeBadge({ value }: { value: string | null | undefined }) {
 
 // ─── Tag Pill ─────────────────────────────────────────────────────────────────
 export function TagPill({ label, onRemove, color = "primary" }: {
-  label: string; onRemove?: () => void; color?: "primary" | "gray";
+  label: string; onRemove?: () => void; color?: "primary" | "gray" | "green" | "red";
 }) {
-  const isPrimary = color === "primary";
+  const COLOR_MAP: Record<string, { bg: string; fg: string; border: string }> = {
+    primary: { bg: CLR.primaryBg, fg: CLR.primary, border: "#a7d9d1" },
+    gray:    { bg: "#f3f4f6",     fg: CLR.muted,    border: "#d1d5db" },
+    green:   { bg: "#f0fdf4",     fg: "#15803d",    border: "#86efac" },
+    red:     { bg: "#fef2f2",     fg: "#dc2626",    border: "#fca5a5" },
+  };
+  const c = COLOR_MAP[color] ?? COLOR_MAP.primary;
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", gap: 4,
       fontSize: 11, fontWeight: 500, padding: "2px 7px",
-      background: isPrimary ? CLR.primaryBg : "#f3f4f6",
-      color:      isPrimary ? CLR.primary   : CLR.muted,
-      border:     `1px solid ${isPrimary ? "#a7d9d1" : "#d1d5db"}`,
+      background: c.bg,
+      color:      c.fg,
+      border:     `1px solid ${c.border}`,
     }}>
       {label}
       {onRemove && (
@@ -292,7 +298,7 @@ export function Textarea({ value, onChange, placeholder, rows = 3, dir }: {
 
 // ─── Form field wrapper ───────────────────────────────────────────────────────
 export function Field({ label, hint, children, required }: {
-  label: string; hint?: string; children: React.ReactNode; required?: boolean;
+  label: React.ReactNode; hint?: string; children: React.ReactNode; required?: boolean;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>

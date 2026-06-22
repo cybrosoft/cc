@@ -7,6 +7,12 @@ import { invalidatePdf } from "@/lib/sales/invalidate-pdf";
 
 type Params = { params: Promise<{ id: string }> };
 
+function toDateOrUndefined(v: unknown): Date | undefined {
+  if (v === undefined || v === null || v === "") return undefined;
+  const d = new Date(v as string);
+  return isNaN(d.getTime()) ? undefined : d;
+}
+
 // GET /api/admin/sales/quotations/[id]
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
@@ -62,9 +68,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         ...(body.subject            !== undefined ? { subject:            body.subject }                                        : {}),
         ...(body.referenceNumber    !== undefined ? { referenceNumber:    body.referenceNumber }                                : {}),
         ...(body.termsAndConditions !== undefined ? { termsAndConditions: body.termsAndConditions }                             : {}),
-        ...(body.dueDate            !== undefined ? { dueDate:            body.dueDate    ? new Date(body.dueDate)    : null }  : {}),
-        ...(body.issueDate          !== undefined ? { issueDate:          body.issueDate  ? new Date(body.issueDate)  : null }  : {}),
-        ...(body.validUntil         !== undefined ? { validUntil:         body.validUntil ? new Date(body.validUntil) : null }  : {}),
+        ...(body.dueDate            !== undefined ? { dueDate:            toDateOrUndefined(body.dueDate) }                     : {}),
+        ...(body.issueDate          !== undefined ? { issueDate:          toDateOrUndefined(body.issueDate) }                   : {}),
+        ...(body.validUntil         !== undefined ? { validUntil:         toDateOrUndefined(body.validUntil) }                  : {}),
         ...(body.lines !== undefined ? {
           lines: {
             deleteMany: {},

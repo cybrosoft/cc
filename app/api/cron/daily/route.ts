@@ -116,7 +116,7 @@ export async function GET(req: NextRequest) {
     const overdueInvoices = await prisma.salesDocument.findMany({
       where: {
         type:    "INVOICE",
-        status:  { in: ["ISSUED", "SENT", "PARTIAL"] },
+        status:  { in: ["ISSUED", "SENT", "PARTIALLY_PAID"] },
         dueDate: { lt: overdueThreshold },
       },
       include: {
@@ -187,12 +187,13 @@ export async function GET(req: NextRequest) {
         const userIds = await resolveTargetUsers(broadcast.targetType, broadcast.targetId ?? undefined);
 
         await sendBroadcast({
-          broadcastId:  broadcast.id,
-          title:        broadcast.title,
-          body:         broadcast.body,
-          emailSubject: broadcast.emailSubject ?? broadcast.title,
-          smsBody:      broadcast.smsBody      ?? broadcast.body,
-          channels:     broadcast.channels,
+          broadcastId:   broadcast.id,
+          title:         broadcast.title,
+          body:          broadcast.body,
+          emailSubject:  broadcast.emailSubject ?? broadcast.title,
+          smsBody:       broadcast.smsBody      ?? broadcast.body,
+          channels:      broadcast.channels,
+          broadcastType: broadcast.broadcastType,
           userIds,
         });
 

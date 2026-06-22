@@ -4,13 +4,13 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth/require-user";
+import { requireUserApi } from "@/lib/auth/require-user";
 
 // ─── GET ──────────────────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
-  const auth = await requireUser(req);
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
+  const auth = await requireUserApi();
+  if (!auth.user) return NextResponse.json({ error: auth.error.message }, { status: auth.error.status });
 
   const user = await prisma.user.findUnique({
     where: { id: auth.user.id },
@@ -63,8 +63,8 @@ export async function GET(req: NextRequest) {
 // They cannot change: email, role, marketId, customerGroupId, tags, notes.
 
 export async function PATCH(req: NextRequest) {
-  const auth = await requireUser(req);
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
+  const auth = await requireUserApi();
+  if (!auth.user) return NextResponse.json({ error: auth.error.message }, { status: auth.error.status });
 
   const body = await req.json();
 

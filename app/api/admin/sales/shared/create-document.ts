@@ -47,7 +47,7 @@ export async function createSalesDocument(input: CreateDocInput) {
   const total     = subtotal + vatAmount;
 
   const doc = await prisma.$transaction(async (tx) => {
-    const docNum = await allocateDocNumber(tx as any, input.marketId, market.key, input.type);
+    const docNum = await allocateDocNumber(tx as any, input.marketId, input.type);
 
     const defaultStatus =
       input.status ? input.status : input.type === "INVOICE" ? "ISSUED" : "DRAFT";

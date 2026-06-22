@@ -2,7 +2,7 @@
 // Server component — reads session to determine market, passes isSaudi to wizard.
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/get-session-user";
-import OnboardingPage from "./page";
+import OnboardingClient from "./OnboardingClient";
 
 export default async function OnboardingServer() {
   const user = await getSessionUser();
@@ -20,5 +20,5 @@ export default async function OnboardingServer() {
   }
 
   const isSaudi = user.market?.key?.toLowerCase() === "saudi";
-  return <OnboardingPage isSaudi={isSaudi} />;
+  return <OnboardingClient isSaudi={isSaudi} />;
 }

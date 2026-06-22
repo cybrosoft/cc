@@ -12,11 +12,13 @@ type ServerRow = {
   billingPeriod:      string;
   periodEnd:          string | null;
   locationCode:       string | null;
+  locationDisplay:    string | null;
   templateSlug:       string | null;
   productKey:         string;
   productName:        string;
   createdAt:          string;
   serverId:           string | null;
+  serverName:         string | null;
   provider:           string;
   provisioned:        boolean;
   name:               string | null;
@@ -278,7 +280,7 @@ export default function ServersClient() {
 
                     {/* Location */}
                     <span style={{ fontSize: 12.5, color: "#374151" }}>
-{s.locationDisplay ?? s.locationCode ?? "—"}
+                      {s.locationDisplay ?? s.locationCode ?? "—"}
                     </span>
 
                     {/* Created */}

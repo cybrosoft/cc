@@ -34,7 +34,6 @@ export async function POST() {
 
   // Generate OTP Auth URI for QR code - v13 uses generateURI
   const otpAuthUrl = generateURI({
-    type:   "totp",
     label:  user.email,
     issuer: "Cybrosoft Console",
     secret,

@@ -10,12 +10,14 @@ export const metadata = { title: "Subscription Detail" };
 export default async function SubscriptionDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
   const user = await getSessionUser();
   if (!user) redirect("/login");
 
-  const sub = await getCachedSubscription(user.id, params.id);
+  const { id } = await params;
+
+  const sub = await getCachedSubscription(user.id, id);
   if (!sub) notFound();
 
   const plainUser = {

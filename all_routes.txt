@@ -1,0 +1,209 @@
+app\api\admin\catalog\categories\route.ts:5:export async function GET() {
+app\api\admin\catalog\categories\route.ts:24:export async function POST(req: Request) {
+app\api\admin\catalog\categories\toggle\route.ts:8:export async function POST(req: Request) {
+app\api\admin\catalog\categories\update\route.ts:8:export async function POST(req: Request) {
+app\api\admin\catalog\customer-groups\route.ts:4:export async function GET() {
+app\api\admin\catalog\locations\delete\route.ts:7:export async function POST(req: Request) {
+app\api\admin\catalog\locations\route.ts:7:export async function GET() {
+app\api\admin\catalog\locations\route.ts:22:export async function POST(req: Request) {
+app\api\admin\catalog\locations\update\route.ts:7:export async function POST(req: Request) {
+app\api\admin\catalog\markets\route.ts:4:export async function GET() {
+app\api\admin\catalog\pricing\bootstrap\route.ts:7:export async function GET() {
+app\api\admin\catalog\pricing\enterprise-customers\route.ts:8:export async function GET() {
+app\api\admin\catalog\pricing\meta\route.ts:8:export async function GET() {
+app\api\admin\catalog\pricing\overrides\delete\route.ts:8:export async function POST(req: Request) {
+app\api\admin\catalog\pricing\overrides\route.ts:8:export async function GET() {
+app\api\admin\catalog\pricing\overrides\upsert\route.ts:11:export async function POST(req: Request) {
+app\api\admin\catalog\pricing\route.ts:8:export async function GET() {
+app\api\admin\catalog\pricing\toggle\route.ts:8:export async function POST(req: Request) {
+app\api\admin\catalog\pricing\upsert\route.ts:11:export async function POST(req: Request) {
+app\api\admin\catalog\products\addon-settings\route.ts:17:export async function POST(req: Request) {
+app\api\admin\catalog\products\route.ts:36:export async function GET() {
+app\api\admin\catalog\products\route.ts:51:export async function POST(req: Request) {
+app\api\admin\catalog\products\tags\route.ts:11:export async function POST(req: Request) {
+app\api\admin\catalog\products\toggle\route.ts:8:export async function POST(req: Request) {
+app\api\admin\catalog\products\update\route.ts:36:export async function POST(req: Request) {
+app\api\admin\catalog\tags\delete\route.ts:11:export async function POST(req: Request) {
+app\api\admin\catalog\tags\route.ts:10:export async function GET() {
+app\api\admin\catalog\tags\route.ts:32:export async function POST(req: Request) {
+app\api\admin\catalog\tags\update\route.ts:11:export async function POST(req: Request) {
+app\api\admin\catalog\templates\delete\route.ts:7:export async function POST(req: Request) {
+app\api\admin\catalog\templates\route.ts:7:export async function GET() {
+app\api\admin\catalog\templates\route.ts:20:export async function POST(req: Request) {
+app\api\admin\catalog\templates\update\route.ts:7:export async function POST(req: Request) {
+app\api\admin\crm\leads\[id]\activities\route.ts:10:export async function GET(_req: NextRequest, { params }: Params) {
+app\api\admin\crm\leads\[id]\activities\route.ts:30:export async function POST(req: NextRequest, { params }: Params) {
+app\api\admin\crm\leads\[id]\activities\route.ts:63:export async function PATCH(req: NextRequest, { params }: Params) {
+app\api\admin\customers\[id]\statement\pdf\route.ts:15:export async function GET(
+app\api\admin\customers\[id]\statement\route.ts:10:export async function GET(
+app\api\admin\dashboard\route.ts:21:export async function GET() {
+app\api\admin\markets\route.ts:8:export async function GET() {
+app\api\admin\notifications\route.ts:10:export async function GET(req: NextRequest) {
+app\api\admin\notifications\send\route.ts:11:export async function POST(req: NextRequest) {
+app\api\admin\notifications\send\route.ts:113:export async function GET(req: NextRequest) {
+app\api\admin\notifications\templates\route.ts:10:export async function GET() {
+app\api\admin\notifications\templates\route.ts:23:export async function POST(req: NextRequest) {
+app\api\admin\sales\attachment\route.ts:20:export async function GET(req: NextRequest) {
+app\api\admin\sales\billing\route.ts:11:export async function GET(req: NextRequest) {
+app\api\admin\sales\billing\route.ts:224:export async function POST(req: NextRequest) {
+app\api\admin\sales\delivery-notes\route.ts:10:export async function POST(req: NextRequest) {
+app\api\admin\sales\delivery-notes\[id]\route.ts:9:export async function GET(_req: NextRequest, { params }: Params) {
+app\api\admin\sales\delivery-notes\[id]\route.ts:31:export async function PATCH(req: NextRequest, { params }: Params) {
+app\api\admin\sales\delivery-notes\[id]\route.ts:76:export async function DELETE(_req: NextRequest, { params }: Params) {
+app\api\admin\sales\invoices\route.ts:10:export async function POST(req: NextRequest) {
+app\api\admin\sales\invoices\[id]\route.ts:9:export async function GET(_req: NextRequest, { params }: Params) {
+app\api\admin\sales\invoices\[id]\route.ts:31:export async function PATCH(req: NextRequest, { params }: Params) {
+app\api\admin\sales\invoices\[id]\route.ts:76:export async function DELETE(_req: NextRequest, { params }: Params) {
+app\api\admin\sales\po\route.ts:20:export async function GET(req: NextRequest) {
+app\api\admin\sales\po\route.ts:76:export async function POST(req: NextRequest) {
+app\api\admin\sales\po\[id]\route.ts:9:export async function GET(_req: NextRequest, { params }: Params) {
+app\api\admin\sales\po\[id]\route.ts:31:export async function PATCH(req: NextRequest, { params }: Params) {
+app\api\admin\sales\po\[id]\route.ts:76:export async function DELETE(_req: NextRequest, { params }: Params) {
+app\api\admin\sales\proforma\route.ts:10:export async function POST(req: NextRequest) {
+app\api\admin\sales\proforma\[id]\route.ts:9:export async function GET(_req: NextRequest, { params }: Params) {
+app\api\admin\sales\proforma\[id]\route.ts:31:export async function PATCH(req: NextRequest, { params }: Params) {
+app\api\admin\sales\proforma\[id]\route.ts:76:export async function DELETE(_req: NextRequest, { params }: Params) {
+app\api\admin\sales\quotations\route.ts:12:export async function POST(req: NextRequest) {
+app\api\admin\sales\quotations\[id]\route.ts:11:export async function GET(_req: NextRequest, { params }: Params) {
+app\api\admin\sales\quotations\[id]\route.ts:34:export async function PATCH(req: NextRequest, { params }: Params) {
+app\api\admin\sales\quotations\[id]\route.ts:112:export async function DELETE(_req: NextRequest, { params }: Params) {
+app\api\admin\sales\returns\route.ts:10:export async function POST(req: NextRequest) {
+app\api\admin\sales\returns\[id]\route.ts:9:export async function GET(_req: NextRequest, { params }: Params) {
+app\api\admin\sales\returns\[id]\route.ts:31:export async function PATCH(req: NextRequest, { params }: Params) {
+app\api\admin\sales\returns\[id]\route.ts:76:export async function DELETE(_req: NextRequest, { params }: Params) {
+app\api\admin\sales\rfq\route.ts:10:export async function POST(req: NextRequest) {
+app\api\admin\sales\rfq\[id]\route.ts:8:export async function GET(_req: NextRequest, { params }: Params) {
+app\api\admin\sales\rfq\[id]\route.ts:30:export async function PATCH(req: NextRequest, { params }: Params) {
+app\api\admin\sales\rfq\[id]\route.ts:81:export async function DELETE(_req: NextRequest, { params }: Params) {
+app\api\admin\sales\upload\route.ts:31:export async function POST(req: NextRequest) {
+app\api\admin\sales\[id]\convert\route.ts:35:export async function POST(
+app\api\admin\sales\[id]\log\route.ts:8:export async function GET(
+app\api\admin\sales\[id]\official-invoice\route.ts:25:export async function POST(
+app\api\admin\sales\[id]\official-invoice\route.ts:97:export async function DELETE(
+app\api\admin\sales\[id]\official-invoice\view\route.ts:22:export async function GET(
+app\api\admin\sales\[id]\payment\route.ts:13:export async function POST(
+app\api\admin\sales\[id]\pdf\route.ts:67:export async function GET(
+app\api\admin\sales\[id]\pdf\route.ts:128:export async function DELETE(
+app\api\admin\sales\[id]\print-token\route.ts:13:export async function GET(
+app\api\admin\sales\[id]\reminder\route.ts:16:export async function PATCH(
+app\api\admin\sales\[id]\route.ts:7:export async function GET(
+app\api\admin\sales\[id]\send-email\route.ts:109:export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+app\api\admin\sales\[id]\send-email_route.ts:118:export async function POST(
+app\api\admin\sales\[id]\send_email_route.ts:118:export async function POST(
+app\api\admin\sales\[id]\status\route.ts:10:export async function PATCH(
+app\api\admin\servers\assign-hetzner-id\route.ts:17:export async function POST(req: Request) {
+app\api\admin\servers\debug\route.ts:9:export async function GET() {
+app\api\admin\servers\reboot\route.ts:55:export async function POST(req: Request) {
+app\api\admin\servers\route.ts:72:export async function GET(req: Request) {
+app\api\admin\servers\update\route.ts:56:export async function POST(req: Request) {
+app\api\admin\settings\markets\route.ts:9:export async function GET() {
+app\api\admin\settings\markets\route.ts:53:export async function PATCH(req: NextRequest) {
+app\api\admin\settings\markets\[id]\route.ts:7:export async function PATCH(
+app\api\admin\settings\number-series\route.ts:14:export async function GET() {
+app\api\admin\settings\number-series\route.ts:54:export async function PATCH(req: NextRequest) {
+app\api\admin\settings\route.ts:8:export async function GET() {
+app\api\admin\settings\route.ts:20:export async function POST(req: NextRequest) {
+app\api\admin\settings\test-email\route.ts:16:export async function POST(req: NextRequest) {
+app\api\admin\subscriptions\add-addons\route.ts:29:export async function POST(req: Request) {
+app\api\admin\subscriptions\approve\route.ts:11:export async function POST(req: Request) {
+app\api\admin\subscriptions\approve-manual\route.ts:18:export async function POST(req: Request) {
+app\api\admin\subscriptions\available-addons\route.ts:9:export async function GET(req: Request) {
+app\api\admin\subscriptions\cancel\route.ts:9:export async function POST(req: Request) {
+app\api\admin\subscriptions\create\route.ts:29:export async function POST(req: Request) {
+app\api\admin\subscriptions\create-form\route.ts:9:export async function GET() {
+app\api\admin\subscriptions\eligible-products\route.ts:26:export async function GET(req: Request) {
+app\api\admin\subscriptions\plan-products\route.ts:13:export async function GET(req: Request) {
+app\api\admin\subscriptions\route.ts:13:export async function GET(req: Request) {
+app\api\admin\subscriptions\run-status-check\route.ts:8:export async function POST() {
+app\api\admin\subscriptions\update-details\route.ts:12:export async function POST(req: Request) {
+app\api\admin\subscriptions\update-invoicing\route.ts:13:export async function POST(req: Request) {
+app\api\admin\subscriptions\upload-receipt\route.ts:18:export async function POST(req: Request) {
+app\api\admin\subscriptions\[id]\invoices\route.ts:53:export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+app\api\admin\subscriptions\[id]\invoices\route.ts:104:export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+app\api\admin\subscriptions\[id]\renewal\route.ts:28:export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+app\api\admin\subscriptions\[id]\renewal\route.ts:130:export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+app\api\admin\subscriptions\[id]\status\route.ts:24:export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+app\api\admin\subscriptions\[id]\status\route.ts:54:export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+app\api\admin\subscriptions\[id]\upgrade\route.ts:27:export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
+app\api\admin\subscriptions\[id]\upgrade\route.ts:111:export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+app\api\admin\subscriptions\[id]\vps\route.ts:10:export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+app\api\admin\subscriptions\[id]\vps\route.ts:44:export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+app\api\admin\users\route.ts:9:export async function GET(req: NextRequest) {
+app\api\admin\users\route.ts:76:export async function POST(req: NextRequest) {
+app\api\admin\users\[id]\plan-subscriptions\route.ts:12:export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+app\api\admin\users\[id]\route.ts:9:export async function GET(
+app\api\admin\users\[id]\route.ts:62:export async function PATCH(
+app\api\admin\users\[id]\status\route.ts:123:export async function POST(
+app\api\admin\users\[id]\status-log\route.ts:7:export async function GET(
+app\api\admin\users\[id]\tags\route.ts:14:export async function GET(_req: Request, { params }: Params) {
+app\api\admin\users\[id]\tags\route.ts:35:export async function POST(req: Request, { params }: Params) {
+app\api\auth\google\callback\route.ts:21:export async function GET(req: NextRequest) {
+app\api\auth\google\route.ts:10:export async function GET(req: NextRequest) {
+app\api\auth\login\route.ts:3:export async function POST() {
+app\api\auth\logout\route.ts:5:export async function POST(req: Request) {
+app\api\auth\microsoft\callback\route.ts:21:export async function GET(req: NextRequest) {
+app\api\auth\microsoft\route.ts:9:export async function GET(req: NextRequest) {
+app\api\auth\otp\request\route.ts:13:export async function POST(req: Request) {
+app\api\auth\otp\verify\route.ts:29:export async function POST(req: Request) {
+app\api\auth\signup\route.ts:30:export async function POST(req: Request) {
+app\api\auth\totp\challenge\route.ts:31:export async function POST(req: NextRequest) {
+app\api\auth\totp\disable\route.ts:22:export async function POST(req: NextRequest) {
+app\api\auth\totp\setup\route.ts:22:export async function POST() {
+app\api\auth\totp\status\route.ts:9:export async function GET() {
+app\api\auth\totp\verify\route.ts:22:export async function POST(req: NextRequest) {
+app\api\catalog\route.ts:21:export async function GET(req: Request) {
+app\api\cron\daily\route.ts:23:export async function GET(req: NextRequest) {
+app\api\customer\backups\route.ts:19:export async function GET() {
+app\api\customer\dashboard\route.ts:13:export async function GET() {
+app\api\customer\domains\route.ts:10:export async function GET() {
+app\api\customer\email\route.ts:10:export async function GET() {
+app\api\customer\network\route.ts:22:export async function GET() {
+app\api\customer\notifications\route.ts:10:export async function GET(req: NextRequest) {
+app\api\customer\notifications\route.ts:61:export async function POST(_req: NextRequest) {
+app\api\customer\notifications\[id]\read\route.ts:9:export async function POST(
+app\api\customer\onboarding\route.ts:14:export async function POST(req: NextRequest) {
+app\api\customer\products\route.ts:16:export async function GET() {
+app\api\customer\profile\route.ts:7:export async function GET() {
+app\api\customer\profile\route.ts:38:export async function PATCH(req: NextRequest) {
+app\api\customer\profile\settings\route.ts:9:export async function GET(_req: NextRequest) {
+app\api\customer\profile\settings\route.ts:37:export async function PUT(req: NextRequest) {
+app\api\customer\rfq\attachment\route.ts:24:export async function GET(req: NextRequest) {
+app\api\customer\rfq\route.ts:58:export async function POST(req: NextRequest) {
+app\api\customer\rfq\route.ts:164:export async function GET(req: NextRequest) {
+app\api\customer\route.ts:5:export async function GET(req: Request) {
+app\api\customer\sales\route.ts:7:export async function GET(req: NextRequest) {
+app\api\customer\sales\[id]\accept\route.ts:34:export async function POST(
+app\api\customer\sales\[id]\pay\route.ts:42:export async function POST(req: NextRequest, { params }: Params) {
+app\api\customer\sales\[id]\pdf\route.ts:63:export async function GET(
+app\api\customer\sales\[id]\po-file\route.ts:33:export async function GET(
+app\api\customer\sales\[id]\receipt\route.ts:26:export async function GET(req: NextRequest, { params }: Params) {
+app\api\customer\sales\[id]\route.ts:9:export async function GET(
+app\api\customer\security\route.ts:11:export async function GET() {
+app\api\customer\servers\restart\route.ts:16:export async function POST(req: Request) {
+app\api\customer\servers\route.ts:7:export async function GET() {
+app\api\customer\servers\[id]\firewall\route.ts:14:export async function POST(
+app\api\customer\servers\[id]\name\route.ts:10:export async function PATCH(
+app\api\customer\servers\[id]\oracle-firewall\route.ts:11:export async function POST(
+app\api\customer\statement\pdf\route.ts:12:export async function GET(req: NextRequest) {
+app\api\customer\statement\route.ts:10:export async function GET(req: NextRequest) {
+app\api\customer\storage\route.ts:19:export async function GET() {
+app\api\customer\subscriptions\route.ts:7:export async function GET() {
+app\api\customer\subscriptions\[id]\name\route.ts:10:export async function PATCH(
+app\api\customer\subscriptions\[id]\route.ts:7:export async function GET(
+app\api\debug\oci\route.ts:12:export async function GET(req: Request) {
+app\api\geo\route.ts:7:export async function GET(req: NextRequest) {
+app\api\me\documents\[id]\pdf\route.ts:16:export async function GET(
+app\api\me\documents\[id]\pdf\route.ts:65:export async function POST(
+app\api\me\notifications\route.ts:15:export async function GET(req: NextRequest) {
+app\api\me\notifications\route.ts:74:export async function PATCH(req: NextRequest) {
+app\api\me\notifications\route.ts:100:export async function PUT(req: NextRequest) {
+app\api\me\route.ts:11:export async function GET(req: NextRequest) {
+app\api\me\route.ts:65:export async function PATCH(req: NextRequest) {
+app\api\me\subscription\receipt\route.ts:10:export async function GET() {
+app\api\me\subscription\route.ts:8:export async function GET() {
+app\api\servers\me\route.ts:13:export async function GET() {
+app\api\servers\sub\[id]\route.ts:12:export async function GET(
+app\api\servers\[id]\restart\route.ts:15:export async function POST(_req: Request, ctx: { params: Promise<Params> | Params }) {
+app\api\servers\[id]\route.ts:9:export async function GET(
+app\api\subscribe\route.ts:12:export async function POST(req: Request) {
+app\api\webhooks\zoho\route.ts:5:export async function POST(req: Request) {

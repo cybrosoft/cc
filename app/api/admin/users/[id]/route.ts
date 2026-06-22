@@ -7,10 +7,10 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 // ─── GET — single user ────────────────────────────────────────────────────────
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAdmin(req);
+  const auth = await requireAdmin();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
 
   const { id } = await params;
@@ -63,7 +63,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAdmin(req);
+  const auth = await requireAdmin();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
 
   const { id } = await params;

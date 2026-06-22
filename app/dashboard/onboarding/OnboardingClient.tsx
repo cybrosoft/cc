@@ -1,7 +1,7 @@
 "use client";
-// app/dashboard/onboarding/page.tsx
+// app/dashboard/onboarding/OnboardingClient.tsx
 // Full-screen onboarding wizard — shown to new customers before they can use the dashboard.
-// No dashboard layout wrapper — this is a standalone page.
+// Plain component (not a route page) so it can safely accept props like `isSaudi`.
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -107,7 +107,7 @@ function StepIndicator({ current, total, isBusiness }: { current: Step; total: n
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export default function OnboardingPage({
+export default function OnboardingClient({
   isSaudi = false,
 }: {
   isSaudi?: boolean;
@@ -144,7 +144,7 @@ export default function OnboardingPage({
       if (!data.addressLine1.trim()) return "Address line 1 is required.";
       if (!data.city.trim())         return "City is required.";
     }
-    if ((step === 4 && isBusiness) || (step === 3 && !isBusiness)) {
+    if (((step as number) === 4 && isBusiness) || (step === 3 && !isBusiness)) {
       if (!data.tcAccepted)      return "Please accept the Terms of Service.";
       if (!data.privacyAccepted) return "Please accept the Privacy Policy.";
     }
@@ -182,7 +182,7 @@ export default function OnboardingPage({
     finally   { setSaving(false); }
   }
 
-  const isLastStep = (isBusiness && step === 4) || (!isBusiness && step === 3);
+  const isLastStep = (isBusiness && (step as number) === 4) || (!isBusiness && step === 3);
 
   // ── Render steps ────────────────────────────────────────────────────────────
   function renderStep() {
@@ -319,7 +319,8 @@ export default function OnboardingPage({
     );
 
     // Step 4 — T&C
-    if (step === 4 || (step === 3 && !isBusiness)) return (
+    const stepNum: number = step;
+    if (stepNum === 4 || (stepNum === 3 && !isBusiness)) return (
       <>
         <p style={{ fontSize: 13.5, color: "#374151", lineHeight: 1.7, marginBottom: 20 }}>
           Before you continue, please read and accept the following agreements.
