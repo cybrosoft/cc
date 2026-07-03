@@ -7,7 +7,7 @@ import { colors } from "@/lib/ui/tokens";
 import { useActionGuard } from "@/lib/auth/action-guard";
 
 const LIMIT = {
-  servers:  { lg: 6, sm: 4 },
+  servers:  { lg: 7, sm: 4 },
   activity: { lg: 3, sm: 3 },
   notifs:   { lg: 4, sm: 3 },
 };
@@ -413,7 +413,7 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
 
         {/* Row 3: Notifications + Recent activity (stacked) + Map */}
         <div className="cy-row-half">
-          <div className="cy-col-full" style={{ gap: 50 }}>
+          <div className="cy-col-full" style={{ gap: 20 }}>
             {/* Notifications */}
             <div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
