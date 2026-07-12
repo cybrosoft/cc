@@ -1,7 +1,6 @@
-import { requireUser } from "@/lib/auth/require-user";
-import { AaiClient } from "./AaiClient";
+// app/dashboard/aai/page.tsx
+import CategoryPageClient from "@/components/customer/CategoryPageClient";
 
-export default async function Page() {
-  await requireUser();
-  return <AaiClient />;
+export default function Page() {
+  return <CategoryPageClient pageKey="aai" title="Analytics & AI" />;
 }

@@ -22,10 +22,13 @@ interface Stats {
   expiringSubscriptions: number; servers: number;
 }
 interface ServerRow {
-  id: string; provider: string; productName: string; productKey: string | null;
-  subscriptionId: string | null; ipv4: string | null; status: string | null;
-  location: string | null; vcpus: number | null; ramGb: number | null; diskGb: number | null;
-  hetznerServerId?: string | null; oracleInstanceId?: string | null; createdAt: string;
+  subscriptionId: string; subscriptionStatus: string; serverId: string | null;
+  provisioned: boolean; provider: string; serverName: string | null;
+  productName: string; productKey: string | null;
+  locationCode: string | null; locationDisplay: string | null;
+  ipv4: string | null; status: string | null; location: string | null;
+  vcpus: number | null; ramGb: number | null; diskGb: number | null;
+  createdAt: string;
 }
 interface ActivityRow {
   id: string; docNumber: string; type: string; status: string;
@@ -102,6 +105,56 @@ function Skeleton({ w = "100%", h = 13 }: { w?: string | number; h?: number }) {
   return <span className="cy-shimmer" style={{ width: w, height: h }} />;
 }
 
+// ── Inline server name cell (same endpoint as servers list page) ─────────────
+// Lives inside a Link row, so all interactive events stop propagation.
+function DashNameCell({ subscriptionId, serverName, onSaved }: {
+  subscriptionId: string;
+  serverName: string | null;
+  onSaved: (name: string | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value,   setValue]   = useState(serverName ?? "");
+  const [saving,  setSaving]  = useState(false);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const res  = await fetch(`/api/customer/subscriptions/${subscriptionId}/name`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: value.trim() }),
+      });
+      const data = await res.json().catch(() => null);
+      if (data?.ok) { onSaved(data.serverName); setEditing(false); }
+    } catch { /**/ }
+    setSaving(false);
+  }
+
+  if (editing) {
+    return (
+      <span onClick={e => { e.preventDefault(); e.stopPropagation(); }} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+        <input autoFocus value={value} onChange={e => setValue(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") void save(); if (e.key === "Escape") { setValue(serverName ?? ""); setEditing(false); } }}
+          style={{ fontSize: 12, padding: "2px 6px", border: `1px solid ${colors.primary}`, outline: "none", fontFamily: "inherit", width: 110 }} />
+        <button onClick={() => void save()} disabled={saving}
+          style={{ fontSize: 11, fontWeight: 600, padding: "2px 7px", background: colors.primary, color: "#fff", border: "none", cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
+          {saving ? "…" : "Save"}
+        </button>
+      </span>
+    );
+  }
+
+  if (serverName) {
+    return <span style={{ fontSize: 12.5, fontWeight: 500, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>{serverName}</span>;
+  }
+
+  return (
+    <button onClick={e => { e.preventDefault(); e.stopPropagation(); setEditing(true); }}
+      style={{ fontSize: 11.5, color: colors.primary, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "inherit", textDecoration: "underline" }}>
+      + Add name
+    </button>
+  );
+}
+
 function SectionHeader({ title, href, linkLabel }: { title: string; href?: string; linkLabel?: string }) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -127,7 +180,10 @@ function THead({ cols, flex }: { cols: string[]; flex?: (number | string)[] }) {
 
 function ServerMap({ servers }: { servers: ServerRow[] }) {
   const [hoveredRegion, setHoveredRegion] = useState<string | null>(null);
-  const activeSet = new Set(servers.map(s => (s.location ?? "").toLowerCase()));
+  const activeSet = new Set(servers.map(s => {
+    const loc = (s.location ?? "").toLowerCase();
+    return loc.includes(" - ") ? loc.split(" - ").pop()!.trim() : loc;
+  }));
   return (
     <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
       <div style={{ flex: 1, overflow: "hidden" }}>
@@ -322,7 +378,7 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
           <div className="cy-col-full">
             <SectionHeader title="My Servers" href="/dashboard/servers" linkLabel="All servers" />
             <Card>
-              {!isMobile && <THead cols={["ID / Key", "IPv4", "Specs", "Location", "Status"]} flex={[1.5, 1.5, 1.5, 1.5, 1]} />}
+              {!isMobile && <THead cols={["Name", "Public IP", "Specs", "Location", "Status"]} flex={[2, 1.5, 1.5, 1.5, 1]} />}
               {loading
                 ? Array.from({ length: isMobile ? LIMIT.servers.sm : LIMIT.servers.lg }).map((_, i) => (
                     <div key={i} style={{ padding: "10px 14px", borderBottom: "1px solid #f9fafb" }}>
@@ -342,36 +398,43 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
                     </div>
                   )
                   : visibleServers.map((s, idx) => {
-                      const specs = s.vcpus || s.ramGb ? `${s.vcpus ?? "?"}vCPU / ${s.ramGb ?? "?"}GB${s.diskGb ? ` / ${s.diskGb}GB` : ""}` : "—";
-                      const code  = s.productKey ?? s.hetznerServerId ?? s.oracleInstanceId ?? s.id.slice(0, 10);
-                      const last  = idx === visibleServers.length - 1;
+                      const specs  = s.vcpus || s.ramGb ? `${s.vcpus ?? "?"} vCPU · ${s.ramGb ?? "?"} GB RAM` : "N/A";
+                      const href   = `/dashboard/servers/sub/${encodeURIComponent(s.subscriptionId)}`;
+                      const last   = idx === visibleServers.length - 1;
                       const border = last ? "none" : "1px solid #f3f4f6";
+                      const nameCell = (
+                        <DashNameCell subscriptionId={s.subscriptionId} serverName={s.serverName}
+                          onSaved={name => setServers(prev => prev.map(r =>
+                            r.subscriptionId === s.subscriptionId ? { ...r, serverName: name } : r))} />
+                      );
                       if (isMobile) {
                         return (
-                          <Link key={s.id} href={`/dashboard/servers/${s.id}`} onClick={e => guardHref(e, `/dashboard/servers/${s.id}`)} className="cy-table-row"
+                          <Link key={s.subscriptionId} href={href} onClick={e => guardHref(e, href)} className="cy-table-row"
                             style={{ display: "flex", flexDirection: "column", padding: "10px 14px", borderBottom: border, textDecoration: "none", gap: 4 }}>
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                              <span style={{ fontSize: 13, fontWeight: 500, color: "#111827", textTransform: "uppercase", letterSpacing: "0.03em" }}>{code}</span>
-                              <StatusText status={s.status ?? "unknown"} size={11} />
+                              <span style={{ minWidth: 0, maxWidth: "55%" }}>{nameCell}</span>
+                              <StatusText status={s.provisioned ? (s.status ?? "N/A") : "N/A"} size={11} />
                             </div>
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", fontSize: 11, color: "#9ca3af" }}>
-                              {s.ipv4 && <span style={{ fontFamily: "monospace" }}>{s.ipv4}</span>}
-                              {specs !== "—" && <><span>·</span><span>{specs}</span></>}
+                              {s.productKey && <span style={{ textTransform: "uppercase" }}>{s.productKey}</span>}
+                              {s.ipv4 && <><span>·</span><span style={{ fontFamily: "monospace" }}>{s.ipv4}</span></>}
+                              {specs !== "N/A" && <><span>·</span><span>{specs}</span></>}
                               {s.location && <><span>·</span><span>{s.location}</span></>}
                             </div>
                           </Link>
                         );
                       }
                       return (
-                        <Link key={s.id} href={`/dashboard/servers/${s.id}`} onClick={e => guardHref(e, `/dashboard/servers/${s.id}`)} className="cy-table-row"
+                        <Link key={s.subscriptionId} href={href} onClick={e => guardHref(e, href)} className="cy-table-row"
                           style={{ display: "flex", alignItems: "center", padding: "9px 14px", borderBottom: border, textDecoration: "none" }}>
-                          <div style={{ flex: 1.5, minWidth: 0, paddingRight: 8 }}>
-                            <div style={{ fontSize: 12.5, fontWeight: 500, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.03em" }}>{code}</div>
+                          <div style={{ flex: 2, minWidth: 0, paddingRight: 12 }}>
+                            {nameCell}
+                            {s.productKey && <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 1, textTransform: "uppercase" }}>{s.productKey}</div>}
                           </div>
-                          <span style={{ flex: 1.5, fontSize: 12, fontFamily: "monospace", color: "#374151", paddingRight: 8, whiteSpace: "nowrap" }}>{s.ipv4 ?? "—"}</span>
+                          <span style={{ flex: 1.5, fontSize: 12, fontFamily: "monospace", color: "#374151", paddingRight: 8, whiteSpace: "nowrap" }}>{s.ipv4 ?? "N/A"}</span>
                           <span style={{ flex: 1.5, fontSize: 11.5, color: "#6b7280", paddingRight: 8, whiteSpace: "nowrap" }}>{specs}</span>
-                          <span style={{ flex: 1.5, fontSize: 12, color: "#6b7280", paddingRight: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.location ?? "—"}</span>
-                          <span style={{ flex: 1 }}><StatusText status={s.status ?? "unknown"} /></span>
+                          <span style={{ flex: 1.5, fontSize: 12, color: "#6b7280", paddingRight: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.location ?? "N/A"}</span>
+                          <span style={{ flex: 1 }}><StatusText status={s.provisioned ? (s.status ?? "N/A") : "N/A"} /></span>
                         </Link>
                       );
                     })
@@ -391,7 +454,7 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
                   isTotpOn
                     ? { href: "/dashboard/rfq",              label: "Submit RFQ",   sub: "Request a quote",       p: false, restricted: false, icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M14 2H10a1 1 0 00-.707.293L2.293 9.293a1 1 0 000 1.414l3 3a1 1 0 001.414 0L13.707 6.707A1 1 0 0014 6V2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><circle cx="11.5" cy="4.5" r="0.75" fill="currentColor"/></svg> }
                     : { href: "/dashboard/profile#security", label: "Enable 2FA",   sub: "Secure your account",   p: true,  restricted: false, icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1L2 4v4c0 3.31 2.67 6.4 6 7 3.33-.6 6-3.69 6-7V4L8 1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg> },
-                  { href: "/dashboard/catalogue",  label: "Buy a Service",  sub: "Browse cloud plans",   p: false, restricted: true,  icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M1 8h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg> },
+                  { href: "/dashboard/servers",  label: "Cloud Servers",  sub: "View All Servers",   p: false, restricted: true,  icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M1 8h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg> },
                   { href: "/dashboard/invoices",   label: "View Invoices",  sub: "Pay or download",      p: false, restricted: true,  icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="1" width="12" height="14" rx="1" stroke="currentColor" strokeWidth="1.5"/><path d="M5 5h6M5 8h5M5 11h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
                   { href: "/dashboard/quotations", label: "Quotations",     sub: "View & accept quotes", p: false, restricted: true,  icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="1.5" width="13" height="13" rx="1" stroke="currentColor" strokeWidth="1.5"/><path d="M4 6h8M4 9h6M4 12h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
                   { href: "/dashboard/statement",  label: "Statement",      sub: "Account ledger",       p: false, restricted: true,  icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="1.5" width="13" height="13" rx="1" stroke="currentColor" strokeWidth="1.5"/><path d="M4 4h4M4 7h8M4 10h8M4 13h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> },
@@ -413,7 +476,7 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
 
         {/* Row 3: Notifications + Recent activity (stacked) + Map */}
         <div className="cy-row-half">
-          <div className="cy-col-full" style={{ gap: 20 }}>
+          <div className="cy-col-full" style={{ gap: 50 }}>
             {/* Notifications */}
             <div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>

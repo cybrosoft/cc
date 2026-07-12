@@ -38,19 +38,24 @@ export async function GET() {
   ]);
 
   // ── Merge live server details into the server list ────────────────────────
-  // Core data has DB-only server records; serverDetails has live IP/status/specs.
-  // We merge by id so the dashboard gets everything in one response.
+  // Core data has subscription-based server rows (including unprovisioned ones);
+  // serverDetails has live IP/status/specs keyed by Server.id.
+  // Merge via serverId — unprovisioned subscriptions keep nulls (rendered N/A).
+  // Location comes from the subscription (locationDisplay), per settled decision.
   const detailsMap = new Map(serverDetails.map(d => [d.id, d]));
 
-  const mergedServers = coreData.servers.map(s => ({
-    ...s,
-    ipv4:     detailsMap.get(s.id)?.ipv4     ?? null,
-    status:   detailsMap.get(s.id)?.status   ?? null,
-    location: detailsMap.get(s.id)?.location ?? s.oracleInstanceRegion ?? null,
-    vcpus:    detailsMap.get(s.id)?.vcpus    ?? null,
-    ramGb:    detailsMap.get(s.id)?.ramGb    ?? null,
-    diskGb:   detailsMap.get(s.id)?.diskGb   ?? null,
-  }));
+  const mergedServers = coreData.servers.map(s => {
+    const live = s.serverId ? detailsMap.get(s.serverId) : undefined;
+    return {
+      ...s,
+      ipv4:     live?.ipv4   ?? null,
+      status:   s.provisioned ? (live?.status ?? null) : null,
+      location: s.locationDisplay ?? null,
+      vcpus:    live?.vcpus  ?? null,
+      ramGb:    live?.ramGb  ?? null,
+      diskGb:   live?.diskGb ?? null,
+    };
+  });
 
   return NextResponse.json({
     stats:           coreData.stats,

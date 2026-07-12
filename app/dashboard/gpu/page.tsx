@@ -1,7 +1,6 @@
-import { requireUser } from "@/lib/auth/require-user";
-import { GpuClient } from "./GpuClient";
+// app/dashboard/gpu/page.tsx
+import CategoryPageClient from "@/components/customer/CategoryPageClient";
 
-export default async function Page() {
-  await requireUser();
-  return <GpuClient />;
+export default function Page() {
+  return <CategoryPageClient pageKey="gpu" title="GPU Instances" />;
 }

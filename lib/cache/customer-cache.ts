@@ -50,7 +50,8 @@ export function getCachedCustomerData(userId: string) {
         expiringSubscriptions,
         expiringSoon,
         subscriptions,
-        servers,
+        serverSubs,
+        allLocations,
       ] = await Promise.all([
         // Count active subscriptions
         prisma.subscription.count({
@@ -96,19 +97,33 @@ export function getCachedCustomerData(userId: string) {
           take: 50,
         }),
 
-        // Servers (DB record only — no live provider calls here)
-        prisma.server.findMany({
-          where: { userId },
-          include: {
-            subscription: {
-              include: {
-                product: {
-                  select: { name: true, key: true, tags: { select: { key: true } } },
-                },
-              },
+        // Server subscriptions (source of truth: Subscription, category = "server").
+        // Matches the pattern in /api/servers/me — includes unprovisioned ones.
+        prisma.subscription.findMany({
+          where: {
+            userId,
+            product: { category: { key: "server" } },
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          select: {
+            id:             true,
+            status:         true,
+            locationCode:   true,
+            productDetails: true,
+            createdAt:      true,
+            product: {
+              select: { name: true, key: true, tags: { select: { key: true } } },
+            },
+            servers: {
+              select: { id: true },
+              take: 1,
             },
           },
-          orderBy: { createdAt: "desc" },
+        }),
+
+        // Location lookup for display names
+        prisma.location.findMany({
+          select: { code: true, name: true, countryCode: true },
         }),
       ]);
 
@@ -180,22 +195,38 @@ export function getCachedCustomerData(userId: string) {
         expiringSoon:       expiringSoonIds.has(s.id),
       }));
 
-      // ── Serialize servers (DB fields only, no live API) ──────────────────
-      const serializedServers = servers.map(s => {
-        const tags     = s.subscription?.product?.tags?.map(t => t.key) ?? [];
+      // ── Serialize server subscriptions (DB fields only, no live API) ─────
+      // Name = first line of productDetails when set by customer (same logic
+      // as /api/servers/me). Location = subscription.locationCode via lookup.
+      const locationMap = new Map(allLocations.map(l => [l.code, l]));
+
+      const serializedServers = serverSubs.map(sub => {
+        const server = sub.servers[0] ?? null;
+        const tags   = sub.product?.tags?.map(t => t.key) ?? [];
         const provider = tags.includes("hz") ? "Hetzner"
                        : tags.includes("or") ? "Oracle"
                        : "—";
+
+        const firstLine  = sub.productDetails ? sub.productDetails.split("\n")[0].trim() : null;
+        const serverName = !firstLine || firstLine === sub.product?.name ? null : firstLine;
+
+        const loc = sub.locationCode ? locationMap.get(sub.locationCode) : null;
+        const locationDisplay = loc
+          ? (loc.countryCode ? `${loc.countryCode} - ${loc.name}` : loc.name)
+          : (sub.locationCode ?? null);
+
         return {
-          id:                  s.id,
+          subscriptionId:     sub.id,
+          subscriptionStatus: String(sub.status),
+          serverId:           server?.id ?? null,
+          provisioned:        !!server,
           provider,
-          productName:         s.subscription?.product?.name ?? "—",
-          productKey:          s.subscription?.product?.key  ?? null,
-          subscriptionId:      s.subscriptionId     ?? null,
-          hetznerServerId:     s.hetznerServerId    ?? null,
-          oracleInstanceId:    s.oracleInstanceId   ?? null,
-          oracleInstanceRegion:s.oracleInstanceRegion ?? null,
-          createdAt:           s.createdAt.toISOString(),
+          serverName,
+          productName:        sub.product?.name ?? "—",
+          productKey:         sub.product?.key  ?? null,
+          locationCode:       sub.locationCode ?? null,
+          locationDisplay,
+          createdAt:          sub.createdAt.toISOString(),
         };
       });
 
@@ -205,7 +236,7 @@ export function getCachedCustomerData(userId: string) {
           expiringSubscriptions,
           pendingInvoices,
           overdueInvoices,
-          servers: servers.length,
+          servers: serializedServers.length,
         },
         subscriptions: serializedSubs,
         servers:        serializedServers,

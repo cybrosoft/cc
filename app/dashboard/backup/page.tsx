@@ -1,7 +1,6 @@
-import { requireUser } from "@/lib/auth/require-user";
-import { BackupClient } from "./BackupClient";
+// app/dashboard/backup/page.tsx
+import CategoryPageClient from "@/components/customer/CategoryPageClient";
 
-export default async function Page() {
-  await requireUser();
-  return <BackupClient />;
+export default function Page() {
+  return <CategoryPageClient pageKey="backup" title="Backup" />;
 }

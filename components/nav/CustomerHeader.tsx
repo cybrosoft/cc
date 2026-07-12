@@ -1,7 +1,7 @@
 "use client";
 // components/nav/CustomerHeader.tsx
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
@@ -18,6 +18,138 @@ export interface CustomerHeaderProps {
 
 // Re-export so DashboardDrawer can import from one place
 export type { CustomerHeaderProps as CustomerHeaderPropsType };
+
+// ── Header search (debounced, grouped results) ───────────────────────────────
+interface SearchService {
+  id: string; name: string; productName: string; productKey: string | null;
+  status: string; href: string;
+}
+interface SearchDocument {
+  id: string; docNumber: string; type: string; typeLabel: string;
+  status: string; href: string;
+}
+
+function HeaderSearch({ placeholder }: { placeholder: string }) {
+  const router = useRouter();
+  const [query,     setQuery]     = useState("");
+  const [services,  setServices]  = useState<SearchService[]>([]);
+  const [documents, setDocuments] = useState<SearchDocument[]>([]);
+  const [open,      setOpen]      = useState(false);
+  const [loading,   setLoading]   = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  // Debounced fetch
+  useEffect(() => {
+    if (query.trim().length < 2) { setServices([]); setDocuments([]); setLoading(false); return; }
+    setLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const res  = await fetch(`/api/customer/search?q=${encodeURIComponent(query.trim())}`);
+        const data = await res.json().catch(() => null);
+        if (data?.ok) { setServices(data.services ?? []); setDocuments(data.documents ?? []); }
+      } catch { /* network error — keep previous results */ }
+      setLoading(false);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // Close on click outside
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  function go(href: string) {
+    setOpen(false);
+    setQuery("");
+    router.push(href);
+  }
+
+  const hasResults = services.length > 0 || documents.length > 0;
+  const showDropdown = open && query.trim().length >= 2;
+
+  return (
+    <div ref={boxRef} style={{
+      display: "flex", alignItems: "center", gap: 8,
+      background: "#2c2c2c", border: "1px solid #383838",
+      padding: "0 12px", height: 34,
+      flex: 1, minWidth: 0, maxWidth: 460,
+      boxSizing: "border-box",
+      position: "relative",
+    }}>
+      <Icon name="search" size={15} color="#6b7280" />
+      <input
+        value={query}
+        onChange={e => { setQuery(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={e => { if (e.key === "Escape") setOpen(false); }}
+        placeholder={placeholder}
+        style={{
+          flex: 1, minWidth: 0, fontSize: 13, color: "#d1d5db",
+          background: "none", border: "none", outline: "none", fontFamily: "inherit",
+        }}
+      />
+
+      {showDropdown && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0,
+          background: "#fff", border: "1px solid #e5e7eb",
+          boxShadow: "0 12px 32px rgba(0,0,0,0.15)", zIndex: 500,
+          maxHeight: 360, overflowY: "auto",
+        }}>
+          {loading && (
+            <div style={{ padding: "12px 14px", fontSize: 12, color: "#9ca3af" }}>Searching…</div>
+          )}
+
+          {!loading && !hasResults && (
+            <div style={{ padding: "12px 14px", fontSize: 12, color: "#9ca3af" }}>No results for “{query.trim()}”</div>
+          )}
+
+          {!loading && services.length > 0 && (
+            <>
+              <div style={{ padding: "8px 14px 4px", fontSize: 10.5, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em" }}>Services</div>
+              {services.map(s => (
+                <button key={s.id} onClick={() => go(s.href)} className="cy-search-item"
+                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: "none", border: "none", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {s.productKey ? <span style={{ textTransform: "uppercase" }}>{s.productKey}</span> : null}
+                      {s.productKey && s.name !== s.productName ? " · " : ""}
+                      {s.name !== s.productName ? s.productName : ""}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.04em", flexShrink: 0 }}>{s.status.replace(/_/g, " ")}</span>
+                </button>
+              ))}
+            </>
+          )}
+
+          {!loading && documents.length > 0 && (
+            <>
+              <div style={{ padding: "8px 14px 4px", fontSize: 10.5, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", borderTop: services.length > 0 ? "1px solid #f3f4f6" : "none" }}>Documents</div>
+              {documents.map(d => (
+                <button key={d.id} onClick={() => go(d.href)} className="cy-search-item"
+                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: "none", border: "none", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {d.typeLabel}{" "}
+                      <span style={{ fontFamily: "monospace", fontSize: 11.5, color: "#9ca3af", fontWeight: 400 }}>{d.docNumber}</span>
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.04em", flexShrink: 0 }}>{d.status.replace(/_/g, " ")}</span>
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function CustomerHeader({
   userEmail,
@@ -95,28 +227,14 @@ export function CustomerHeader({
 
         .cy-account-menu-item:hover        { background: #f3f4f6 !important; }
         .cy-account-menu-item-danger:hover { background: #fef2f2 !important; color: #dc2626 !important; }
+        .cy-search-item:hover              { background: #f5faf8 !important; }
       `}</style>
 
       {/* ── Desktop Header ───────────────────────────────────────────────────── */}
       <header className="cy-customer-header-desktop">
 
         {/* Search */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: 8,
-          background: "#2c2c2c", border: "1px solid #383838",
-          padding: "0 12px", height: 34,
-          flex: 1, minWidth: 0, maxWidth: 460,
-          boxSizing: "border-box",
-        }}>
-          <Icon name="search" size={15} color="#6b7280" />
-          <input
-            placeholder="Search services, invoices…"
-            style={{
-              flex: 1, minWidth: 0, fontSize: 13, color: "#d1d5db",
-              background: "none", border: "none", outline: "none", fontFamily: "inherit",
-            }}
-          />
-        </div>
+        <HeaderSearch placeholder="Search services, invoices…" />
 
         <div style={{ flex: 1, minWidth: 0 }} />
 
@@ -293,19 +411,7 @@ export function CustomerHeader({
           flexShrink: 0,
         }}>CC</span>
 
-        <div style={{
-          flex: 1, display: "flex", alignItems: "center", gap: 8,
-          background: "#2c2c2c", border: "1px solid #383838",
-          padding: "0 12px", height: 34, minWidth: 0,
-        }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2.5">
-            <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
-          </svg>
-          <input placeholder="Search…" style={{
-            flex: 1, minWidth: 0, fontSize: 13, color: "#d1d5db",
-            background: "none", border: "none", outline: "none", fontFamily: "inherit",
-          }} />
-        </div>
+        <HeaderSearch placeholder="Search…" />
 
         {/* Bell */}
         <Link href="/dashboard/notifications" style={{

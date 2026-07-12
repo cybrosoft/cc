@@ -1,7 +1,6 @@
-import { requireUser } from "@/lib/auth/require-user";
-import { EmailClient } from "./EmailClient";
+// app/dashboard/email/page.tsx
+import CategoryPageClient from "@/components/customer/CategoryPageClient";
 
-export default async function Page() {
-  await requireUser();
-  return <EmailClient />;
+export default function Page() {
+  return <CategoryPageClient pageKey="email" title="Email & Productivity" />;
 }

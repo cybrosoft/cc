@@ -1,7 +1,6 @@
-import { requireUser } from "@/lib/auth/require-user";
-import { NetworkClient } from "./NetworkClient";
+// app/dashboard/network/page.tsx
+import CategoryPageClient from "@/components/customer/CategoryPageClient";
 
-export default async function Page() {
-  await requireUser();
-  return <NetworkClient />;
+export default function Page() {
+  return <CategoryPageClient pageKey="network" title="Network & Public IP" />;
 }
