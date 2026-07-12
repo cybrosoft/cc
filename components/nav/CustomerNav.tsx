@@ -299,7 +299,7 @@ function SidebarContent({
 
       {/* Bottom help link */}
       <div style={{ borderTop: `1px solid ${colors.border}`, padding: "6px 0", flexShrink: 0, borderRight: `1px solid ${colors.border}` }}>
-        <Link href="#" onClick={onLinkClick} className="cy-nav-item" style={{ display: "flex", alignItems: "center", padding: "9px 16px", gap: 10, textDecoration: "none" }}>
+        <Link href="mailto:support@cybrosoft.com" onClick={onLinkClick} className="cy-nav-item" style={{ display: "flex", alignItems: "center", padding: "9px 16px", gap: 10, textDecoration: "none" }}>
           <Icon name="help" size={15} color={colors.textFaint} />
           <span style={{ fontSize: 13.5, color: colors.textMuted }}>Get Help</span>
         </Link>

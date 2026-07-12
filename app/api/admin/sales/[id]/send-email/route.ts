@@ -8,6 +8,7 @@ import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3
 import { generatePrintToken } from "@/lib/sales/print-token";
 import { DOC_TYPE_LABEL, fmtAmount, fmtDate } from "@/lib/sales/document-helpers";
 import { getEmailConfig } from "@/lib/email/email-config";
+import { wrapEmailHtml, loadEmailBranding } from "@/lib/email/templates";
 
 const s3pdf = new S3Client({
   region:   process.env.SUPABASE_S3_REGION!,
@@ -182,7 +183,10 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     const fromName = li.companyName ?? doc.market.name;
 
     const emailType  = EMAIL_TYPE_MAP[doc.type] ?? "sales";
-    const emailCfg   = await getEmailConfig(emailType, doc.market.key);
+    const [emailCfg, branding] = await Promise.all([
+      getEmailConfig(emailType, doc.market.key),
+      loadEmailBranding(),
+    ]);
     const fromDisplayName = emailCfg.from.split(" <")[0] || fromName;
 
     // Addresses
@@ -215,16 +219,14 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     // Bank details HTML
     const bd = li.bankDetails ?? {};
     const bankHtml = bd.bankName
-      ? `<tr><td style="padding:16px 32px 0;">
-          <div style="background:#f9fafb;border:1px solid #e5e7eb;padding:14px 16px;font-size:12px;">
-            <div style="font-weight:700;color:#111827;margin-bottom:8px;">Bank Transfer Details</div>
-            ${bd.bankName    ? `<div style="color:#6b7280;margin-bottom:4px;">Bank: <span style="color:#111827;font-weight:600;">${bd.bankName}</span></div>` : ""}
-            ${bd.accountName ? `<div style="color:#6b7280;margin-bottom:4px;">Account Name: <span style="color:#111827;font-weight:600;">${bd.accountName}</span></div>` : ""}
-            ${bd.iban        ? `<div style="color:#6b7280;margin-bottom:4px;">IBAN: <span style="color:#111827;font-weight:600;font-family:monospace;">${bd.iban}</span></div>` : ""}
-            ${bd.swift       ? `<div style="color:#6b7280;margin-bottom:4px;">SWIFT: <span style="color:#111827;font-weight:600;font-family:monospace;">${bd.swift}</span></div>` : ""}
-            ${bd.currency    ? `<div style="color:#6b7280;">Currency: <span style="color:#111827;font-weight:600;">${bd.currency}</span></div>` : ""}
-          </div>
-        </td></tr>`
+      ? `<div style="background:#f9fafb;border:1px solid #e5e7eb;padding:14px 16px;font-size:12px;margin-top:16px;">
+          <div style="font-weight:700;color:#111827;margin-bottom:8px;">Bank Transfer Details</div>
+          ${bd.bankName    ? `<div style="color:#6b7280;margin-bottom:4px;">Bank: <span style="color:#111827;font-weight:600;">${bd.bankName}</span></div>` : ""}
+          ${bd.accountName ? `<div style="color:#6b7280;margin-bottom:4px;">Account Name: <span style="color:#111827;font-weight:600;">${bd.accountName}</span></div>` : ""}
+          ${bd.iban        ? `<div style="color:#6b7280;margin-bottom:4px;">IBAN: <span style="color:#111827;font-weight:600;font-family:monospace;">${bd.iban}</span></div>` : ""}
+          ${bd.swift       ? `<div style="color:#6b7280;margin-bottom:4px;">SWIFT: <span style="color:#111827;font-weight:600;font-family:monospace;">${bd.swift}</span></div>` : ""}
+          ${bd.currency    ? `<div style="color:#6b7280;">Currency: <span style="color:#111827;font-weight:600;">${bd.currency}</span></div>` : ""}
+        </div>`
       : "";
 
     // Pay Online button
@@ -232,9 +234,9 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     const marketPrefix  = doc.market.key === "SAUDI" ? "/sa" : "";
     const payUrl        = `${baseUrl}${marketPrefix}/dashboard/invoices/${doc.id}`;
     const payButtonHtml = (doc.market.showPayOnline && balanceDue > 0)
-      ? `<tr><td style="padding:16px 32px 0;text-align:center;">
-          <a href="${payUrl}" style="display:inline-block;background:#318774;color:#fff;font-size:13px;font-weight:700;padding:12px 28px;text-decoration:none;">Pay Online</a>
-        </td></tr>`
+      ? `<div style="text-align:center;margin-top:20px;">
+          <a href="${payUrl}" style="display:inline-block;background:${branding.primaryColor};color:#fff;font-size:13px;font-weight:700;padding:12px 28px;text-decoration:none;">Pay Online</a>
+        </div>`
       : "";
 
     // Line items HTML
@@ -248,42 +250,30 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       </tr>`
     ).join("");
 
-    const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 0;">
-<tr><td align="center">
-  <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #e5e7eb;max-width:600px;width:100%;">
+    // ── Document body — wrapped in the unified shell ──────────────────────────
+    const docBody = `
+      <!-- Doc info -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
+        <tr>
+          <td>
+            <div style="font-size:22px;font-weight:700;color:#111827;">${docLabel}</div>
+            <div style="font-size:13px;color:#6b7280;margin-top:4px;">${doc.docNum}</div>
+          </td>
+          <td style="text-align:right;vertical-align:top;">
+            ${doc.issueDate ? `<div style="font-size:12px;color:#6b7280;">Date: <strong>${fmtDate(doc.issueDate)}</strong></div>` : ""}
+            ${doc.dueDate   ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">Due: <strong style="color:#dc2626;">${fmtDate(doc.dueDate)}</strong></div>` : ""}
+          </td>
+        </tr>
+      </table>
 
-    <!-- Header -->
-    <tr><td style="padding:28px 32px;background:#318774;">
-      <div style="color:#fff;font-size:20px;font-weight:700;">${fromDisplayName}</div>
-      ${li.tagline ? `<div style="color:#a7f3d0;font-size:12px;margin-top:4px;">${li.tagline}</div>` : ""}
-    </td></tr>
-
-    <!-- Doc info -->
-    <tr><td style="padding:24px 32px 0;">
-      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;">
-        <div>
-          <div style="font-size:22px;font-weight:700;color:#111827;">${docLabel}</div>
-          <div style="font-size:13px;color:#6b7280;margin-top:4px;">${doc.docNum}</div>
-        </div>
-        <div style="text-align:right;">
-          ${doc.issueDate ? `<div style="font-size:12px;color:#6b7280;">Date: <strong>${fmtDate(doc.issueDate)}</strong></div>` : ""}
-          ${doc.dueDate   ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">Due: <strong style="color:#dc2626;">${fmtDate(doc.dueDate)}</strong></div>` : ""}
-        </div>
+      <!-- Bill To -->
+      <div style="margin-bottom:20px;">
+        <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Bill To</div>
+        <div style="font-size:13px;font-weight:600;color:#111827;">${doc.customer.fullName ?? ""}</div>
+        <div style="font-size:12px;color:#6b7280;">${doc.customer.email}</div>
       </div>
-    </td></tr>
 
-    <!-- Bill To -->
-    <tr><td style="padding:16px 32px 0;">
-      <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Bill To</div>
-      <div style="font-size:13px;font-weight:600;color:#111827;">${doc.customer.fullName ?? ""}</div>
-      <div style="font-size:12px;color:#6b7280;">${doc.customer.email}</div>
-    </td></tr>
-
-    <!-- Line Items -->
-    <tr><td style="padding:20px 32px 0;">
+      <!-- Line Items -->
       <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #e5e7eb;">
         <thead>
           <tr style="background:#f9fafb;">
@@ -301,29 +291,24 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
           ${Number(doc.vatPercent) > 0
             ? `<tr><td colspan="4" style="padding:6px 12px;text-align:right;font-size:12px;color:#6b7280;">VAT (${Number(doc.vatPercent)}%)</td><td style="padding:6px 12px;text-align:right;font-size:12px;">${fmtAmount(doc.vatAmount, currency)}</td></tr>`
             : ""}
-          <tr style="background:#f9fafb;"><td colspan="4" style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;">Total</td><td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:#318774;">${fmtAmount(doc.total, currency)}</td></tr>
+          <tr style="background:#f9fafb;"><td colspan="4" style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;">Total</td><td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:${branding.primaryColor};">${fmtAmount(doc.total, currency)}</td></tr>
           ${totalPaid > 0 ? `<tr><td colspan="4" style="padding:6px 12px;text-align:right;font-size:12px;color:#15803d;">Paid</td><td style="padding:6px 12px;text-align:right;font-size:12px;color:#15803d;">− ${fmtAmount(totalPaid, currency)}</td></tr>` : ""}
           ${balanceDue > 0 && totalPaid > 0 ? `<tr style="background:#fef9c3;"><td colspan="4" style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:#92400e;">Balance Due</td><td style="padding:10px 12px;text-align:right;font-size:14px;font-weight:700;color:#92400e;">${fmtAmount(balanceDue, currency)}</td></tr>` : ""}
         </tfoot>
       </table>
       ${doc.notes ? `<p style="font-size:12px;color:#6b7280;margin:8px 0 0;padding:10px 14px;background:#f9fafb;border-left:2px solid #d1d5db;">${doc.notes}</p>` : ""}
       ${bankHtml}
-    </td></tr>
+      ${payButtonHtml}
+    `;
 
-    ${payButtonHtml}
-
-    <!-- Footer -->
-    <tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;">
-      <p style="font-size:11px;color:#9ca3af;text-align:center;margin:0;">
-        ${li.footerText ?? `${fromDisplayName}${li.email ? ` · ${li.email}` : ""}`}
-      </p>
-    </td></tr>
-
-  </table>
-</td></tr>
-</table>
-</body>
-</html>`;
+    const html = wrapEmailHtml({
+      body:         docBody,
+      portalName:   branding.portalName,
+      brandName:    fromDisplayName, // header shows market legal entity
+      logoUrl:      branding.logoUrl,
+      primaryColor: branding.primaryColor,
+      footerText:   li.footerText ?? `${fromDisplayName}${li.email ? ` · ${li.email}` : ""}`,
+    });
 
     const resend    = new Resend(apiKey);
 

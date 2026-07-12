@@ -2,6 +2,9 @@
 // Template variable substitution engine.
 // Variables use {curlyBrace} syntax: {customerName}, {docNum}, {amount} etc.
 //
+// NOTE: the branded HTML shell now lives in lib/email/templates.ts (single
+// source for ALL emails). Re-exported here for backward compatibility.
+//
 // Supported variables across all templates:
 //   {customerName}  - customer full name or email
 //   {customerEmail} - customer email
@@ -16,6 +19,8 @@
 //   {title}         - notification title
 //   {body}          - notification body
 
+export { wrapEmailHtml } from "@/lib/email/templates";
+
 // ── Variable substitution ─────────────────────────────────────────────────────
 
 export function renderTemplate(
@@ -27,70 +32,6 @@ export function renderTemplate(
     result = result.replaceAll(`{${key}}`, value ?? "");
   }
   return result;
-}
-
-// ── Base email HTML wrapper ───────────────────────────────────────────────────
-// Wraps any email body content in a branded HTML shell.
-
-export function wrapEmailHtml(params: {
-  body:       string;
-  portalName: string;
-  logoUrl?:   string;
-  primaryColor?: string;
-  unsubLink?: string;
-}): string {
-  const { body, portalName, logoUrl, primaryColor = "#318774", unsubLink } = params;
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${portalName}</title>
-</head>
-<body style="margin:0;padding:0;background:#f5f5f5;font-family:'Helvetica Neue',Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:32px 0;">
-    <tr>
-      <td align="center">
-        <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;max-width:600px;width:100%;">
-          <!-- Header -->
-          <tr>
-            <td style="background:#222222;padding:20px 32px;">
-              ${logoUrl
-                ? `<img src="${logoUrl}" alt="${portalName}" style="height:36px;max-width:180px;" />`
-                : `<span style="font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.02em;">${portalName}</span>`
-              }
-            </td>
-          </tr>
-          <!-- Body -->
-          <tr>
-            <td style="padding:32px;color:#374151;font-size:14px;line-height:1.7;">
-              ${body}
-            </td>
-          </tr>
-          <!-- Divider -->
-          <tr>
-            <td style="padding:0 32px;">
-              <hr style="border:none;border-top:1px solid #e5e7eb;" />
-            </td>
-          </tr>
-          <!-- Footer -->
-          <tr>
-            <td style="padding:20px 32px;color:#9ca3af;font-size:12px;line-height:1.6;">
-              <p style="margin:0 0 4px;">This email was sent by <strong>${portalName}</strong>.</p>
-              ${unsubLink ? `<p style="margin:0;"><a href="${unsubLink}" style="color:#9ca3af;">Unsubscribe from notifications</a></p>` : ""}
-            </td>
-          </tr>
-          <!-- Bottom bar -->
-          <tr>
-            <td style="background:${primaryColor};height:4px;"></td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
 }
 
 // ── Build variables from common entities ─────────────────────────────────────

@@ -8,6 +8,9 @@ import { invalidateCustomer } from "@/lib/cache/customer-cache";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { parseAttachments, serializeAttachments } from "@/lib/sales/attachments";
 import { randomUUID } from "crypto";
+import { Resend } from "resend";
+import { getEmailConfig } from "@/lib/email/email-config";
+import { wrapEmailHtml, loadEmailBranding } from "@/lib/email/templates";
 
 const s3 = new S3Client({
   region:   process.env.SUPABASE_S3_REGION!,
@@ -62,6 +65,7 @@ export async function POST(req: NextRequest) {
   let title = "";
   let notes = "";
   const uploadedKeys: string[] = [];
+  const emailAttachments: { filename: string; content: string }[] = [];
 
   const contentType = req.headers.get("content-type") ?? "";
 
@@ -79,6 +83,11 @@ export async function POST(req: NextRequest) {
       try {
         const key = await uploadFile(file);
         uploadedKeys.push(key);
+        // Keep buffer for the sales alert email attachment
+        emailAttachments.push({
+          filename: file.name,
+          content:  Buffer.from(await file.arrayBuffer()).toString("base64"),
+        });
       } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 400 });
       }
@@ -97,7 +106,7 @@ export async function POST(req: NextRequest) {
 
   const fullUser = await prisma.user.findUnique({
     where:  { id: user.id },
-    select: { id: true, marketId: true, market: { select: { defaultCurrency: true } } },
+    select: { id: true, marketId: true, market: { select: { key: true, defaultCurrency: true } } },
   });
   if (!fullUser) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
@@ -154,6 +163,52 @@ export async function POST(req: NextRequest) {
       });
     }
   } catch { /* non-critical */ }
+
+  // Email alert to sales inbox — non-blocking
+  try {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (apiKey) {
+      const [emailCfg, branding] = await Promise.all([
+        getEmailConfig("sales", fullUser.market.key),
+        loadEmailBranding(),
+      ]);
+
+      const salesAddr = emailCfg.from.match(/<(.+)>/)?.[1] ?? emailCfg.from;
+      const adminUrl  = `${branding.baseUrl}/admin/sales/rfq/${doc.id}`;
+
+      const emailBody = `
+        <h2 style="color:${branding.primaryColor};margin:0 0 8px;">New RFQ received</h2>
+        <p style="margin:0 0 16px;">A customer has submitted a new request for quotation via the portal.</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <tr><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;color:#9ca3af;width:120px;">RFQ</td><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-weight:600;font-family:monospace;">${doc.docNum}</td></tr>
+          <tr><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;color:#9ca3af;">Customer</td><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-weight:600;">${user.fullName ?? user.email}</td></tr>
+          <tr><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;color:#9ca3af;">Email</td><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;">${user.email}</td></tr>
+          <tr><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;color:#9ca3af;">Title</td><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;">${title}</td></tr>
+          ${notes ? `<tr><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;color:#9ca3af;vertical-align:top;">Notes</td><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;">${notes}</td></tr>` : ""}
+          ${uploadedKeys.length > 0 ? `<tr><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;color:#9ca3af;">Attachments</td><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;">${uploadedKeys.length} file${uploadedKeys.length > 1 ? "s" : ""}</td></tr>` : ""}
+        </table>
+        <div style="text-align:center;margin-top:24px;">
+          <a href="${adminUrl}" style="display:inline-block;background:${branding.primaryColor};color:#fff;font-size:13px;font-weight:700;padding:12px 28px;text-decoration:none;">Open RFQ</a>
+        </div>
+      `;
+
+      const resend = new Resend(apiKey);
+      await resend.emails.send({
+        from:    emailCfg.from,
+        to:      salesAddr,
+        subject: `New RFQ ${doc.docNum} — ${title}`,
+        html: wrapEmailHtml({
+          body:         emailBody,
+          portalName:   branding.portalName,
+          logoUrl:      branding.logoUrl,
+          primaryColor: branding.primaryColor,
+        }),
+        ...(emailAttachments.length > 0 ? { attachments: emailAttachments } : {}),
+      });
+    }
+  } catch (e) {
+    console.error("[customer rfq] sales email alert failed:", e);
+  }
 
   await invalidateCustomer(user.id);
   return NextResponse.json({ ok: true, docNum: doc.docNum, id: doc.id }, { status: 201 });

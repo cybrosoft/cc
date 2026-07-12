@@ -324,14 +324,14 @@ export function DashboardHomeClient({ user }: { user: DashboardUser }) {
             </p>
           </div>
           <div className="cy-hdr-actions">
-            {/* Submit RFQ — always allowed */}
+            {/* Submit RFQ — always allowed 
             <Link href="/dashboard/rfq" style={{ display: "flex", alignItems: "center", height: 34, padding: "0 14px", background: "#fff", border: "1px solid #e5e7eb", fontSize: 13, fontWeight: 500, color: "#374151", textDecoration: "none" }}>
               Submit RFQ
-            </Link>
+            </Link>*/}
             {/* New Service — restricted for PENDING/INFO_REQUIRED */}
-            <Link href="/dashboard/catalogue" onClick={e => guardHref(e, "/dashboard/catalogue")}
+            <Link href="/dashboard/rfq" onClick={e => guardHref(e, "/dashboard/rfq")}
               style={{ display: "flex", alignItems: "center", height: 34, padding: "0 14px", background: colors.primary, fontSize: 13, fontWeight: 500, color: "#fff", textDecoration: "none" }}>
-              + New Service
+              + Submit RFQ
             </Link>
           </div>
         </div>

@@ -157,10 +157,12 @@ export default function CategoryPageClient({ pageKey, title }: { pageKey: string
                 style={{ height: 36, padding: "0 14px", fontSize: 12, fontWeight: 600, background: "#fff", border: "1px solid #e5e7eb", cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit", color: "#374151", opacity: loading ? 0.6 : 1 }}>
                 {loading ? "Loading…" : "↻ Refresh"}
               </button>
-              <Link href="/dashboard/catalogue"
-                style={{ display: "inline-flex", alignItems: "center", height: 36, padding: "0 16px", fontSize: 12, fontWeight: 600, background: colors.primary, color: "#fff", border: "none", textDecoration: "none", fontFamily: "inherit" }}>
-                + New Service
-              </Link>
+              <Link href="#"
+              aria-disabled="true"
+              tabIndex={-1}
+              style={{ display: "inline-flex", alignItems: "center", height: 36, padding: "0 16px", fontSize: 12, fontWeight: 600, background: colors.primary, color: "#fff", border: "none", textDecoration: "none", fontFamily: "inherit", opacity: 0.5, pointerEvents: "none", cursor: "not-allowed" }}>
+              + New Service
+            </Link>
             </div>
           </div>
 

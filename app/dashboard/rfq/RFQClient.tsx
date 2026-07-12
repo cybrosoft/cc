@@ -67,7 +67,8 @@ export function RFQClient() {
 
   function addFiles(incoming: FileList | null) {
     if (!incoming) return;
-    setFiles(prev => [...prev, ...Array.from(incoming)]);
+    const arr = Array.from(incoming); // snapshot BEFORE state update — input value is cleared right after
+    setFiles(prev => [...prev, ...arr]);
   }
 
   function removeFile(idx: number) {
