@@ -154,6 +154,11 @@ enum SalesDocumentStatus {
   APPLIED      // credit applied against invoice or refunded
 }
 
+  enum InvoicingMode {
+    AUTO
+    MANUAL
+  }
+
 enum PaymentMethod {
   BANK_TRANSFER
   STRIPE
@@ -526,6 +531,8 @@ model Subscription {
   renewalPriceCents      Int?                         // if set, overrides catalog price on renewal
 
   invoiceNumber          String?
+  invoicingMode   InvoicingMode @default(AUTO)
+  invoiceMetaJson String?
   receiptUrl             String?
   receiptFileName        String?
   receiptUploadedAt      DateTime?
