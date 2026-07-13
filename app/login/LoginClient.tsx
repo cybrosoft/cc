@@ -112,7 +112,7 @@ function LeftPanel() {
         </div>*/}
         <div style={{ width: 40, height: 3, background: "rgba(255,255,255,0.85)", margin: "0 0 18px" }} />
         <p style={{ fontSize: 22, color: "rgba(255,255,255,0.6)", lineHeight: 1.7, maxWidth: 340 }}>
-          Reliable infrastructure, transparent pricing, support that shows up.
+          Reliable infrastructure, transparent pricing and support that shows up.
         </p>
       </div>
 
