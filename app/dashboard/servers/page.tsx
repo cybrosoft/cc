@@ -2,7 +2,7 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/get-session-user";
 import ServersClient from "./ServersClient";
-
+export const metadata = { title: "Cloud Servers" };
 export default async function ServersPage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");

@@ -1,6 +1,8 @@
 // app/dashboard/network/page.tsx
-import CategoryPageClient from "@/components/customer/CategoryPageClient";
+import { NetworkClient } from "./NetworkClient";
+
+export const metadata = { title: "Network & Public IP" };
 
 export default function Page() {
-  return <CategoryPageClient pageKey="network" title="Network & Public IP" />;
+  return <NetworkClient />;
 }

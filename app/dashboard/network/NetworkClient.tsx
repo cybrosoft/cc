@@ -57,8 +57,8 @@ export function NetworkClient() {
         </div>
       )}
 
-      <div style={{ border: "1px solid #f3f4f6", borderRadius: 8, overflow: "hidden", background: "#fff" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+      <div style={{ border: "1px solid #f3f4f6", borderRadius: 8, overflowX: "auto", WebkitOverflowScrolling: "touch" as any, background: "#fff" }}>
+        <table style={{ width: "100%", minWidth: 760, borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ background: "#fafafa", borderBottom: "1px solid #f3f4f6" }}>
               <th style={{ textAlign: "left", padding: "12px 16px", fontSize: 11, fontWeight: 700, color: "#9ca3af", letterSpacing: "0.05em", textTransform: "uppercase" }}>IP Address</th>

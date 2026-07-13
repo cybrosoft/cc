@@ -4,7 +4,7 @@ import { getSessionUser } from "@/lib/auth/get-session-user";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { DashboardHomeClient } from "./DashboardHomeClient";
-
+export const metadata = { title: "Dashboard" };
 export default async function DashboardPage() {
   const session = await getSessionUser();
   if (!session) redirect("/login");

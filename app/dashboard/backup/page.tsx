@@ -1,6 +1,8 @@
 // app/dashboard/backup/page.tsx
-import CategoryPageClient from "@/components/customer/CategoryPageClient";
+import { BackupClient } from "./BackupClient";
+
+export const metadata = { title: "Backup" };
 
 export default function Page() {
-  return <CategoryPageClient pageKey="backup" title="Backup" />;
+  return <BackupClient />;
 }

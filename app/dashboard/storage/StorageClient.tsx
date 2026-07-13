@@ -10,88 +10,59 @@ type StorageRow = {
   status:     string | null;
 };
 
-// ─── Design tokens (matching ServerDetailsClient.tsx) ──────────────────────
-const C = {
-  border:  "1px solid #e5e7eb",
-  borderB: "1px solid #f3f4f6",
-  bg:      "#ffffff",
-  bgAlt:   "#f9fafb",
-  text:    "#111827",
-  muted:   "#6b7280",
-  faint:   "#9ca3af",
-};
+const thStyle: React.CSSProperties = { textAlign: "left", padding: "12px 16px", fontSize: 11, fontWeight: 700, color: "#9ca3af", letterSpacing: "0.05em", textTransform: "uppercase" };
+const tdStyle: React.CSSProperties = { padding: "14px 16px", color: "#374151", whiteSpace: "nowrap" };
 
-function formatStatus(status: string | null): string {
-  if (!status) return "N/A";
-  const s = status.toLowerCase();
-  return s.charAt(0).toUpperCase() + s.slice(1);
+// Fixed column widths so both tables align identically
+const COL_WIDTHS = ["34%", "22%", "22%", "22%"];
+
+function titleCase(s: string) {
+  return s.toLowerCase().replace(/(^|[\s_])\w/g, c => c.toUpperCase()).replace(/_/g, " ");
 }
 
-// ─── Card ────────────────────────────────────────────────────────────────────
-function Card({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+function StorageTable({ title, rows, loading, emptyText }: { title: string; rows: StorageRow[]; loading: boolean; emptyText: string }) {
   return (
-    <div style={{ border: C.border, background: C.bg, marginBottom: 16 }}>
-      <div style={{ padding: "10px 16px", borderBottom: C.border, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: C.faint, textTransform: "uppercase", letterSpacing: "0.08em" }}>{title}</span>
-        {action && <div style={{ display: "flex", alignItems: "center", gap: 8 }}>{action}</div>}
+    <div style={{ marginBottom: 28 }}>
+      <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 600, color: "#111827" }}>{title}</p>
+      <p style={{ margin: "0 0 12px", fontSize: 13, color: "#9ca3af" }}>
+        {loading ? "Loading…" : `${rows.length} item${rows.length !== 1 ? "s" : ""}`}
+      </p>
+
+      <div style={{ border: "1px solid #f3f4f6", borderRadius: 8, overflowX: "auto", WebkitOverflowScrolling: "touch" as any, background: "#fff" }}>
+        <table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse", fontSize: 13, tableLayout: "fixed" }}>
+          <colgroup>
+            {COL_WIDTHS.map((w, i) => <col key={i} style={{ width: w }} />)}
+          </colgroup>
+          <thead>
+            <tr style={{ background: "#fafafa", borderBottom: "1px solid #f3f4f6" }}>
+              <th style={thStyle}>Server Name</th>
+              <th style={thStyle}>Size</th>
+              <th style={thStyle}>Location</th>
+              <th style={thStyle}>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={4} style={{ padding: "32px 16px", textAlign: "center", fontSize: 13, color: "#9ca3af" }}>Loading…</td></tr>
+            ) : rows.length === 0 ? (
+              <tr><td colSpan={4} style={{ padding: "32px 16px", textAlign: "center", fontSize: 13, color: "#9ca3af" }}>{emptyText}</td></tr>
+            ) : (
+              rows.map((row, idx) => (
+                <tr key={`${row.serverName}-${idx}`} style={{ borderBottom: idx < rows.length - 1 ? "1px solid #f3f4f6" : "none" }}>
+                  <td style={{ ...tdStyle, fontWeight: 700, color: "#111827" }}>{row.serverName}</td>
+                  <td style={tdStyle}>{row.sizeGb != null ? `${row.sizeGb} GB` : "—"}</td>
+                  <td style={tdStyle}>{row.location ?? "—"}</td>
+                  <td style={tdStyle}>{row.status ? titleCase(row.status) : "—"}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
-      <div>{children}</div>
     </div>
   );
 }
 
-// ─── Table ───────────────────────────────────────────────────────────────────
-function T({ cols, rows, empty = "No data.", colWidths }: { cols: string[]; rows: (string | React.ReactNode)[][]; empty?: string; colWidths?: string[] }) {
-  return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, tableLayout: colWidths ? "fixed" : "auto" }}>
-      {colWidths && (
-        <colgroup>
-          {colWidths.map((w, i) => <col key={i} style={{ width: w }} />)}
-        </colgroup>
-      )}
-      <thead>
-        <tr>
-          {cols.map((c, i) => (
-            <th key={i} style={{ padding: "8px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: C.faint, background: C.bgAlt, borderBottom: C.border, letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-              {c}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.length === 0 && (
-          <tr><td colSpan={cols.length} style={{ padding: "14px 16px", fontSize: 13, color: C.muted }}>{empty}</td></tr>
-        )}
-        {rows.map((row, i) => (
-          <tr key={i}>
-            {row.map((cell, j) => (
-              <td key={j} style={{ padding: "9px 16px", color: C.text, borderBottom: i < rows.length - 1 ? C.borderB : "none", verticalAlign: "top" }}>
-                {cell}
-              </td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-// ─── Skeleton ────────────────────────────────────────────────────────────────
-function Sk() {
-  return <span style={{ display: "inline-block", width: 120, height: 12, background: "#f0f0f0", borderRadius: 2 }} />;
-}
-
-// ─── Btn ─────────────────────────────────────────────────────────────────────
-function Btn({ onClick, children, disabled }: { onClick: () => void; children: React.ReactNode; disabled?: boolean }) {
-  return (
-    <button onClick={onClick} disabled={disabled}
-      style={{ height: 32, padding: "0 14px", fontSize: 12, background: C.bg, border: C.border, cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit", color: C.text, opacity: disabled ? 0.6 : 1, display: "inline-flex", alignItems: "center", gap: 6 }}>
-      {children}
-    </button>
-  );
-}
-
-// ─── Main ────────────────────────────────────────────────────────────────────
 export function StorageClient() {
   const [boot,    setBoot]    = useState<StorageRow[]>([]);
   const [volumes, setVolumes] = useState<StorageRow[]>([]);
@@ -115,62 +86,28 @@ export function StorageClient() {
 
   useEffect(() => { void load(); }, []);
 
-  const colWidths = ["34%", "18%", "30%", "18%"];
-
   return (
-    <div className="cy-page-content">
-      <div className="cy-dash-wrap">
-
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 20 }}>
-          <div>
-            <p style={{ fontSize: 11, color: C.faint, letterSpacing: ".05em", margin: "0 0 4px" }}>DASHBOARD / STORAGE</p>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0 }}>Storage</h1>
-          </div>
-          <Btn onClick={() => void load()} disabled={loading}>
-            <span style={{ fontSize: 16, lineHeight: 1 }}>↻</span> Refresh
-          </Btn>
+    <div className="cy-dash-wrap" style={{ padding: 24 }}>
+      {/* Breadcrumb + Title */}
+      <div style={{ marginBottom: 20 }}>
+        <p style={{ fontSize: 11, color: "#9ca3af", letterSpacing: ".05em", marginBottom: 3 }}>DASHBOARD / STORAGE</p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.02em", color: "#111827", margin: 0 }}>Storage</h1>
+          <button onClick={() => void load()} disabled={loading}
+            style={{ height: 34, padding: "0 14px", fontSize: 12, fontWeight: 600, background: "#fff", border: "1px solid #e5e7eb", borderRadius: 6, cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit", color: "#374151", opacity: loading ? 0.6 : 1 }}>
+            {loading ? "Loading..." : "↻ Refresh"}
+          </button>
         </div>
-
-        {err && (
-          <div style={{ marginBottom: 16, padding: "8px 14px", background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 13 }}>
-            {err}
-          </div>
-        )}
-
-        <Card title={`Boot Disks${!loading ? ` (${boot.length} item${boot.length !== 1 ? "s" : ""})` : ""}`}>
-          {loading ? <div style={{ padding: 16 }}><Sk /></div> : (
-            <T
-              colWidths={colWidths}
-              cols={["Server Name", "Size", "Location", "Status"]}
-              rows={boot.map(b => [
-                <span key="n" style={{ fontWeight: 600 }}>{b.serverName}</span>,
-                b.sizeGb != null ? `${b.sizeGb} GB` : "N/A",
-                b.location ?? "N/A",
-                formatStatus(b.status),
-              ])}
-              empty="No boot disks found for your active servers."
-            />
-          )}
-        </Card>
-
-        <Card title={`Additional Storage${!loading ? ` (${volumes.length} item${volumes.length !== 1 ? "s" : ""})` : ""}`}>
-          {loading ? <div style={{ padding: 16 }}><Sk /></div> : (
-            <T
-              colWidths={colWidths}
-              cols={["Server Name", "Size", "Location", "Status"]}
-              rows={volumes.map(v => [
-                <span key="n" style={{ fontWeight: 600 }}>{v.serverName}</span>,
-                v.sizeGb != null ? `${v.sizeGb} GB` : "N/A",
-                v.location ?? "N/A",
-                formatStatus(v.status),
-              ])}
-              empty="No additional storage volumes found."
-            />
-          )}
-        </Card>
-
       </div>
+
+      {err && (
+        <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 6, border: "1px solid #fecaca", background: "#fef2f2", fontSize: 13, color: "#b91c1c" }}>
+          {err}
+        </div>
+      )}
+
+      <StorageTable title="Boot Disks" rows={boot} loading={loading} emptyText="No boot disks found for your active servers." />
+      <StorageTable title="Additional Storage" rows={volumes} loading={loading} emptyText="No additional storage volumes found." />
     </div>
   );
 }

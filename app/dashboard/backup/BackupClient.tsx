@@ -40,7 +40,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
       <div style={{ padding: "10px 16px", borderBottom: C.border }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.faint, textTransform: "uppercase", letterSpacing: "0.08em" }}>{title}</span>
       </div>
-      <div>{children}</div>
+      <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" as any }}>{children}</div>
     </div>
   );
 }
@@ -48,7 +48,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 // ─── Table ───────────────────────────────────────────────────────────────────
 function T({ cols, rows, empty = "No data.", colWidths }: { cols: string[]; rows: (string | React.ReactNode)[][]; empty?: string; colWidths?: string[] }) {
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, tableLayout: colWidths ? "fixed" : "auto" }}>
+    <table style={{ width: "100%", minWidth: 700, borderCollapse: "collapse", fontSize: 13, tableLayout: colWidths ? "fixed" : "auto" }}>
       {colWidths && (
         <colgroup>
           {colWidths.map((w, i) => <col key={i} style={{ width: w }} />)}

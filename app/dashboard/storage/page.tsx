@@ -1,6 +1,8 @@
 // app/dashboard/storage/page.tsx
-import CategoryPageClient from "@/components/customer/CategoryPageClient";
+import { StorageClient } from "./StorageClient";
+
+export const metadata = { title: "Storage" };
 
 export default function Page() {
-  return <CategoryPageClient pageKey="storage" title="Storage" />;
+  return <StorageClient />;
 }
