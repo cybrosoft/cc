@@ -1039,4 +1039,4 @@ model NotificationBroadcast {
   @@index([sentAt])
   @@index([targetType])
   @@index([broadcastType])
-}
+ }
