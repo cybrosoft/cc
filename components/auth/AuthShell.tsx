@@ -6,7 +6,7 @@
 
 import React from "react";
 
-function LeftPanel() {
+function LeftPanel({ headline, subtext }: { headline?: string; subtext?: string }) {
   return (
     <div style={{
       width: "100%", minHeight: "100%",
@@ -45,8 +45,8 @@ function LeftPanel() {
 
       {/* Logo (top) */}
       <div style={{ position: "relative" as const }}>
-        <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
-          <span style={{ fontSize: 26, fontWeight: 600, letterSpacing: "-0.02em", color: "#e5e5e5" }}>Cybrosoft</span>
+        <div style={{ display: "flex", alignItems: "center"}}>
+          <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: "-0.02em", color: "#e5e5e5" }}>Cybrosoft</span>
           <span style={{ fontSize: 13, color: "#b9b9b9", marginLeft: 7, marginTop: 5 }}>Console</span>
         </div>
         <p style={{ fontSize: 13, color: "rgba(255,255,255,0.55)", margin: 0 }}>Cloud Services Management Platform</p>
@@ -54,12 +54,12 @@ function LeftPanel() {
 
       {/* Headline */}
       <div style={{ position: "relative" as const, textAlign: "left" as const }}>
-        <div style={{ fontSize: 24, fontWeight: 600, color: "#eeeeee", lineHeight: 1.2, letterSpacing: "0.04em", marginBottom: 14 }}>
-          Where your Cloud Meets Accountability
+        <div style={{ fontSize: 24, fontWeight: 500, color: "#ffffff99", lineHeight: 1.2, marginBottom: 14 }}>
+          {headline ?? "Where your Cloud Meets Accountability"}
         </div>
         <div style={{ width: 40, height: 3, background: "rgba(255,255,255,0.85)", margin: "0 0 18px" }} />
         <p style={{ fontSize: 13.5, color: "rgba(255,255,255,0.6)", lineHeight: 1.7, maxWidth: 340 }}>
-          Reliable infrastructure, transparent pricing and support that shows up.
+          {subtext ?? "Reliable infrastructure, transparent pricing, support that shows up."}
         </p>
       </div>
 
@@ -71,7 +71,12 @@ function LeftPanel() {
   );
 }
 
-export default function AuthShell({ children }: { children: React.ReactNode }) {
+export default function AuthShell({ children, rightStyle, headline, subtext }: {
+  children: React.ReactNode;
+  rightStyle?: React.CSSProperties;
+  headline?: string;
+  subtext?: string;
+}) {
   return (
     <>
       <style>{`
@@ -91,15 +96,16 @@ export default function AuthShell({ children }: { children: React.ReactNode }) {
       }}>
         <div className="auth-card" style={{
           display: "flex", width: "100%", maxWidth: 1060, minHeight: 640,
-          background: "#fff", borderRadius: 14, overflow: "hidden",
+          background: "#fff", borderRadius: 4, overflow: "hidden",
           boxShadow: "0 24px 64px rgba(13,43,37,0.18)",
         }}>
           <div className="auth-left" style={{ width: "45%", flexShrink: 0, display: "flex" }}>
-            <LeftPanel />
+            <LeftPanel headline={headline} subtext={subtext} />
           </div>
           <div className="auth-right" style={{
             flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
             padding: "48px 32px", background: "#fff",
+            ...rightStyle,
           }}>
             {children}
           </div>

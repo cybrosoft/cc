@@ -3,6 +3,7 @@
 
 import React, { useState } from "react";
 import { usePathname } from "next/navigation";
+import AuthShell from "@/components/auth/AuthShell";
 
 function normalizeEmail(e: string) { return e.trim().toLowerCase(); }
 function isRecord(v: unknown): v is Record<string, unknown> { return typeof v === "object" && v !== null; }
@@ -23,13 +24,13 @@ type CountryOption = { label: string; iso: string; route: "sa" | "global"; divid
 
 const COUNTRIES: CountryOption[] = [
   // Priority top 7
-  { label: "Saudi Arabia",   iso: "SA", route: "sa"     },
-  { label: "UAE",            iso: "AE", route: "global" },
-  { label: "Kuwait",         iso: "KW", route: "global" },
-  { label: "Bahrain",        iso: "BH", route: "global" },
-  { label: "Qatar",          iso: "QA", route: "global" },
-  { label: "Oman",           iso: "OM", route: "global" },
-  { label: "United States",  iso: "US", route: "global", dividerAfter: true },
+  { label: "Saudi Arabia",  iso: "SA", route: "sa"     },
+  { label: "UAE",           iso: "AE", route: "global" },
+  { label: "Kuwait",        iso: "KW", route: "global" },
+  { label: "Bahrain",       iso: "BH", route: "global" },
+  { label: "Qatar",         iso: "QA", route: "global" },
+  { label: "Oman",          iso: "OM", route: "global" },
+  { label: "United States", iso: "US", route: "global", dividerAfter: true },
   // Alphabetical
   { label: "Australia",      iso: "AU", route: "global" },
   { label: "Belgium",        iso: "BE", route: "global" },
@@ -66,7 +67,6 @@ const COUNTRIES: CountryOption[] = [
 function FlagImg({ iso }: { iso: string }) {
   const [failed, setFailed] = useState(false);
   if (!iso) return null;
-
   if (failed) {
     return (
       <span style={{
@@ -79,7 +79,6 @@ function FlagImg({ iso }: { iso: string }) {
       </span>
     );
   }
-
   return (
     <img
       src={`https://flagcdn.com/w40/${iso.toLowerCase()}.png`}
@@ -142,44 +141,6 @@ function Logo() {
   );
 }
 
-function LeftPanel() {
-  return (
-    <div style={{
-      width: "45%", minHeight: "100vh",
-      background: "linear-gradient(160deg, #1a3330 0%, #0d1f1c 100%)",
-      display: "flex", flexDirection: "column" as const,
-      justifyContent: "space-between", padding: "48px 44px",
-      position: "relative" as const, overflow: "hidden",
-    }}>
-      <div style={{ position: "absolute", inset: 0, opacity: 0.04, backgroundImage: "radial-gradient(circle at 20% 50%, #318774 0%, transparent 50%), radial-gradient(circle at 80% 20%, #318774 0%, transparent 40%)" }} />
-      <div style={{ position: "relative" as const }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-          <div style={{ width: 32, height: 32, background: P, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M2 8L6 4L10 8L14 4" stroke="white" strokeWidth="2" strokeLinecap="square"/>
-              <path d="M2 12L6 8L10 12L14 8" stroke="white" strokeWidth="2" strokeLinecap="square" opacity="0.5"/>
-            </svg>
-          </div>
-          <span style={{ fontSize: 20, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em" }}>Cybrosoft</span>
-          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginLeft: 2 }}>Console</span>
-        </div>
-        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", margin: 0 }}>Cloud Services Management Platform</p>
-      </div>
-      <div style={{ position: "relative" as const }}>
-        <div style={{ fontSize: 28, fontWeight: 600, color: "#fff", lineHeight: 1.3, marginBottom: 16, letterSpacing: "-0.02em" }}>
-          Get started with Cybrosoft Console
-        </div>
-        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.5)", lineHeight: 1.7, margin: 0 }}>
-          Create your account to manage cloud servers, billing, and subscriptions in one place.
-        </p>
-      </div>
-      <p style={{ position: "relative" as const, fontSize: 12, color: "rgba(255,255,255,0.25)", margin: 0 }}>
-        © {new Date().getFullYear()} Cybrosoft · All rights reserved
-      </p>
-    </div>
-  );
-}
-
 const ssoLinkStyle: React.CSSProperties = {
   width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
   gap: 10, padding: "10px 16px", fontSize: 14, fontWeight: 500,
@@ -218,8 +179,9 @@ function MarketSwitcher({ value, onChange }: {
   value: string;
   onChange: (label: string, route: "sa" | "global") => void;
 }) {
-  const [open,   setOpen]   = useState(false);
+  const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+
   const selectedCountry = COUNTRIES.find(c => c.label === value);
 
   const filtered = search.trim()
@@ -276,7 +238,6 @@ function MarketSwitcher({ value, onChange }: {
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <span style={{ fontSize: 11, color: "#9ca3af" }}>Select the market country/region</span>
       <div id="mkt-sw" style={{ position: "relative", width: 240 }}>
-
         {/* Trigger */}
         <button type="button" onClick={handleOpen} style={triggerStyle}>
           {selectedCountry?.iso
@@ -348,7 +309,6 @@ function MarketSwitcher({ value, onChange }: {
   );
 }
 
-
 // ── ISO code → label map for IP detection ────────────────────────────────────
 const ISO_TO_LABEL: Record<string, string> = {
   SA: "Saudi Arabia", AE: "UAE", KW: "Kuwait", BH: "Bahrain",
@@ -375,20 +335,20 @@ async function detectCountryCode(): Promise<string | null> {
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function SignupPage() {
   const pathname = usePathname();
-  const isSaudi  = pathname.startsWith("/sa");
+  const isSaudi = pathname.startsWith("/sa");
 
-  const [step,           setStep]          = useState<"email" | "otp" | "exists" | "profile">("email");
-  const [email,          setEmail]         = useState("");
-  const [code,           setCode]          = useState("");
-  const [loading,        setLoading]       = useState(false);
-  const [msg,            setMsg]           = useState<{ text: string; ok: boolean } | null>(null);
+  const [step, setStep] = useState<"email" | "otp" | "exists" | "profile">("email");
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+
   // selectedMarket drives marketKey for all API calls
   const [selectedMarket, setSelectedMarket] = useState<string>(isSaudi ? "Saudi Arabia" : "");
 
   // On mount (client only): restore manual selection from sessionStorage
   // Must be in useEffect — sessionStorage not available during SSR
   React.useEffect(() => {
-
     if (isSaudi) return;
     try {
       const saved = sessionStorage.getItem("mkt_selected");
@@ -408,8 +368,6 @@ export default function SignupPage() {
 
   // Derived: is the currently selected market Saudi?
   const selectedIsSaudi = COUNTRIES.find(c => c.label === selectedMarket)?.route === "sa";
-
-
 
   async function handleSso(provider: "google" | "microsoft") {
     const mkt = selectedIsSaudi ? "saudi" : "global";
@@ -477,10 +435,11 @@ export default function SignupPage() {
 
   async function submitProfile(e: React.FormEvent) {
     e.preventDefault();
-    if (!profileData.fullName.trim())  { setMsg({ text: "Full name is required.", ok: false }); return; }
-    if (!profileData.mobile.trim())    { setMsg({ text: "Mobile number is required.", ok: false }); return; }
-    if (!profileData.tcAccepted)       { setMsg({ text: "Please accept the Terms of Service.", ok: false }); return; }
-    if (!profileData.privacyAccepted)  { setMsg({ text: "Please accept the Privacy Policy.", ok: false }); return; }
+    if (!profileData.fullName.trim()) { setMsg({ text: "Full name is required.", ok: false }); return; }
+    if (!profileData.mobile.trim()) { setMsg({ text: "Mobile number is required.", ok: false }); return; }
+    if (!profileData.tcAccepted) { setMsg({ text: "Please accept the Terms of Service.", ok: false }); return; }
+    if (!profileData.privacyAccepted) { setMsg({ text: "Please accept the Privacy Policy.", ok: false }); return; }
+
     setProfileSaving(true); setMsg(null);
     try {
       const res = await fetch("/api/customer/onboarding", {
@@ -491,7 +450,7 @@ export default function SignupPage() {
       if (!res.ok) { setMsg({ text: d?.error ?? "Failed to save. Please try again.", ok: false }); return; }
       window.location.href = selectedIsSaudi ? "/sa/dashboard" : "/dashboard";
     } catch { setMsg({ text: "Network error. Please try again.", ok: false }); }
-    finally   { setProfileSaving(false); }
+    finally { setProfileSaving(false); }
   }
 
   function setPD(field: string, value: string | boolean) {
@@ -500,7 +459,7 @@ export default function SignupPage() {
   }
 
   // Market-aware links — /sa prefix when on Saudi path
-  const loginHref  = selectedIsSaudi ? "/sa/login" : "/login";
+  const loginHref = selectedIsSaudi ? "/sa/login" : "/login";
 
   const rightContent = (
     <div style={{ width: "100%", maxWidth: step === "profile" ? 560 : 380 }}>
@@ -512,14 +471,14 @@ export default function SignupPage() {
 
       <div style={{ marginBottom: 28 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: "#111827", margin: "0 0 6px", letterSpacing: "-0.02em" }}>
-          {step === "email"   ? "Create your account"    :
-           step === "otp"     ? "Check your email"        :
-           step === "profile" ? "Complete your profile"   :
+          {step === "email" ? "Create your account" :
+           step === "otp" ? "Check your email" :
+           step === "profile" ? "Complete your profile" :
                                 "Account already exists"}
         </h1>
         <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>
-          {step === "email"   ? "Sign up to get started with Cybrosoft Console" :
-           step === "otp"     ? <><strong style={{ color: "#374151" }}>{email}</strong> — enter the code we sent</> :
+          {step === "email" ? "Sign up to get started with Cybrosoft Console" :
+           step === "otp" ? <><strong style={{ color: "#374151" }}>{email}</strong> — enter the code we sent</> :
            step === "profile" ? "Just a few details to set up your account." :
                                 <>We found an existing account for <strong style={{ color: "#374151" }}>{email}</strong></>}
         </p>
@@ -557,7 +516,7 @@ export default function SignupPage() {
               <input type="email" required value={email} onChange={e => setEmail(e.target.value)}
                 placeholder="you@company.com" style={inputStyle}
                 onFocus={e => (e.target.style.borderColor = P)}
-                onBlur={e  => (e.target.style.borderColor = "#e5e7eb")} />
+                onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
             </div>
             <button type="submit" disabled={loading} style={primaryBtn(loading)}>
               {loading ? "Checking…" : "Continue"}
@@ -576,7 +535,7 @@ export default function SignupPage() {
               onChange={e => setCode(e.target.value)} placeholder="123456" maxLength={6} autoFocus
               style={{ ...inputStyle, fontSize: 22, letterSpacing: "0.3em", textAlign: "center" as const, fontFamily: "monospace" }}
               onFocus={e => (e.target.style.borderColor = P)}
-              onBlur={e  => (e.target.style.borderColor = "#e5e7eb")} />
+              onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
           </div>
           <button type="submit" disabled={loading} style={primaryBtn(loading)}>
             {loading ? "Verifying…" : "Verify & Create Account"}
@@ -590,7 +549,6 @@ export default function SignupPage() {
 
       {step === "profile" && (
         <form onSubmit={submitProfile} style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-
           {/* Account type */}
           <div style={{ marginBottom: 14 }}>
             <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 6 }}>Account Type</label>
@@ -794,28 +752,19 @@ export default function SignupPage() {
   return (
     <>
       <style>{`
-        .mobile-logo { display: none; }
         @media (max-width: 768px) {
-          .auth-left { display: none !important; }
-          .auth-right { width: 100% !important; padding: 32px 24px !important; }
-          .mobile-logo { display: block; }
           .market-switcher-wrap { display: flex; justify-content: center; }
         }
         @media (min-width: 769px) {
           .market-switcher-wrap { display: flex; justify-content: flex-end; }
         }
       `}</style>
-      <div style={{ display: "flex", minHeight: "100vh", fontFamily: "'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
-        <div className="auth-left" style={{ width: "45%", flexShrink: 0 }}>
-          <LeftPanel />
-        </div>
-        <div className="auth-right" style={{
-          flex: 1, display: "flex", alignItems: step === "profile" ? "flex-start" : "center", justifyContent: "center",
-          padding: "48px 32px", background: "#fff", overflowY: "auto",
-        }}>
-          {rightContent}
-        </div>
-      </div>
+      <AuthShell
+        headline="Get Started with Cybrosoft Console"
+        subtext="Create your account to manage cloud servers, billing, and subscriptions in one place."
+        rightStyle={{ alignItems: step === "profile" ? "flex-start" : "center", overflowY: "auto" }}>
+        {rightContent}
+      </AuthShell>
     </>
   );
 }
