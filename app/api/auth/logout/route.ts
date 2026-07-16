@@ -1,3 +1,4 @@
+// app/api/auth/logout/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
@@ -15,8 +16,12 @@ export async function POST(req: Request) {
     }
   }
 
-  // Clear cookie and redirect to login
-  const res = NextResponse.redirect(new URL("/login", req.url));
+  // Clear cookie and redirect to login.
+  // Base URL from env — req.url may carry the internal host (localhost:3000)
+  // when requests arrive via the reverse proxy.
+  const res = NextResponse.redirect(
+    new URL("/login", process.env.NEXT_PUBLIC_BASE_URL ?? req.url)
+  );
   res.cookies.set("sid", "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
