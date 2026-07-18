@@ -309,35 +309,12 @@ function MarketSwitcher({ value, onChange }: {
   );
 }
 
-// ── ISO code → label map for IP detection ────────────────────────────────────
-const ISO_TO_LABEL: Record<string, string> = {
-  SA: "Saudi Arabia", AE: "UAE", KW: "Kuwait", BH: "Bahrain",
-  QA: "Qatar", OM: "Oman", US: "United States", AU: "Australia",
-  BE: "Belgium", BR: "Brazil", CA: "Canada", DK: "Denmark",
-  EG: "Egypt", FI: "Finland", FR: "France", DE: "Germany",
-  IN: "India", ID: "Indonesia", IT: "Italy", JP: "Japan",
-  KE: "Kenya", MY: "Malaysia", MX: "Mexico", NL: "Netherlands",
-  NZ: "New Zealand", NG: "Nigeria", NO: "Norway", SG: "Singapore",
-  ZA: "South Africa", KR: "South Korea", ES: "Spain", SE: "Sweden",
-  CH: "Switzerland", GB: "United Kingdom",
-};
-
-async function detectCountryCode(): Promise<string | null> {
-  // ip-api.com supports CORS on free plan — works from browser fetch()
-  try {
-    const r = await fetch("https://ip-api.com/json/?fields=countryCode", { cache: "no-store" });
-    const d = await r.json();
-    if (typeof d?.countryCode === "string") return d.countryCode.toUpperCase();
-  } catch { /* ignore */ }
-  return null;
-}
-
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function SignupPage() {
   const pathname = usePathname();
   const isSaudi = pathname.startsWith("/sa");
 
-  const [step, setStep] = useState<"email" | "otp" | "exists" | "profile">("email");
+  const [step, setStep] = useState<"email" | "otp" | "profile">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -354,6 +331,19 @@ export default function SignupPage() {
       const saved = sessionStorage.getItem("mkt_selected");
       if (saved) setSelectedMarket(saved);
     } catch (err) { console.log("[signup] sessionStorage error:", err); }
+  }, []);
+
+  // On mount: ?onboarding=1 means an authenticated user with an incomplete
+  // profile was redirected here (from OTP verify, SSO, or the dashboard gate).
+  // Jump straight to the profile form.
+  React.useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("onboarding") === "1") {
+        setStep("profile");
+        setMsg({ text: "Please complete your profile to continue to the dashboard.", ok: true });
+      }
+    } catch { /* ignore */ }
   }, []);
 
   // Profile form state
@@ -400,9 +390,14 @@ export default function SignupPage() {
       });
       const raw = await res.json().catch(() => null);
       if (!isRecord(raw)) { setMsg({ text: "Server error. Please try again.", ok: false }); return; }
-      if (readBoolean(raw, "userExists") === true) { setStep("exists"); return; }
       if (readBoolean(raw, "ok") === false) {
         setMsg({ text: readString(raw, "error") ?? "Something went wrong.", ok: false });
+        return;
+      }
+      // Existing account: an OTP was sent too — signup acts as login.
+      if (readBoolean(raw, "userExists") === true) {
+        setStep("otp");
+        setMsg({ text: "An account with this email already exists — we sent a sign-in code to your email.", ok: true });
         return;
       }
       setStep("otp");
@@ -423,13 +418,15 @@ export default function SignupPage() {
         setMsg({ text: "Invalid or expired code. Please try again.", ok: false });
         return;
       }
-      // New user — show profile completion form before entering dashboard
-      const isNew = isRecord(raw) && raw.userExists !== true && !raw.requiresTotp;
-      if (isNew) {
-        setStep("profile"); setMsg(null);
-      } else {
-        window.location.href = readString(raw, "redirectTo") ?? (selectedIsSaudi ? "/sa/dashboard" : "/dashboard");
+      // Existing account with 2FA — complete sign-in from the login page.
+      if (raw.requiresTotp === true) {
+        window.location.href = selectedIsSaudi ? "/sa/login" : "/login";
+        return;
       }
+      // Follow the server's decision: incomplete profile → back here with
+      // ?onboarding=1 (profile form shows); complete → dashboard.
+      window.location.href = readString(raw, "redirectTo")
+        ?? (selectedIsSaudi ? "/sa/dashboard" : "/dashboard");
     } finally { setLoading(false); }
   }
 
@@ -448,7 +445,7 @@ export default function SignupPage() {
       });
       const d = await res.json().catch(() => null);
       if (!res.ok) { setMsg({ text: d?.error ?? "Failed to save. Please try again.", ok: false }); return; }
-      window.location.href = selectedIsSaudi ? "/sa/dashboard" : "/dashboard";
+      window.location.href = selectedIsSaudi || isSaudi ? "/sa/dashboard" : "/dashboard";
     } catch { setMsg({ text: "Network error. Please try again.", ok: false }); }
     finally { setProfileSaving(false); }
   }
@@ -459,7 +456,7 @@ export default function SignupPage() {
   }
 
   // Market-aware links — /sa prefix when on Saudi path
-  const loginHref = selectedIsSaudi ? "/sa/login" : "/login";
+  const loginHref = isSaudi ? "/sa/login" : "/login";
 
   const rightContent = (
     <div style={{ width: "100%", maxWidth: step === "profile" ? 560 : 380 }}>
@@ -473,14 +470,12 @@ export default function SignupPage() {
         <h1 style={{ fontSize: 22, fontWeight: 700, color: "#111827", margin: "0 0 6px", letterSpacing: "-0.02em" }}>
           {step === "email" ? "Create your account" :
            step === "otp" ? "Check your email" :
-           step === "profile" ? "Complete your profile" :
-                                "Account already exists"}
+                            "Complete your profile"}
         </h1>
         <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>
           {step === "email" ? "Sign up to get started with Cybrosoft Console" :
            step === "otp" ? <><strong style={{ color: "#374151" }}>{email}</strong> — enter the code we sent</> :
-           step === "profile" ? "Just a few details to set up your account." :
-                                <>We found an existing account for <strong style={{ color: "#374151" }}>{email}</strong></>}
+                            "Just a few details to set up your account."}
         </p>
       </div>
 
@@ -538,7 +533,7 @@ export default function SignupPage() {
               onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
           </div>
           <button type="submit" disabled={loading} style={primaryBtn(loading)}>
-            {loading ? "Verifying…" : "Verify & Create Account"}
+            {loading ? "Verifying…" : "Verify & Continue"}
           </button>
           <button type="button" style={ghostBtn}
             onClick={() => { setStep("email"); setCode(""); setMsg(null); }}>
@@ -597,7 +592,7 @@ export default function SignupPage() {
                     placeholder="e.g. 300000000000003" style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", boxSizing: "border-box" as const, fontFamily: "inherit" }}
                     onFocus={e => (e.target.style.borderColor = P)} onBlur={e => (e.target.style.borderColor = "#d1d5db")} />
                 </div>
-                {selectedIsSaudi && <>
+                {(selectedIsSaudi || isSaudi) && <>
                   <div>
                     <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 5 }}>CR / Unified ID</label>
                     <input value={profileData.crn} onChange={e => setPD("crn", e.target.value)}
@@ -620,7 +615,7 @@ export default function SignupPage() {
             <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 10, textTransform: "uppercase" as const, letterSpacing: "0.04em" }}>Address <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af" }}>(optional)</span></div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <div style={{ gridColumn: "1 / -1" }}>
-                {selectedIsSaudi ? (
+                {(selectedIsSaudi || isSaudi) ? (
                   <>
                     <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 5 }}>Province</label>
                     <select value={profileData.province} onChange={e => setPD("province", e.target.value)}
@@ -650,7 +645,7 @@ export default function SignupPage() {
                   placeholder="Street name" style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", boxSizing: "border-box" as const, fontFamily: "inherit" }}
                   onFocus={e => (e.target.style.borderColor = P)} onBlur={e => (e.target.style.borderColor = "#d1d5db")} />
               </div>
-              {selectedIsSaudi && <>
+              {(selectedIsSaudi || isSaudi) && <>
                 <div>
                   <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 5 }}>Building No.</label>
                   <input value={profileData.buildingNumber} onChange={e => setPD("buildingNumber", e.target.value)}
@@ -679,7 +674,7 @@ export default function SignupPage() {
               <div>
                 <label style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "#374151", marginBottom: 5 }}>Postal Code</label>
                 <input value={profileData.postalCode} onChange={e => setPD("postalCode", e.target.value)}
-                  placeholder={selectedIsSaudi ? "e.g. 12345" : "e.g. 10001"} style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", boxSizing: "border-box" as const, fontFamily: "inherit" }}
+                  placeholder={(selectedIsSaudi || isSaudi) ? "e.g. 12345" : "e.g. 10001"} style={{ width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid #d1d5db", outline: "none", boxSizing: "border-box" as const, fontFamily: "inherit" }}
                   onFocus={e => (e.target.style.borderColor = P)} onBlur={e => (e.target.style.borderColor = "#d1d5db")} />
               </div>
             </div>
@@ -713,22 +708,6 @@ export default function SignupPage() {
         </form>
       )}
 
-      {step === "exists" && (
-        <div style={{ display: "flex", flexDirection: "column" as const, gap: 12 }}>
-          <div style={{ padding: "14px 16px", background: "#f9fafb", border: "1px solid #e5e7eb", fontSize: 13, color: "#374151", lineHeight: 1.6 }}>
-            An account with this email already exists. Please sign in instead.
-          </div>
-          <a href={`${loginHref}?email=${encodeURIComponent(normalizeEmail(email))}`}
-            style={{ display: "block", textAlign: "center" as const, padding: "11px", background: P, color: "#fff", fontSize: 14, fontWeight: 600, textDecoration: "none" }}>
-            Sign In →
-          </a>
-          <button type="button" style={ghostBtn}
-            onClick={() => { setStep("email"); setEmail(""); setMsg(null); }}>
-            ← Use a different email
-          </button>
-        </div>
-      )}
-
       <p style={{ marginTop: 24, fontSize: 12, color: "#9ca3af", textAlign: "center" as const, lineHeight: 1.6 }}>
         By proceeding, you agree to our{" "}
         <a href="/terms" style={{ color: "#6b7280", textDecoration: "underline" }}>Terms of Service</a>
@@ -742,10 +721,12 @@ export default function SignupPage() {
         <a href={loginHref} style={{ color: P, fontWeight: 500, textDecoration: "none" }}>Sign in</a>
       </p>
 
-      {/* Market switcher */}
-      <div className="market-switcher-wrap" style={{ marginTop: 24 }}>
-        <MarketSwitcher value={selectedMarket} onChange={(label) => setSelectedMarket(label)} />
-      </div>
+      {/* Market switcher — hidden during onboarding (market already set) */}
+      {step !== "profile" && (
+        <div className="market-switcher-wrap" style={{ marginTop: 24 }}>
+          <MarketSwitcher value={selectedMarket} onChange={(label) => setSelectedMarket(label)} />
+        </div>
+      )}
     </div>
   );
 
@@ -760,7 +741,7 @@ export default function SignupPage() {
         }
       `}</style>
       <AuthShell
-        headline="Get Started with Cybrosoft Console"
+        headline="Get started with Cybrosoft Console"
         subtext="Create your account to manage cloud servers, billing, and subscriptions in one place."
         rightStyle={{ alignItems: step === "profile" ? "flex-start" : "center", overflowY: "auto" }}>
         {rightContent}

@@ -1,8 +1,9 @@
 // app/api/auth/signup/route.ts
 // Updated for Step 10 minimal signup flow:
-// - Accepts marketKey ("saudi" | "global") instead of marketId
-// - fullName, mobile, tcAccepted no longer required at signup (collected in Onboarding Wizard)
-// - Only email + marketKey required
+//  - Accepts marketKey ("saudi" | "global") instead of marketId
+//  - fullName, mobile, tcAccepted no longer required at signup (collected in Onboarding Wizard)
+//  - Only email + marketKey required
+//  - Existing users: an OTP is sent too — signup acts as login (no dead end)
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
@@ -13,16 +14,13 @@ import { sendOtpEmail } from "@/lib/email/send-otp";
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
-
 function readString(obj: Record<string, unknown>, key: string): string | null {
   const v = obj[key];
   return typeof v === "string" ? v : null;
 }
-
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
-
 function getPendingSignupExpiry(): Date {
   return new Date(Date.now() + 30 * 60 * 1000);
 }
@@ -30,20 +28,17 @@ function getPendingSignupExpiry(): Date {
 export async function POST(req: Request) {
   try {
     const raw = (await req.json().catch(() => null)) as unknown;
-
     if (!raw || !isRecord(raw)) {
       return NextResponse.json({ ok: false, error: "Invalid request." }, { status: 400 });
     }
 
     const normalizedEmail = normalizeEmail(String(readString(raw, "email") ?? ""));
-
     const marketKey = readString(raw, "marketKey")?.trim().toUpperCase() || null;
     const marketId  = readString(raw, "marketId")?.trim() || null;
 
     if (!normalizedEmail) {
       return NextResponse.json({ ok: false, error: "Email is required." }, { status: 400 });
     }
-
     if (!marketKey && !marketId) {
       return NextResponse.json({ ok: false, error: "Market is required." }, { status: 400 });
     }
@@ -54,17 +49,24 @@ export async function POST(req: Request) {
         : { id: marketId!, isActive: true },
       select: { id: true, key: true },
     });
-
     if (!market) {
       return NextResponse.json({ ok: false, error: "Market not found." }, { status: 400 });
     }
 
     const existingUser = await prisma.user.findUnique({
-      where:  { email: normalizedEmail },
-      select: { id: true },
+      where: { email: normalizedEmail },
+      select: { id: true, market: { select: { key: true } } },
     });
 
     if (existingUser) {
+      // Signup acts as login for existing users — send a sign-in code.
+      const code     = generateOtp();
+      const codeHash = hashOtp(normalizedEmail, code);
+      await prisma.loginOtp.create({
+        data: { email: normalizedEmail, codeHash, expiresAt: getOtpExpiry(), attemptCount: 0 },
+      });
+      // Use the user's own market for sender branding
+      await sendOtpEmail(normalizedEmail, code, existingUser.market?.key ?? market.key);
       return NextResponse.json({ ok: true, userExists: true });
     }
 
@@ -76,7 +78,6 @@ export async function POST(req: Request) {
 
     const code     = generateOtp();
     const codeHash = hashOtp(normalizedEmail, code);
-
     await prisma.loginOtp.create({
       data: { email: normalizedEmail, codeHash, expiresAt: getOtpExpiry(), attemptCount: 0 },
     });
@@ -85,7 +86,6 @@ export async function POST(req: Request) {
     await sendOtpEmail(normalizedEmail, code, market.key);
 
     return NextResponse.json({ ok: true, userExists: false });
-
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[signup] error:", msg);
