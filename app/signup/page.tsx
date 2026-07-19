@@ -348,7 +348,7 @@ export default function SignupPage() {
 
   // Profile form state
   const [profileData, setProfileData] = useState({
-    fullName: "", mobile: "", accountType: "PERSONAL" as "PERSONAL" | "BUSINESS",
+    fullName: "", mobile: "", accountType: "BUSINESS" as "PERSONAL" | "BUSINESS",
     companyName: "", vatTaxId: "", crn: "", shortAddressCode: "",
     province: "", addressLine1: "", addressLine2: "",
     buildingNumber: "", secondaryNumber: "", district: "", city: "", postalCode: "",
@@ -434,8 +434,7 @@ export default function SignupPage() {
     e.preventDefault();
     if (!profileData.fullName.trim()) { setMsg({ text: "Full name is required.", ok: false }); return; }
     if (!profileData.mobile.trim()) { setMsg({ text: "Mobile number is required.", ok: false }); return; }
-    if (!profileData.tcAccepted) { setMsg({ text: "Please accept the Terms of Service.", ok: false }); return; }
-    if (!profileData.privacyAccepted) { setMsg({ text: "Please accept the Privacy Policy.", ok: false }); return; }
+    if (!profileData.tcAccepted || !profileData.privacyAccepted) { setMsg({ text: "Please accept the Terms of Service and Privacy Policy.", ok: false }); return; }
 
     setProfileSaving(true); setMsg(null);
     try {
@@ -457,6 +456,12 @@ export default function SignupPage() {
 
   // Market-aware links — /sa prefix when on Saudi path
   const loginHref = isSaudi ? "/sa/login" : "/login";
+
+  // Legal links on the main website, market-aware
+  const legalBase    = (selectedIsSaudi || isSaudi) ? "https://cybrosoft.com/sa" : "https://cybrosoft.com";
+  const termsHref    = `${legalBase}/terms`;
+  const privacyHref  = `${legalBase}/privacy`;
+  const cookiesHref  = `${legalBase}/privacy#cookies`;
 
   const rightContent = (
     <div style={{ width: "100%", maxWidth: step === "profile" ? 560 : 380 }}>
@@ -680,21 +685,19 @@ export default function SignupPage() {
             </div>
           </div>
 
-          {/* T&C */}
-          <div style={{ marginBottom: 18, display: "flex", flexDirection: "column" as const, gap: 8 }}>
+          {/* T&C — single combined checkbox */}
+          <div style={{ marginBottom: 18 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: "#374151" }}>
-              <input type="checkbox" checked={profileData.tcAccepted} onChange={e => setPD("tcAccepted", e.target.checked)}
+              <input type="checkbox" checked={profileData.tcAccepted && profileData.privacyAccepted}
+                onChange={e => { setPD("tcAccepted", e.target.checked); setPD("privacyAccepted", e.target.checked); }}
                 style={{ width: 15, height: 15, accentColor: P, cursor: "pointer", flexShrink: 0 }} />
-              I agree to the{" "}
-              <a href="/terms" target="_blank" style={{ color: P, textDecoration: "underline" }}>Terms of Service</a>
-              <span style={{ color: "#ef4444", marginLeft: 2 }}>*</span>
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: "#374151" }}>
-              <input type="checkbox" checked={profileData.privacyAccepted} onChange={e => setPD("privacyAccepted", e.target.checked)}
-                style={{ width: 15, height: 15, accentColor: P, cursor: "pointer", flexShrink: 0 }} />
-              I agree to the{" "}
-              <a href="/privacy" target="_blank" style={{ color: P, textDecoration: "underline" }}>Privacy Policy</a>
-              <span style={{ color: "#ef4444", marginLeft: 2 }}>*</span>
+              <span>I agree to the{" "}
+                <a href={termsHref} target="_blank" style={{ color: P, textDecoration: "underline" }}>Terms of Service</a>
+                {", "}
+                <a href={privacyHref} target="_blank" style={{ color: P, textDecoration: "underline" }}>Privacy Policy</a>
+                {" "}and{" "}
+                <a href={cookiesHref} target="_blank" style={{ color: P, textDecoration: "underline" }}>Cookies Policy</a>
+                <span style={{ color: "#ef4444", marginLeft: 2 }}>*</span></span>
             </label>
           </div>
 
@@ -708,18 +711,24 @@ export default function SignupPage() {
         </form>
       )}
 
-      <p style={{ marginTop: 24, fontSize: 12, color: "#9ca3af", textAlign: "center" as const, lineHeight: 1.6 }}>
-        By proceeding, you agree to our{" "}
-        <a href="/terms" style={{ color: "#6b7280", textDecoration: "underline" }}>Terms of Service</a>
-        {" "}and{" "}
-        <a href="/privacy" style={{ color: "#6b7280", textDecoration: "underline" }}>Privacy Policy</a>
-      </p>
+      {step !== "profile" && (
+        <p style={{ marginTop: 24, fontSize: 12, color: "#9ca3af", textAlign: "center" as const, lineHeight: 1.6 }}>
+          By proceeding, you agree to our{" "}
+          <a href={termsHref} target="_blank" style={{ color: "#6b7280", textDecoration: "underline" }}>Terms of Service</a>
+          {", "}
+          <a href={privacyHref} target="_blank" style={{ color: "#6b7280", textDecoration: "underline" }}>Privacy Policy</a>
+          {" "}and{" "}
+          <a href={cookiesHref} target="_blank" style={{ color: "#6b7280", textDecoration: "underline" }}>Cookies Policy</a>
+        </p>
+      )}
 
       {/* Market-aware sign in link */}
-      <p style={{ marginTop: 16, fontSize: 13, color: "#6b7280", textAlign: "center" as const }}>
-        Already have an account?{" "}
-        <a href={loginHref} style={{ color: P, fontWeight: 500, textDecoration: "none" }}>Sign in</a>
-      </p>
+      {step !== "profile" && (
+        <p style={{ marginTop: 16, fontSize: 13, color: "#6b7280", textAlign: "center" as const }}>
+          Already have an account?{" "}
+          <a href={loginHref} style={{ color: P, fontWeight: 500, textDecoration: "none" }}>Sign in</a>
+        </p>
+      )}
 
       {/* Market switcher — hidden during onboarding (market already set) */}
       {step !== "profile" && (
