@@ -192,12 +192,13 @@ function MarketSwitcher({ value, onChange }: {
     setOpen(false);
     setSearch("");
     sessionStorage.setItem("mkt_selected", country.label);
+    const qs = window.location.search; // preserve e.g. ?onboarding=1
     if (country.route === "sa") {
-      window.location.href = "/sa/signup";
+      window.location.href = "/sa/signup" + qs;
       return;
     }
     if (window.location.pathname.startsWith("/sa")) {
-      window.location.href = "/signup";
+      window.location.href = "/signup" + qs;
       return;
     }
     onChange(country.label, country.route);
@@ -335,13 +336,21 @@ export default function SignupPage() {
 
   // On mount: ?onboarding=1 means an authenticated user with an incomplete
   // profile was redirected here (from OTP verify, SSO, or the dashboard gate).
-  // Jump straight to the profile form.
+  // Jump straight to the profile form and load their market for correct
+  // /sa differentiation (links, Saudi fields, switcher).
   React.useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
       if (params.get("onboarding") === "1") {
         setStep("profile");
         setMsg({ text: "Please complete your profile to continue to the dashboard.", ok: true });
+        fetch("/api/me")
+          .then(r => r.json())
+          .then(d => {
+            const txt = JSON.stringify(d ?? {});
+            if (txt.includes('"saudi"')) setSelectedMarket("Saudi Arabia");
+          })
+          .catch(() => { /* keep current market */ });
       }
     } catch { /* ignore */ }
   }, []);
@@ -452,6 +461,11 @@ export default function SignupPage() {
   function setPD(field: string, value: string | boolean) {
     setProfileData(prev => ({ ...prev, [field]: value }));
     setMsg(null);
+  }
+
+  async function handleSignOut() {
+    try { await fetch("/api/auth/logout", { method: "POST" }); } catch { /* ignore */ }
+    window.location.href = isSaudi ? "/sa/login" : "/login";
   }
 
   // Market-aware links — /sa prefix when on Saudi path
@@ -708,6 +722,14 @@ export default function SignupPage() {
           }}>
             {profileSaving ? "Saving…" : "Complete Setup & Enter Dashboard →"}
           </button>
+
+          <button type="button" onClick={handleSignOut} style={{
+            marginTop: 10, width: "100%", padding: "9px", fontSize: 13,
+            background: "none", color: "#6b7280", border: "1px solid #e5e7eb",
+            cursor: "pointer", fontFamily: "inherit",
+          }}>
+            Sign out & continue later
+          </button>
         </form>
       )}
 
@@ -730,12 +752,10 @@ export default function SignupPage() {
         </p>
       )}
 
-      {/* Market switcher — hidden during onboarding (market already set) */}
-      {step !== "profile" && (
-        <div className="market-switcher-wrap" style={{ marginTop: 24 }}>
-          <MarketSwitcher value={selectedMarket} onChange={(label) => setSelectedMarket(label)} />
-        </div>
-      )}
+      {/* Market switcher — also on profile step for market correction */}
+      <div className="market-switcher-wrap" style={{ marginTop: 24 }}>
+        <MarketSwitcher value={selectedMarket} onChange={(label) => setSelectedMarket(label)} />
+      </div>
     </div>
   );
 
