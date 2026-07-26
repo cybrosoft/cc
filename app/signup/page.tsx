@@ -24,15 +24,15 @@ type CountryOption = { label: string; iso: string; route: "sa" | "global"; divid
 
 const COUNTRIES: CountryOption[] = [
   // Priority top 7
-  { label: "Saudi Arabia",  iso: "SA", route: "sa"     },
-  { label: "UAE",           iso: "AE", route: "global" },
-  { label: "Kuwait",        iso: "KW", route: "global" },
-  { label: "Bahrain",       iso: "BH", route: "global" },
-  { label: "Qatar",         iso: "QA", route: "global" },
-  { label: "Oman",          iso: "OM", route: "global" },
-  { label: "United States", iso: "US", route: "global", dividerAfter: true },
+  
+  
+
+
+
+
   // Alphabetical
   { label: "Australia",      iso: "AU", route: "global" },
+  { label: "Bahrain",       iso: "BH", route: "global" },  
   { label: "Belgium",        iso: "BE", route: "global" },
   { label: "Brazil",         iso: "BR", route: "global" },
   { label: "Canada",         iso: "CA", route: "global" },
@@ -46,19 +46,25 @@ const COUNTRIES: CountryOption[] = [
   { label: "Italy",          iso: "IT", route: "global" },
   { label: "Japan",          iso: "JP", route: "global" },
   { label: "Kenya",          iso: "KE", route: "global" },
+   { label: "Kuwait",        iso: "KW", route: "global" }, 
   { label: "Malaysia",       iso: "MY", route: "global" },
   { label: "Mexico",         iso: "MX", route: "global" },
   { label: "Netherlands",    iso: "NL", route: "global" },
   { label: "New Zealand",    iso: "NZ", route: "global" },
   { label: "Nigeria",        iso: "NG", route: "global" },
   { label: "Norway",         iso: "NO", route: "global" },
+  { label: "Oman",           iso: "OM", route: "global" },  
+  { label: "Qatar",          iso: "QA", route: "global" },
+  { label: "Saudi Arabia",   iso: "SA", route: "sa" },
   { label: "Singapore",      iso: "SG", route: "global" },
   { label: "South Africa",   iso: "ZA", route: "global" },
   { label: "South Korea",    iso: "KR", route: "global" },
   { label: "Spain",          iso: "ES", route: "global" },
   { label: "Sweden",         iso: "SE", route: "global" },
-  { label: "Switzerland",    iso: "CH", route: "global" },
-  { label: "United Kingdom", iso: "GB", route: "global" },
+  { label: "Switzerland", iso: "CH", route: "global" },
+  { label: "United Arab Emirates", iso: "AE", route: "global" },
+  { label: "United Kingdom", iso: "GB", route: "global" },  
+  { label: "United States", iso: "US", route: "global" },
   // Last — no ISO, uses globe icon
   { label: "Other Countries", iso: "", route: "global" },
 ];
