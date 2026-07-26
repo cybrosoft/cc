@@ -105,7 +105,6 @@ function LeftPanel() {
       {/* Centered headline */}
       <div style={{ position: "relative" as const, textAlign: "left" as const}}>
         {/* <p style={{ fontSize: 15, color: "rgba(255,255,255,0.75)", margin: "0 0 10px", letterSpacing: "0.02em" }}>
-          
         </p>
         <div style={{ fontSize: 24, fontWeight: 600, color: "#eeeeee", lineHeight: 1.2, letterSpacing: "0.04em", marginBottom: 14 }}>
           Where your Cloud Meets Accountability
@@ -158,22 +157,21 @@ const divider = (
 );
 
 export default function LoginClient() {
-  const pathname     = usePathname();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
-  const isSaudi      = pathname.startsWith("/sa");
-
-  const reason     = searchParams.get("reason");
+  const isSaudi = pathname.startsWith("/sa");
+  const reason = searchParams.get("reason");
   const errorParam = searchParams.get("error");
 
-  const [step,    setStep]    = useState<"email" | "otp" | "totp">("email");
-  const [email,   setEmail]   = useState("");
-  const [code,    setCode]    = useState("");
+  const [step, setStep] = useState<"email" | "otp" | "totp">("email");
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
-  const [msg,     setMsg]     = useState<{ text: string; ok: boolean } | null>(null);
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   useEffect(() => {
-    if (reason === "rejected")  setMsg({ text: "Your application was not approved. Please contact support.", ok: false });
-    if (errorParam)             setMsg({ text: decodeURIComponent(errorParam), ok: false });
+    if (reason === "rejected") setMsg({ text: "Your application was not approved. Please contact support.", ok: false });
+    if (errorParam) setMsg({ text: decodeURIComponent(errorParam), ok: false });
   }, [reason, errorParam]);
 
   const emailFromQuery = useMemo(() => {
@@ -222,8 +220,8 @@ export default function LoginClient() {
       if (!res.ok || !isRecord(raw) || readBoolean(raw, "ok") !== true) {
         const errCode = isRecord(raw) ? readString(raw, "error") : null;
         let errMsg = "Invalid or expired code. Please try again.";
-        if (errCode === "ACCOUNT_REJECTED")  errMsg = "Your application was not approved. Please contact support.";
-        if (errCode === "SIGNUP_EXPIRED")    errMsg = "Your signup session expired. Please sign up again.";
+        if (errCode === "ACCOUNT_REJECTED") errMsg = "Your application was not approved. Please contact support.";
+        if (errCode === "SIGNUP_EXPIRED") errMsg = "Your signup session expired. Please sign up again.";
         setMsg({ text: errMsg, ok: false });
         return;
       }
@@ -255,7 +253,13 @@ export default function LoginClient() {
 
   // Market-aware links
   const signupHref = isSaudi ? "/sa/signup" : "/signup";
-  const market     = isSaudi ? "saudi" : "global";
+  const market = isSaudi ? "saudi" : "global";
+
+  // Legal links on the main website, market-aware
+  const legalBase   = isSaudi ? "https://cybrosoft.com/sa" : "https://cybrosoft.com";
+  const termsHref   = `${legalBase}/terms`;
+  const privacyHref = `${legalBase}/privacy`;
+  const cookiesHref = `${legalBase}/privacy#cookies`;
 
   async function handleSso(provider: "google" | "microsoft", mkt: string) {
     setLoading(true); setMsg(null);
@@ -296,8 +300,8 @@ export default function LoginClient() {
           {step === "email"
             ? "Welcome back — sign in to continue"
             : step === "otp"
-            ? <>Code sent to <strong style={{ color: "#374151" }}>{email}</strong></>
-            : "Enter the 6-digit code from your authenticator app."}
+              ? <>Code sent to <strong style={{ color: "#374151" }}>{email}</strong></>
+              : "Enter the 6-digit code from your authenticator app."}
         </p>
       </div>
 
@@ -333,7 +337,7 @@ export default function LoginClient() {
               <input type="email" required value={email} onChange={e => setEmail(e.target.value)}
                 placeholder="you@company.com" style={inputStyle}
                 onFocus={e => (e.target.style.borderColor = P)}
-                onBlur={e  => (e.target.style.borderColor = "#e5e7eb")} />
+                onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
             </div>
             <button type="submit" disabled={loading} style={primaryBtn(loading)}>
               {loading ? "Sending…" : "Continue with Email"}
@@ -350,7 +354,7 @@ export default function LoginClient() {
               onChange={e => setCode(e.target.value)} placeholder="123456" maxLength={6} autoFocus
               style={{ ...inputStyle, fontSize: 22, letterSpacing: "0.3em", textAlign: "center" as const, fontFamily: "monospace" }}
               onFocus={e => (e.target.style.borderColor = P)}
-              onBlur={e  => (e.target.style.borderColor = "#e5e7eb")} />
+              onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
           </div>
           <button type="submit" disabled={loading} style={primaryBtn(loading)}>
             {loading ? "Verifying…" : "Verify & Sign In"}
@@ -370,7 +374,7 @@ export default function LoginClient() {
               onChange={e => setCode(e.target.value.replace(/\D/g, ""))} placeholder="000000" maxLength={6} autoFocus
               style={{ ...inputStyle, fontSize: 22, letterSpacing: "0.3em", textAlign: "center" as const, fontFamily: "monospace" }}
               onFocus={e => (e.target.style.borderColor = P)}
-              onBlur={e  => (e.target.style.borderColor = "#e5e7eb")} />
+              onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
             <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "#9ca3af" }}>
               Open your authenticator app and enter the current 6-digit code.
             </p>
@@ -391,9 +395,11 @@ export default function LoginClient() {
 
       <p style={{ marginTop: 24, fontSize: 12, color: "#9ca3af", textAlign: "center" as const, lineHeight: 1.6 }}>
         By proceeding, you agree to our{" "}
-        <a href="/terms" style={{ color: "#6b7280", textDecoration: "underline" }}>Terms of Service</a>
+        <a href={termsHref} target="_blank" style={{ color: "#6b7280", textDecoration: "underline" }}>Terms of Service</a>
+        {", "}
+        <a href={privacyHref} target="_blank" style={{ color: "#6b7280", textDecoration: "underline" }}>Privacy Policy</a>
         {" "}and{" "}
-        <a href="/privacy" style={{ color: "#6b7280", textDecoration: "underline" }}>Privacy Policy</a>
+        <a href={cookiesHref} target="_blank" style={{ color: "#6b7280", textDecoration: "underline" }}>Cookies Policy</a>
       </p>
 
       {/* Market-aware sign up link */}
