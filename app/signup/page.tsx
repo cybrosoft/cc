@@ -66,7 +66,7 @@ const COUNTRIES: CountryOption[] = [
   { label: "United Kingdom", iso: "GB", route: "global" },  
   { label: "United States", iso: "US", route: "global" },
   // Last — no ISO, uses globe icon
-  { label: "Other Countries", iso: "", route: "global" },
+  //{ label: "Other Countries", iso: "", route: "global" },
 ];
 
 // ── Flag image — flagcdn.com, falls back to ISO text badge if image fails ────
