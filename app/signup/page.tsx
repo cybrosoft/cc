@@ -24,15 +24,13 @@ type CountryOption = { label: string; iso: string; route: "sa" | "global"; divid
 
 const COUNTRIES: CountryOption[] = [
   // Priority top 7
-  
-  
 
 
 
 
   // Alphabetical
   { label: "Australia",      iso: "AU", route: "global" },
-  { label: "Bahrain",       iso: "BH", route: "global" },  
+  { label: "Bahrain",       iso: "BH", route: "global" },
   { label: "Belgium",        iso: "BE", route: "global" },
   { label: "Brazil",         iso: "BR", route: "global" },
   { label: "Canada",         iso: "CA", route: "global" },
@@ -46,14 +44,14 @@ const COUNTRIES: CountryOption[] = [
   { label: "Italy",          iso: "IT", route: "global" },
   { label: "Japan",          iso: "JP", route: "global" },
   { label: "Kenya",          iso: "KE", route: "global" },
-   { label: "Kuwait",        iso: "KW", route: "global" }, 
+   { label: "Kuwait",        iso: "KW", route: "global" },
   { label: "Malaysia",       iso: "MY", route: "global" },
   { label: "Mexico",         iso: "MX", route: "global" },
   { label: "Netherlands",    iso: "NL", route: "global" },
   { label: "New Zealand",    iso: "NZ", route: "global" },
   { label: "Nigeria",        iso: "NG", route: "global" },
   { label: "Norway",         iso: "NO", route: "global" },
-  { label: "Oman",           iso: "OM", route: "global" },  
+  { label: "Oman",           iso: "OM", route: "global" },
   { label: "Qatar",          iso: "QA", route: "global" },
   { label: "Saudi Arabia",   iso: "SA", route: "sa" },
   { label: "Singapore",      iso: "SG", route: "global" },
@@ -63,7 +61,7 @@ const COUNTRIES: CountryOption[] = [
   { label: "Sweden",         iso: "SE", route: "global" },
   { label: "Switzerland", iso: "CH", route: "global" },
   { label: "United Arab Emirates", iso: "AE", route: "global" },
-  { label: "United Kingdom", iso: "GB", route: "global" },  
+  { label: "United Kingdom", iso: "GB", route: "global" },
   { label: "United States", iso: "US", route: "global" },
   // Last — no ISO, uses globe icon
   //{ label: "Other Countries", iso: "", route: "global" },
@@ -453,13 +451,16 @@ export default function SignupPage() {
 
     setProfileSaving(true); setMsg(null);
     try {
+      // marketKey reflects the customer's FINAL country choice on this step —
+      // corrects the account's market if it was set wrong at initial signup.
+      const finalMarketKey = (selectedIsSaudi || isSaudi) ? "saudi" : "global";
       const res = await fetch("/api/customer/onboarding", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(profileData),
+        body: JSON.stringify({ ...profileData, marketKey: finalMarketKey }),
       });
       const d = await res.json().catch(() => null);
       if (!res.ok) { setMsg({ text: d?.error ?? "Failed to save. Please try again.", ok: false }); return; }
-      window.location.href = selectedIsSaudi || isSaudi ? "/sa/dashboard" : "/dashboard";
+      window.location.href = finalMarketKey === "saudi" ? "/sa/dashboard" : "/dashboard";
     } catch { setMsg({ text: "Network error. Please try again.", ok: false }); }
     finally { setProfileSaving(false); }
   }

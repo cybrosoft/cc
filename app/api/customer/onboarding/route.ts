@@ -2,6 +2,14 @@
 // Saves onboarding wizard data. Called on final step submission.
 // After saving, notifies admins (in-app) and the sales inbox (email) —
 // same alert mechanism as the customer RFQ route.
+//
+// Market correction: the account's market was fixed at initial signup
+// (based on whatever the country switcher showed at that moment), which
+// can be wrong if the customer didn't explicitly pick their country before
+// submitting their email. Since a PENDING user has no subscriptions or
+// invoices yet, it's safe to let the final profile-step country choice
+// correct the account's marketId here. "saudi" -> KSA market, anything
+// else -> Global market.
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
@@ -31,7 +39,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Full name and mobile are required." }, { status: 400 });
   }
 
-  const isSaudi = user.market?.key?.toLowerCase() === "saudi";
+  // ── Resolve the final market from the profile-step country choice ──────────
+  // marketKey is sent by the signup page based on the country the customer
+  // selected on this final step. Falls back to the account's existing market
+  // if not provided (keeps old behavior for any caller that doesn't send it).
+  const requestedMarketKey = str(body.marketKey)?.toLowerCase();
+  let marketIdToUse = user.marketId;
+  let isSaudi = user.market?.key?.toLowerCase() === "saudi";
+
+  if (requestedMarketKey) {
+    const resolvedMarket = await prisma.market.findFirst({
+      where: { key: requestedMarketKey.toUpperCase(), isActive: true },
+      select: { id: true, key: true },
+    });
+    if (resolvedMarket) {
+      marketIdToUse = resolvedMarket.id;
+      isSaudi = resolvedMarket.key.toLowerCase() === "saudi";
+    }
+  }
 
   const updated = await prisma.user.update({
     where: { id: user.id },
@@ -39,6 +64,7 @@ export async function POST(req: NextRequest) {
       fullName,
       mobile,
       accountType,
+      marketId: marketIdToUse,
 
       // Company fields — only if business
       ...(accountType === AccountType.BUSINESS ? {
