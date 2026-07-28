@@ -303,8 +303,8 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
 
     // ── Footer — hardcoded, market-aware (Saudi vs Global legal entity) ────────
     const footerText = doc.market.key === "SAUDI"
-      ? `Cybrosoft | Legal Name: Fajr Business Solutions Company · Unified National No. 7018057526 · VAT No. 311304190900003<br/><a href="https://cybrosoft.com/sa/privacy" style="color:#9ca3af;">Privacy Policy</a> | <a href="https://cybrosoft.com/sa/terms" style="color:#9ca3af;">Terms &amp; Conditions</a><br/>ISO 9001:2015 &amp; ISO 27001:2022 Certified<br/>© ${new Date().getFullYear()} Cybrosoft`
-      : `Cybrosoft LLC, 102 Gold Ave SW, NM, 87102, United States<br/><a href="https://cybrosoft.com/privacy" style="color:#9ca3af;">Privacy Policy</a> | <a href="https://cybrosoft.com/terms" style="color:#9ca3af;">Terms &amp; Conditions</a><br/>© ${new Date().getFullYear()} Cybrosoft LLC`;
+      ? `Cybrosoft | Legal Name: Fajr Business Solutions Company<br/>CR Number: 4030302045 | VAT Number: 311304190900003<br/><a href="https://cybrosoft.com/sa/privacy" style="color:#9ca3af;">Privacy Policy</a> | <a href="https://cybrosoft.com/sa/terms" style="color:#9ca3af;">Terms &amp; Conditions</a><br/>ISO 9001:2015 &amp; ISO 27001:2022 Certified<br/>© ${new Date().getFullYear()} Cybrosoft`
+      : `Cybrosoft LLC<br/>102 Gold Ave SW, NM, 87102, United States<br/><a href="https://cybrosoft.com/privacy" style="color:#9ca3af;">Privacy Policy</a> | <a href="https://cybrosoft.com/terms" style="color:#9ca3af;">Terms &amp; Conditions</a><br/>© ${new Date().getFullYear()} Cybrosoft LLC`;
 
     const html = wrapEmailHtml({
       body:         docBody,
