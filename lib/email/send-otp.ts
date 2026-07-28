@@ -18,7 +18,8 @@ export async function sendOtpEmail(email: string, code: string, marketKey?: stri
     <div style="text-align:center;margin:28px 0;">
       <span style="font-size:36px;font-weight:700;font-family:monospace;letter-spacing:0.2em;color:#111827;">${code}</span>
     </div>
-    <p style="color:#9ca3af;font-size:12px;margin:0;">If you didn't request this code, you can safely ignore this email.</p>
+    <p style="color:#9ca3af;font-size:12px;margin:0 0 6px;">If you didn't request this code, you can safely ignore this email.</p>
+    <p style="color:#9ca3af;font-size:12px;margin:0;">Need help? Contact <a href="mailto:support@cybrosoft.com" style="color:#9ca3af;">support@cybrosoft.com</a></p>
   `;
 
   const { data, error } = await resend.emails.send({

@@ -51,7 +51,7 @@ export async function sendEmail(params: EmailParams): Promise<void> {
     portalName,
     logoUrl,
     primaryColor,
-    unsubLink: `${baseUrl}/dashboard/notifications/preferences`,
+    footerText: `This is an automated message from Cybrosoft Console — please do not reply to this email.<br/>Need help? Contact <a href="mailto:support@cybrosoft.com" style="color:#9ca3af;">support@cybrosoft.com</a><br/>© ${new Date().getFullYear()} Cybrosoft`,
   });
 
   const resend = new Resend(apiKey);
